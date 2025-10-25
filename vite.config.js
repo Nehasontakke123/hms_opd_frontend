@@ -6,6 +6,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    // Proxy is only used for local development
+    // In production, use VITE_API_BASE_URL environment variable
     proxy: {
       '/api': {
         target: 'http://localhost:7000',

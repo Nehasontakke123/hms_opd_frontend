@@ -22,6 +22,8 @@ const AdminLogin = () => {
     e.preventDefault()
     setLoading(true)
     
+    console.log('Login attempt:', { email: formData.email, role: 'admin' })
+    
     const result = await login(formData.email, formData.password, 'admin')
     
     if (result.success) {

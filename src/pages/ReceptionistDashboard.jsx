@@ -45,7 +45,14 @@ const ReceptionistDashboard = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
-      const response = await api.post('/patient/register', formData)
+      // Find the selected doctor to get the fees
+      const selectedDoctor = doctors.find(d => d._id === formData.doctor)
+      const fees = selectedDoctor?.fees || 0
+      
+      const response = await api.post('/patient/register', {
+        ...formData,
+        fees
+      })
       setGeneratedToken(response.data.data)
       setShowTokenModal(true)
       
@@ -169,10 +176,20 @@ const ReceptionistDashboard = () => {
                   <option value="">Select a doctor</option>
                   {doctors.map((doctor) => (
                     <option key={doctor._id} value={doctor._id}>
-                      {doctor.fullName} {doctor.specialization ? `- ${doctor.specialization}` : ''}
+                      {doctor.fullName} {doctor.specialization ? `- ${doctor.specialization}` : ''} {doctor.fees ? `(₹${doctor.fees})` : ''}
                     </option>
                   ))}
                 </select>
+                {formData.doctor && (
+                  <div className="mt-2 p-3 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-gray-700">
+                      <span className="font-semibold">Consultation Fee:</span>{' '}
+                      <span className="text-blue-600 font-bold">
+                        ₹{doctors.find(d => d._id === formData.doctor)?.fees || 'Not set'}
+                      </span>
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="md:col-span-2">
