@@ -2,7 +2,8 @@ import axios from 'axios'
 import toast from 'react-hot-toast'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  // baseURL: import.meta.env.VITE_API_BASE_URL || '/api' 
+  baseURL:"https://hms-opd-backend.vercel.app/api",
   headers: {
     'Content-Type': 'application/json',
   },
@@ -11,7 +12,7 @@ const api = axios.create({
 // Request interceptor to add token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem('token') 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
