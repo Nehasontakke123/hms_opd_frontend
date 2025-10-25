@@ -74,16 +74,16 @@ const ReceptionistDashboard = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Tekisky Hospital</h1>
-            <p className="text-sm text-gray-600">Receptionist Dashboard</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Tekisky Hospital</h1>
+            <p className="text-xs sm:text-sm text-gray-600">Receptionist Dashboard</p>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-gray-700">{user?.fullName}</span>
+          <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+            <span className="text-sm text-gray-700 truncate">{user?.fullName}</span>
             <button
               onClick={logout}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm whitespace-nowrap"
             >
               Logout
             </button>
@@ -92,8 +92,8 @@ const ReceptionistDashboard = () => {
       </header>
 
       <div className="max-w-3xl mx-auto px-4 py-8">
-        <div className="bg-white rounded-lg shadow p-8">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6">Patient Registration</h2>
+        <div className="bg-white rounded-lg shadow p-4 sm:p-8">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-6">Patient Registration</h2>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

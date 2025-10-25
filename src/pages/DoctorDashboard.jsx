@@ -106,15 +106,15 @@ const DoctorDashboard = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Tekisky Hospital</h1>
-            <p className="text-sm text-gray-600">Doctor Dashboard - Dr. {user?.fullName}</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Tekisky Hospital</h1>
+            <p className="text-xs sm:text-sm text-gray-600">Doctor Dashboard - Dr. {user?.fullName}</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
             <button
               onClick={logout}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+              className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm whitespace-nowrap"
             >
               Logout
             </button>
@@ -136,20 +136,20 @@ const DoctorDashboard = () => {
         ) : (
           <div className="grid gap-4">
             {patients.map((patient) => (
-              <div key={patient._id} className="bg-white rounded-lg shadow p-6">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold">
+              <div key={patient._id} className="bg-white rounded-lg shadow p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                  <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <span className="px-2 sm:px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold text-xs sm:text-sm">
                         Token: {patient.tokenNumber}
                       </span>
                       {patient.status === 'completed' && (
-                        <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                        <span className="px-2 sm:px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs">
                           Completed
                         </span>
                       )}
                     </div>
-                    <h3 className="text-xl font-bold text-gray-800">{patient.fullName}</h3>
+                    <h3 className="text-lg sm:text-xl font-bold text-gray-800">{patient.fullName}</h3>
                     <div className="mt-2 space-y-1 text-sm text-gray-600">
                       <p><span className="font-semibold">Age:</span> {patient.age}</p>
                       <p><span className="font-semibold">Mobile:</span> {patient.mobileNumber}</p>
@@ -159,7 +159,7 @@ const DoctorDashboard = () => {
                   {patient.status !== 'completed' && (
                     <button
                       onClick={() => handleOpenPrescriptionModal(patient)}
-                      className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                      className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm whitespace-nowrap"
                     >
                       Add Prescription
                     </button>
@@ -199,7 +199,7 @@ const DoctorDashboard = () => {
                 </label>
                 {prescriptionData.medicines.map((medicine, index) => (
                   <div key={index} className="mb-4 p-4 border border-gray-200 rounded-lg">
-                    <div className="grid grid-cols-3 gap-4 mb-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-2">
                       <input
                         type="text"
                         placeholder="Medicine name"

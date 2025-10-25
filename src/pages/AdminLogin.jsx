@@ -32,11 +32,11 @@ const AdminLogin = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">Tekisky Hospital</h1>
-          <p className="text-xl text-gray-600">Admin Login</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4 py-8">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
+        <div className="text-center mb-6 sm:mb-8">
+          <h1 className="text-2xl sm:text-4xl font-bold text-gray-800 mb-2">Tekisky Hospital</h1>
+          <p className="text-lg sm:text-xl text-gray-600">Admin Login</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
