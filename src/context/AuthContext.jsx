@@ -1,6 +1,7 @@
 import { createContext, useState, useContext, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import api from '../utils/api'
 
 const AuthContext = createContext()
 
@@ -30,19 +31,13 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password, role) => {
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password, role }),
+      const response = await api.post('/auth/login', { 
+        email, 
+        password, 
+        role 
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Login failed')
-      }
+      const data = response.data
 
       // Store user and token
       localStorage.setItem('token', data.token)
@@ -52,8 +47,9 @@ export const AuthProvider = ({ children }) => {
       toast.success('Login successful!')
       return { success: true }
     } catch (error) {
-      toast.error(error.message || 'Login failed')
-      return { success: false, error: error.message }
+      const errorMessage = error.response?.data?.message || error.message || 'Login failed'
+      toast.error(errorMessage)
+      return { success: false, error: errorMessage }
     }
   }
 

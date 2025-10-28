@@ -2,8 +2,9 @@ import axios from 'axios'
 import toast from 'react-hot-toast'
 
 const api = axios.create({
-  // baseURL: import.meta.env.VITE_API_BASE_URL || '/api' 
-  baseURL:"https://hms-opd-backend.vercel.app/api",
+  // LOCAL TESTING - Using local backend
+  baseURL:"http://localhost:5000/api",
+  // BEFORE DEPLOYING: Change back to "https://hms-opd-backend.vercel.app/api"
   headers: {
     'Content-Type': 'application/json',
   },

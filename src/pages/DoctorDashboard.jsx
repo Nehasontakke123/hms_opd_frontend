@@ -3,6 +3,8 @@ import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import generatePrescriptionPDF from '../utils/generatePrescriptionPDF'
+import PatientLimitModal from '../components/PatientLimitModal'
+import DoctorStatsNotification from '../components/DoctorStatsNotification'
 
 const DoctorDashboard = () => {
   const { user, logout } = useAuth()
@@ -10,6 +12,9 @@ const DoctorDashboard = () => {
   const [loading, setLoading] = useState(true)
   const [selectedPatient, setSelectedPatient] = useState(null)
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false)
+  const [showLimitModal, setShowLimitModal] = useState(false)
+  const [showStatsNotification, setShowStatsNotification] = useState(true)
+  const [doctorStats, setDoctorStats] = useState(null)
   const [prescriptionData, setPrescriptionData] = useState({
     diagnosis: '',
     medicines: [{ name: '', dosage: '', duration: '' }],
@@ -18,6 +23,7 @@ const DoctorDashboard = () => {
 
   useEffect(() => {
     fetchTodayPatients()
+    fetchDoctorStats()
   }, [])
 
   const fetchTodayPatients = async () => {
@@ -28,6 +34,15 @@ const DoctorDashboard = () => {
     } catch (error) {
       toast.error('Failed to fetch patients')
       setLoading(false)
+    }
+  }
+
+  const fetchDoctorStats = async () => {
+    try {
+      const response = await api.get(`/doctor/${user?.id}/stats`)
+      setDoctorStats(response.data.data)
+    } catch (error) {
+      console.error('Failed to fetch doctor stats:', error)
     }
   }
 
@@ -106,19 +121,57 @@ const DoctorDashboard = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Tekisky Hospital</h1>
-            <p className="text-xs sm:text-sm text-gray-600">Doctor Dashboard - Dr. {user?.fullName}</p>
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Tekisky Hospital</h1>
+              <p className="text-xs sm:text-sm text-gray-600">Doctor Dashboard - Dr. {user?.fullName}</p>
+            </div>
+            <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+              <button
+                onClick={() => setShowLimitModal(true)}
+                className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm whitespace-nowrap"
+              >
+                Set Patient Limit
+              </button>
+              <button
+                onClick={logout}
+                className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm whitespace-nowrap"
+              >
+                Logout
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
-            <button
-              onClick={logout}
-              className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm whitespace-nowrap"
-            >
-              Logout
-            </button>
-          </div>
+          {/* Stats Display */}
+          {doctorStats && (
+            <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Daily Limit</p>
+                    <p className="text-2xl font-bold text-purple-600">{doctorStats.dailyPatientLimit}</p>
+                  </div>
+                  <div className="h-12 w-px bg-gray-300"></div>
+                  <div>
+                    <p className="text-sm text-gray-600">Today's Patients</p>
+                    <p className="text-2xl font-bold text-gray-800">{doctorStats.todayPatientCount}</p>
+                  </div>
+                  <div className="h-12 w-px bg-gray-300"></div>
+                  <div>
+                    <p className="text-sm text-gray-600">Remaining Slots</p>
+                    <p className={`text-2xl font-bold ${doctorStats.remainingSlots > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {doctorStats.remainingSlots}
+                    </p>
+                  </div>
+                </div>
+                {doctorStats.isLimitReached && (
+                  <div className="px-4 py-2 bg-red-100 border border-red-300 rounded-lg">
+                    <p className="text-sm font-semibold text-red-800">⚠️ Daily limit reached!</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -270,6 +323,21 @@ const DoctorDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Patient Limit Modal */}
+      <PatientLimitModal
+        doctor={{ _id: user?.id, fullName: user?.fullName }}
+        isOpen={showLimitModal}
+        onClose={() => setShowLimitModal(false)}
+        onUpdate={fetchDoctorStats}
+      />
+
+      {/* Stats Notification Popup */}
+      <DoctorStatsNotification
+        doctorId={user?.id}
+        show={showStatsNotification}
+        onClose={() => setShowStatsNotification(false)}
+      />
     </div>
   )
 }

@@ -2,11 +2,15 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
+import PatientLimitModal from '../components/PatientLimitModal'
 
 const ReceptionistDashboard = () => {
   const { user, logout } = useAuth()
   const [doctors, setDoctors] = useState([])
+  const [doctorStats, setDoctorStats] = useState({})
   const [showTokenModal, setShowTokenModal] = useState(false)
+  const [showLimitModal, setShowLimitModal] = useState(false)
+  const [selectedDoctorForLimit, setSelectedDoctorForLimit] = useState(null)
   const [generatedToken, setGeneratedToken] = useState(null)
   const [formData, setFormData] = useState({
     fullName: '',
@@ -26,6 +30,18 @@ const ReceptionistDashboard = () => {
       const response = await api.get('/doctor')
       console.log('Doctors fetched:', response.data.data)
       setDoctors(response.data.data)
+      
+      // Fetch stats for each doctor
+      const statsPromises = response.data.data.map(doctor =>
+        api.get(`/doctor/${doctor._id}/stats`)
+          .then(res => ({ [doctor._id]: res.data.data }))
+          .catch(() => ({ [doctor._id]: null }))
+      )
+      
+      const statsArray = await Promise.all(statsPromises)
+      const stats = Object.assign({}, ...statsArray)
+      setDoctorStats(stats)
+      
       if (response.data.data.length === 0) {
         toast.error('No doctors available. Please contact admin.')
       }
@@ -33,6 +49,11 @@ const ReceptionistDashboard = () => {
       console.error('Error fetching doctors:', error)
       toast.error(error.response?.data?.message || 'Failed to fetch doctors')
     }
+  }
+
+  const handleSetLimitClick = (doctor) => {
+    setSelectedDoctorForLimit(doctor)
+    setShowLimitModal(true)
   }
 
   const handleChange = (e) => {
@@ -97,6 +118,55 @@ const ReceptionistDashboard = () => {
           </div>
         </div>
       </header>
+
+      {/* Doctors Overview Section */}
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <h2 className="text-2xl font-bold text-gray-800 mb-4">Doctors Overview</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+          {doctors.map((doctor) => {
+            const stats = doctorStats[doctor._id]
+            return (
+              <div key={doctor._id} className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="font-bold text-gray-800">{doctor.fullName}</h3>
+                    <p className="text-sm text-gray-600">{doctor.specialization || 'General'}</p>
+                  </div>
+                  <button
+                    onClick={() => handleSetLimitClick(doctor)}
+                    className="text-sm px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
+                  >
+                    Set Limit
+                  </button>
+                </div>
+                {stats && (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Daily Limit:</span>
+                      <span className="font-bold">{stats.dailyPatientLimit}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Today:</span>
+                      <span className="font-bold">{stats.todayPatientCount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Remaining:</span>
+                      <span className={`font-bold ${stats.remainingSlots > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {stats.remainingSlots}
+                      </span>
+                    </div>
+                    {stats.isLimitReached && (
+                      <div className="mt-2 px-2 py-1 bg-red-100 border border-red-300 rounded text-xs text-red-800 font-semibold">
+                        ⚠️ Limit Reached
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
 
       <div className="max-w-3xl mx-auto px-4 py-8">
         <div className="bg-white rounded-lg shadow p-4 sm:p-8">
@@ -174,20 +244,41 @@ const ReceptionistDashboard = () => {
                   required
                 >
                   <option value="">Select a doctor</option>
-                  {doctors.map((doctor) => (
-                    <option key={doctor._id} value={doctor._id}>
-                      {doctor.fullName} {doctor.specialization ? `- ${doctor.specialization}` : ''} {doctor.fees ? `(₹${doctor.fees})` : ''}
-                    </option>
-                  ))}
+                  {doctors.map((doctor) => {
+                    const stats = doctorStats[doctor._id]
+                    const slotsInfo = stats ? ` [${stats.remainingSlots} slots left]` : ''
+                    const isLimitReached = stats?.isLimitReached
+                    return (
+                      <option 
+                        key={doctor._id} 
+                        value={doctor._id}
+                        disabled={isLimitReached}
+                      >
+                        {doctor.fullName} {doctor.specialization ? `- ${doctor.specialization}` : ''} {doctor.fees ? `(₹${doctor.fees})` : ''}{slotsInfo}{isLimitReached ? ' - LIMIT REACHED' : ''}
+                      </option>
+                    )
+                  })}
                 </select>
                 {formData.doctor && (
-                  <div className="mt-2 p-3 bg-blue-50 rounded-lg">
+                  <div className="mt-2 p-3 bg-blue-50 rounded-lg space-y-1">
                     <p className="text-sm text-gray-700">
                       <span className="font-semibold">Consultation Fee:</span>{' '}
                       <span className="text-blue-600 font-bold">
                         ₹{doctors.find(d => d._id === formData.doctor)?.fees || 'Not set'}
                       </span>
                     </p>
+                    {doctorStats[formData.doctor] && (
+                      <p className="text-sm text-gray-700">
+                        <span className="font-semibold">Patients Today:</span>{' '}
+                        <span className="font-bold">
+                          {doctorStats[formData.doctor].todayPatientCount} / {doctorStats[formData.doctor].dailyPatientLimit}
+                        </span>
+                        {' '}
+                        <span className={doctorStats[formData.doctor].remainingSlots > 0 ? 'text-green-600' : 'text-red-600'}>
+                          ({doctorStats[formData.doctor].remainingSlots} remaining)
+                        </span>
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -250,6 +341,19 @@ const ReceptionistDashboard = () => {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Patient Limit Modal */}
+      {selectedDoctorForLimit && (
+        <PatientLimitModal
+          doctor={selectedDoctorForLimit}
+          isOpen={showLimitModal}
+          onClose={() => {
+            setShowLimitModal(false)
+            setSelectedDoctorForLimit(null)
+          }}
+          onUpdate={fetchDoctors}
+        />
       )}
     </div>
   )
