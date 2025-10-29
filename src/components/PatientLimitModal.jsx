@@ -121,3 +121,5 @@ const PatientLimitModal = ({ doctor, isOpen, onClose, onUpdate }) => {
 
 export default PatientLimitModal
 
+
+

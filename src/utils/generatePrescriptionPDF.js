@@ -74,9 +74,15 @@ const generatePrescriptionPDF = (patient, doctor, prescription) => {
   const date = new Date().toLocaleDateString()
   doc.text(`Date: ${date}`, 150, signatureY + 8)
   
-  // Save PDF
-  const fileName = `prescription_${patient.fullName.replace(/\s/g, '_')}_${date}.pdf`
+  // Generate PDF as base64 for backend storage
+  const pdfBase64 = doc.output('datauristring')
+  
+  // Also download locally for doctor
+  const fileName = `prescription_${patient.fullName.replace(/\s/g, '_')}_${date.replace(/\//g, '_')}.pdf`
   doc.save(fileName)
+  
+  // Return base64 string for backend upload
+  return pdfBase64
 }
 
 export default generatePrescriptionPDF
