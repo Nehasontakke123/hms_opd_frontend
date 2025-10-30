@@ -3,6 +3,7 @@ import api from '../utils/api'
 
 const DoctorStatsNotification = ({ doctorId, show, onClose }) => {
   const [stats, setStats] = useState(null)
+  
 
   useEffect(() => {
     if (show && doctorId) {
