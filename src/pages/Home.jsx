@@ -13,6 +13,14 @@ const Home = () => {
       route: '/admin'
     },
     {
+      title: 'Medical Login',
+      description: 'View patients and prescriptions (read-only)',
+      icon: '🏥',
+      color: 'from-cyan-500 to-blue-500',
+      hoverColor: 'hover:from-cyan-600 hover:to-blue-600',
+      route: '/medical'
+    },
+    {
       title: 'Doctor Login',
       description: 'View patients, create prescriptions',
       icon: '🩺',

@@ -9,6 +9,8 @@ import ReceptionistLogin from './pages/ReceptionistLogin'
 import ReceptionistDashboard from './pages/ReceptionistDashboard'
 import DoctorLogin from './pages/DoctorLogin'
 import DoctorDashboard from './pages/DoctorDashboard'
+import MedicalLogin from './pages/MedicalLogin'
+import MedicalDashboard from './pages/MedicalDashboard'
 
 function App() {
   return (
@@ -41,6 +43,15 @@ function App() {
               element={
                 <ProtectedRoute role="doctor">
                   <DoctorDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route path="/medical" element={<MedicalLogin />} />
+            <Route 
+              path="/medical/dashboard" 
+              element={
+                <ProtectedRoute role="medical">
+                  <MedicalDashboard />
                 </ProtectedRoute>
               } 
             />

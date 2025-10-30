@@ -99,6 +99,23 @@ const DoctorDashboard = () => {
     }
   }
 
+  const handleDownloadPrescription = (patient) => {
+    try {
+      if (!patient?.prescription) {
+        toast.error('No prescription available to generate PDF')
+        return
+      }
+      const doctorInfo = {
+        fullName: user?.fullName || 'Doctor',
+        specialization: user?.specialization || ''
+      }
+      generatePrescriptionPDF(patient, doctorInfo, patient.prescription)
+    } catch (e) {
+      console.error('Failed to generate PDF:', e)
+      toast.error('Failed to generate PDF')
+    }
+  }
+
   const getPDFUrl = (pdfPath) => {
     if (!pdfPath) return null
     // Construct the full URL to access the PDF
@@ -511,12 +528,16 @@ const DoctorDashboard = () => {
                             View PDF
                           </a>
                         ) : (
-                          <span className="px-4 py-2 bg-gray-200 text-gray-600 rounded-lg text-sm flex items-center gap-2" title="PDF not available">
+                          <button
+                            onClick={() => handleDownloadPrescription(patient)}
+                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center gap-2"
+                            title="Generate and download PDF"
+                          >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v12m0 0l-3-3m3 3l3-3M6 20h12" />
                             </svg>
-                            PDF Not Available
-                          </span>
+                            Download PDF
+                          </button>
                         )}
                       </div>
                     </div>

@@ -2,9 +2,8 @@ import axios from 'axios'
 import toast from 'react-hot-toast'
 
 const api = axios.create({
-  // LOCAL TESTING - Using local backend
-  baseURL:"https://hms-opd-backend.vercel.app/api",
-  // BEFORE DEPLOYING: Change back to "https://hms-opd-backend.vercel.app/api"
+  // Prefer env var; otherwise use deployed backend by default
+  baseURL: import.meta.env.VITE_API_BASE_URL || "https://hms-opd-backend.vercel.app/api",
   headers: {
     'Content-Type': 'application/json',
   },
@@ -29,9 +28,24 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      // Do not auto-redirect on login endpoint; allow the page to show errors
+      const requestUrl = error.config?.url || ''
+      if (requestUrl.includes('/auth/login')) {
+        return Promise.reject(error)
+      }
+      const storedUser = localStorage.getItem('user')
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/'
+      try {
+        const role = storedUser ? JSON.parse(storedUser)?.role : null
+        if (role === 'admin' || role === 'doctor' || role === 'receptionist' || role === 'medical') {
+          window.location.href = `/${role}`
+        } else {
+          window.location.href = '/'
+        }
+      } catch {
+        window.location.href = '/'
+      }
     }
     return Promise.reject(error)
   }

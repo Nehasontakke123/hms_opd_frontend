@@ -489,6 +489,7 @@ const AdminDashboard = () => {
                 >
                   <option value="doctor">Doctor</option>
                   <option value="receptionist">Receptionist</option>
+                  <option value="medical">Medical</option>
                 </select>
               </div>
               
