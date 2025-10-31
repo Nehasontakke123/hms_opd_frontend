@@ -10,6 +10,31 @@ const MedicalDashboard = () => {
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
 
+  const downloadPdf = async (pdfUrl, fileName) => {
+    try {
+      const response = await fetch(pdfUrl, {
+        credentials: pdfUrl.startsWith('http') ? 'omit' : 'include'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch PDF')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `${fileName}.pdf`
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('PDF download failed:', error)
+      toast.error('Failed to download PDF')
+    }
+  }
+
   useEffect(() => {
     const fetchPatients = async () => {
       try {
@@ -27,21 +52,24 @@ const MedicalDashboard = () => {
 
   const getPDFUrl = (pdfPath) => {
     if (!pdfPath) return null
-    const cleanPath = pdfPath.startsWith('/') ? pdfPath : `/${pdfPath}`
-    // Derive backend root from axios baseURL (which points to /api)
+    if (pdfPath.startsWith('http://') || pdfPath.startsWith('https://')) {
+      return pdfPath
+    }
     const baseURL = api.defaults.baseURL || (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api')
     const backendBase = baseURL.endsWith('/api') ? baseURL.slice(0, -4) : baseURL
+    const cleanPath = pdfPath.startsWith('/') ? pdfPath : `/${pdfPath}`
     return `${backendBase}${cleanPath}`
   }
 
   const handleDownload = (patient) => {
     try {
       // Use the actual prescribing doctor's details if available
-      const docInfo = {
-        fullName: patient?.doctor?.fullName || 'Doctor',
-        specialization: patient?.doctor?.specialization || ''
+      const pdfUrl = getPDFUrl(patient.prescription.pdfPath)
+      if (pdfUrl) {
+        downloadPdf(pdfUrl, `prescription_${patient.fullName}_${patient.tokenNumber}`)
+      } else {
+        toast.error('PDF not available')
       }
-      generatePrescriptionPDF(patient, docInfo, patient.prescription)
     } catch (e) {
       toast.error('Failed to generate PDF')
     }

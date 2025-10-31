@@ -49,6 +49,15 @@ const ReceptionistDashboard = () => {
     reason: '',
     notes: ''
   })
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [appointmentToCancel, setAppointmentToCancel] = useState(null)
+  const [cancelForm, setCancelForm] = useState({
+    reason: '',
+    refundAmount: '',
+    refundStatus: 'not_applicable',
+    refundNotes: '',
+    notifyPatient: true
+  })
 
   useEffect(() => {
     fetchDoctors()
@@ -250,6 +259,81 @@ const ReceptionistDashboard = () => {
       fetchAppointments()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to resend SMS. Please check SMS provider configuration in backend.')
+    }
+  }
+
+  const openCancelModal = (appointment) => {
+    setAppointmentToCancel(appointment)
+    setCancelForm({
+      reason: appointment.cancellationReason || '',
+      refundAmount: appointment.refundAmount ? appointment.refundAmount.toString() : '',
+      refundStatus:
+        appointment.refundAmount && appointment.refundAmount > 0
+          ? appointment.refundStatus === 'processed'
+            ? 'processed'
+            : 'pending'
+          : 'not_applicable',
+      refundNotes: appointment.refundNotes || '',
+      notifyPatient: true
+    })
+    setShowCancelModal(true)
+  }
+
+  const closeCancelModal = () => {
+    setShowCancelModal(false)
+    setAppointmentToCancel(null)
+    setCancelForm({
+      reason: '',
+      refundAmount: '',
+      refundStatus: 'pending',
+      refundNotes: '',
+      notifyPatient: true
+    })
+  }
+
+  const handleCancelFormChange = (e) => {
+    const { name, value, type, checked } = e.target
+    if (name === 'refundAmount') {
+      const amountValue = value
+      setCancelForm((prev) => ({
+        ...prev,
+        refundAmount: amountValue,
+        refundStatus:
+          amountValue && Number(amountValue) > 0
+            ? prev.refundStatus === 'not_applicable' ? 'pending' : prev.refundStatus
+            : 'not_applicable'
+      }))
+      return
+    }
+
+    setCancelForm((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }))
+  }
+
+  const submitCancellation = async (e) => {
+    e.preventDefault()
+    if (!appointmentToCancel) return
+
+    try {
+      const payload = {
+        cancellationReason: cancelForm.reason,
+        refundAmount: cancelForm.refundAmount ? Number(cancelForm.refundAmount) : 0,
+        refundStatus:
+          cancelForm.refundAmount && Number(cancelForm.refundAmount) > 0
+            ? cancelForm.refundStatus || 'pending'
+            : 'not_applicable',
+        refundNotes: cancelForm.refundNotes,
+        notifyPatient: cancelForm.notifyPatient
+      }
+
+      await api.post(`/appointment/${appointmentToCancel._id}/cancel`, payload)
+      toast.success('Appointment cancelled successfully!')
+      closeCancelModal()
+      fetchAppointments()
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to cancel appointment')
     }
   }
 
@@ -885,6 +969,25 @@ const ReceptionistDashboard = () => {
                               }`}>
                                 {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
                               </span>
+                              {appointment.status === 'cancelled' && (
+                                <div className="mt-2 text-xs text-red-600 space-y-1">
+                                  <p>
+                                    Cancelled {appointment.cancelledAt ? new Date(appointment.cancelledAt).toLocaleString() : ''}
+                                  </p>
+                                  {appointment.cancellationReason && (
+                                    <p>Reason: {appointment.cancellationReason}</p>
+                                  )}
+                                  {appointment.refundAmount > 0 && (
+                                    <p>
+                                      Refund: ₹{appointment.refundAmount}{' '}
+                                      ({appointment.refundStatus?.replace(/_/g, ' ')})
+                                    </p>
+                                  )}
+                                  {appointment.refundNotes && (
+                                    <p className="text-gray-500">Notes: {appointment.refundNotes}</p>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap">
                               {appointment.smsSent ? (
@@ -904,10 +1007,27 @@ const ReceptionistDashboard = () => {
                                 </button>
                                 <button
                                   onClick={() => handleResendSMS(appointment._id)}
-                                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition text-xs"
+                                  disabled={appointment.status === 'cancelled'}
+                                  className={`px-3 py-1 rounded transition text-xs ${
+                                    appointment.status === 'cancelled'
+                                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                  }`}
                                   title="Resend SMS"
                                 >
                                   Resend SMS
+                                </button>
+                                <button
+                                  onClick={() => openCancelModal(appointment)}
+                                  disabled={appointment.status === 'cancelled' || appointment.status === 'completed'}
+                                  className={`px-3 py-1 rounded transition text-xs ${
+                                    appointment.status === 'cancelled' || appointment.status === 'completed'
+                                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                      : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                  }`}
+                                  title="Cancel Appointment"
+                                >
+                                  Cancel
                                 </button>
                               </div>
                             </td>
@@ -1116,6 +1236,101 @@ const ReceptionistDashboard = () => {
                   className="flex-1 bg-gray-300 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition"
                 >
                   Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Appointment Modal */}
+      {showCancelModal && appointmentToCancel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 my-4">
+            <h3 className="text-2xl font-bold text-gray-800 mb-4">Cancel Appointment</h3>
+            <p className="text-sm text-gray-600 mb-6">
+              Appointment for <span className="font-semibold">{appointmentToCancel.patientName}</span> with Dr. {appointmentToCancel.doctor?.fullName}
+              {' '}on {new Date(appointmentToCancel.appointmentDate).toLocaleDateString()} at {appointmentToCancel.appointmentTime}.
+            </p>
+
+            <form onSubmit={submitCancellation} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Cancellation Reason *</label>
+                <textarea
+                  name="reason"
+                  value={cancelForm.reason}
+                  onChange={handleCancelFormChange}
+                  className="w-full min-h-[80px] px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+                  placeholder="Provide the reason for cancellation"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Refund Amount (₹)</label>
+                  <input
+                    type="number"
+                    name="refundAmount"
+                    min="0"
+                    step="0.01"
+                    value={cancelForm.refundAmount}
+                    onChange={handleCancelFormChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Refund Status</label>
+                  <select
+                    name="refundStatus"
+                    value={cancelForm.refundStatus}
+                    onChange={handleCancelFormChange}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+                    disabled={!cancelForm.refundAmount || Number(cancelForm.refundAmount) <= 0}
+                  >
+                    <option value="not_applicable">Not applicable</option>
+                    <option value="pending">Pending</option>
+                    <option value="processed">Processed</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Refund Notes</label>
+                <textarea
+                  name="refundNotes"
+                  value={cancelForm.refundNotes}
+                  onChange={handleCancelFormChange}
+                  className="w-full min-h-[60px] px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
+                  placeholder="Additional details about the refund (optional)"
+                />
+              </div>
+
+              <label className="inline-flex items-center text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  name="notifyPatient"
+                  checked={cancelForm.notifyPatient}
+                  onChange={handleCancelFormChange}
+                  className="w-4 h-4 text-red-500 border-gray-300 rounded focus:ring-red-500"
+                />
+                <span className="ml-2">Send SMS notification to patient</span>
+              </label>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <button
+                  type="submit"
+                  className="flex-1 bg-red-600 text-white py-2 rounded-lg font-semibold hover:bg-red-700 transition"
+                >
+                  Confirm Cancellation
+                </button>
+                <button
+                  type="button"
+                  onClick={closeCancelModal}
+                  className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300 transition"
+                >
+                  Close
                 </button>
               </div>
             </form>

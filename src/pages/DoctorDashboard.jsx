@@ -8,6 +8,31 @@ import DoctorStatsNotification from '../components/DoctorStatsNotification'
 
 const DoctorDashboard = () => {
   const { user, logout } = useAuth()
+  const downloadPdf = async (pdfUrl, fileName) => {
+    try {
+      const response = await fetch(pdfUrl, {
+        credentials: pdfUrl.startsWith('http') ? 'omit' : 'include'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch PDF')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `${fileName}.pdf`
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('PDF download failed:', error)
+      toast.error('Failed to download PDF')
+    }
+  }
+
   const [activeTab, setActiveTab] = useState('today') // 'today', 'history', or 'medical'
   const [patients, setPatients] = useState([])
   const [patientHistory, setPatientHistory] = useState([])
@@ -20,6 +45,9 @@ const DoctorDashboard = () => {
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [showStatsNotification, setShowStatsNotification] = useState(true)
   const [doctorStats, setDoctorStats] = useState(null)
+  const [searchToday, setSearchToday] = useState('')
+  const [searchHistory, setSearchHistory] = useState('')
+  const [searchMedical, setSearchMedical] = useState('')
   const [prescriptionData, setPrescriptionData] = useState({
     diagnosis: '',
     medicines: [{ name: '', dosage: '', duration: '' }],
@@ -99,32 +127,45 @@ const DoctorDashboard = () => {
     }
   }
 
+  const filterPatients = (list, query) => {
+    if (!query) return list
+    const q = query.toLowerCase()
+    return list.filter((patient) => {
+      const nameMatch = patient.fullName?.toLowerCase().includes(q)
+      const mobileMatch = patient.mobileNumber?.toLowerCase().includes(q)
+      const tokenMatch = patient.tokenNumber?.toString().includes(q)
+      const issueMatch = patient.disease?.toLowerCase().includes(q)
+      return nameMatch || mobileMatch || tokenMatch || issueMatch
+    })
+  }
+
   const handleDownloadPrescription = (patient) => {
     try {
       if (!patient?.prescription) {
-        toast.error('No prescription available to generate PDF')
+        toast.error('No prescription available to download')
         return
       }
-      const doctorInfo = {
-        fullName: user?.fullName || 'Doctor',
-        specialization: user?.specialization || ''
+
+      const pdfUrl = getPDFUrl(patient.prescription.pdfPath)
+
+      if (pdfUrl) {
+        downloadPdf(pdfUrl, `prescription_${patient.fullName}_${patient.tokenNumber}`)
+      } else {
+        toast.error('PDF not available')
       }
-      generatePrescriptionPDF(patient, doctorInfo, patient.prescription)
     } catch (e) {
-      console.error('Failed to generate PDF:', e)
-      toast.error('Failed to generate PDF')
+      console.error('Failed to download PDF:', e)
+      toast.error('Failed to download PDF')
     }
   }
 
   const getPDFUrl = (pdfPath) => {
     if (!pdfPath) return null
-    // Construct the full URL to access the PDF
-    // baseURL is like "https://hms-opd-backend.vercel.app/api" or "http://localhost:5000/api"
-    const baseURL = api.defaults.baseURL
-    const backendBase = baseURL.replace('/api', '')
-    
-    // pdfPath should be like "/medical_records/prescription_John_Doe_1_2025-01-28.pdf"
-    // or just "medical_records/prescription_John_Doe_1_2025-01-28.pdf"
+    if (pdfPath.startsWith('http://') || pdfPath.startsWith('https://')) {
+      return pdfPath
+    }
+    const baseURL = api.defaults.baseURL || (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api')
+    const backendBase = baseURL.endsWith('/api') ? baseURL.slice(0, -4) : baseURL
     const cleanPath = pdfPath.startsWith('/') ? pdfPath : `/${pdfPath}`
     return `${backendBase}${cleanPath}`
   }
@@ -213,6 +254,10 @@ const DoctorDashboard = () => {
       toast.error(error.response?.data?.message || 'Failed to save prescription')
     }
   }
+
+  const filteredTodayPatients = filterPatients(patients, searchToday)
+  const filteredHistoryPatients = filterPatients(patientHistory, searchHistory)
+  const filteredMedicalRecords = filterPatients(medicalRecords, searchMedical)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -331,66 +376,90 @@ const DoctorDashboard = () => {
                 <p className="text-gray-500 text-lg">No patients for today</p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg shadow overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {patients.map((patient) => (
-                        <tr key={patient._id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold text-sm">
-                              {patient.tokenNumber}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm font-medium text-gray-900">{patient.fullName}</div>
-                            <div className="text-sm text-gray-500">{patient.age} years • {patient.mobileNumber}</div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900">{patient.disease}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              patient.status === 'completed' 
-                                ? 'bg-green-100 text-green-800'
-                                : patient.status === 'in-progress'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {patient.status === 'completed' ? 'Completed' : patient.status === 'in-progress' ? 'In Progress' : 'Waiting'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(patient.registrationDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            {patient.status !== 'completed' && (
-                              <button
-                                onClick={() => handleOpenPrescriptionModal(patient)}
-                                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-                              >
-                                Add Prescription
-                              </button>
-                            )}
-                            {patient.status === 'completed' && patient.prescription && (
-                              <span className="text-green-600 font-semibold">✓ Prescribed</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <div className="space-y-4">
+                <div className="flex justify-end">
+                  <input
+                    type="text"
+                    value={searchToday}
+                    onChange={(e) => setSearchToday(e.target.value)}
+                    placeholder="Search patient, token, issue..."
+                    className="w-full sm:w-80 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                  />
                 </div>
+                {filteredTodayPatients.length === 0 ? (
+                  <div className="bg-white rounded-lg shadow p-12 text-center">
+                    <p className="text-gray-500 text-lg">No matching patients</p>
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-lg shadow overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {filteredTodayPatients.map((patient) => (
+                            <tr key={patient._id} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold text-sm">
+                                  {patient.tokenNumber}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="text-sm font-medium text-gray-900">{patient.fullName}</div>
+                                <div className="text-sm text-gray-500">{patient.age} years • {patient.mobileNumber}</div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="text-sm text-gray-900">{patient.disease}</div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                  patient.status === 'completed'
+                                    ? 'bg-green-100 text-green-800'
+                                    : patient.status === 'in-progress'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {patient.status === 'completed'
+                                    ? 'Completed'
+                                    : patient.status === 'in-progress'
+                                    ? 'In Progress'
+                                    : 'Waiting'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                {new Date(patient.registrationDate).toLocaleTimeString('en-US', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                {patient.status !== 'completed' && (
+                                  <button
+                                    onClick={() => handleOpenPrescriptionModal(patient)}
+                                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                                  >
+                                    Add Prescription
+                                  </button>
+                                )}
+                                {patient.status === 'completed' && patient.prescription && (
+                                  <span className="text-green-600 font-semibold">✓ Prescribed</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -411,6 +480,15 @@ const DoctorDashboard = () => {
               </div>
             ) : (
               <div className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+                  <input
+                    type="text"
+                    value={searchHistory}
+                    onChange={(e) => setSearchHistory(e.target.value)}
+                    placeholder="Search patient, token, issue..."
+                    className="w-full sm:w-96 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                  />
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead className="bg-gray-50">
@@ -424,7 +502,7 @@ const DoctorDashboard = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {patientHistory.slice(0, 100).map((patient) => (
+                      {filteredHistoryPatients.slice(0, 100).map((patient) => (
                         <tr key={patient._id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {new Date(patient.registrationDate || patient.createdAt).toLocaleDateString('en-US', {
@@ -468,7 +546,10 @@ const DoctorDashboard = () => {
                     </tbody>
                   </table>
                 </div>
-                {patientHistory.length > 100 && (
+                {filteredHistoryPatients.length === 0 && (
+                  <div className="px-6 py-8 text-center text-gray-500">No matching patients</div>
+                )}
+                {filteredHistoryPatients.length > 100 && (
                   <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
                     <p className="text-sm text-gray-500 text-center">Showing latest 100 records</p>
                   </div>
@@ -494,7 +575,21 @@ const DoctorDashboard = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {medicalRecords.map((patient) => (
+                <div className="flex justify-end">
+                  <input
+                    type="text"
+                    value={searchMedical}
+                    onChange={(e) => setSearchMedical(e.target.value)}
+                    placeholder="Search patient, token, issue..."
+                    className="w-full sm:w-80 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                  />
+                </div>
+                {filteredMedicalRecords.length === 0 ? (
+                  <div className="bg-white rounded-lg shadow p-12 text-center">
+                    <p className="text-gray-500 text-lg">No matching records</p>
+                  </div>
+                ) : (
+                  filteredMedicalRecords.map((patient) => (
                   <div key={patient._id} className="bg-white rounded-lg shadow p-6 border-l-4 border-purple-500">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
                       <div className="flex-1">
@@ -569,7 +664,8 @@ const DoctorDashboard = () => {
                       )}
                     </div>
                   </div>
-                ))}
+                  ))
+                )}
               </div>
             )}
           </div>
