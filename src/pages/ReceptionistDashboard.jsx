@@ -4,6 +4,51 @@ import api from '../utils/api'
 import toast from 'react-hot-toast'
 import PatientLimitModal from '../components/PatientLimitModal'
 
+const getDefaultVisitDate = () => {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const getDefaultVisitTime = () => {
+  const now = new Date()
+  const hours = String(now.getHours()).padStart(2, '0')
+  const minutes = String(now.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+const getInitialFormData = () => ({
+  fullName: '',
+  mobileNumber: '',
+  address: '',
+  age: '',
+  disease: '',
+  doctor: '',
+  visitDate: getDefaultVisitDate(),
+  visitTime: getDefaultVisitTime()
+})
+
+const getDefaultAppointmentDate = () => {
+  const date = new Date()
+  date.setDate(date.getDate() + 1)
+  return date.toISOString().split('T')[0]
+}
+
+const getDefaultAppointmentTime = () => '10:00'
+
+const getInitialAppointmentForm = () => ({
+  patientName: '',
+  mobileNumber: '',
+  email: '',
+  appointmentDate: getDefaultAppointmentDate(),
+  appointmentTime: getDefaultAppointmentTime(),
+  doctor: '',
+  reason: '',
+  notes: ''
+})
+
 const ReceptionistDashboard = () => {
   const { user, logout } = useAuth()
   const [activeTab, setActiveTab] = useState('doctors') // 'doctors', 'registration', or 'appointments'
@@ -31,33 +76,12 @@ const ReceptionistDashboard = () => {
   })
   const [selectedDoctorForLimit, setSelectedDoctorForLimit] = useState(null)
   const [generatedToken, setGeneratedToken] = useState(null)
-  const [formData, setFormData] = useState({
-    fullName: '',
-    mobileNumber: '',
-    address: '',
-    age: '',
-    disease: '',
-    doctor: ''
-  })
-  const [appointmentForm, setAppointmentForm] = useState({
-    patientName: '',
-    mobileNumber: '',
-    email: '',
-    appointmentDate: '',
-    appointmentTime: '',
-    doctor: '',
-    reason: '',
-    notes: ''
-  })
-  const [showCancelModal, setShowCancelModal] = useState(false)
-  const [appointmentToCancel, setAppointmentToCancel] = useState(null)
-  const [cancelForm, setCancelForm] = useState({
-    reason: '',
-    refundAmount: '',
-    refundStatus: 'not_applicable',
-    refundNotes: '',
-    notifyPatient: true
-  })
+  const [formData, setFormData] = useState(getInitialFormData)
+  const [appointmentForm, setAppointmentForm] = useState(getInitialAppointmentForm)
+  const [showAppointmentSuccess, setShowAppointmentSuccess] = useState(false)
+  const [appointmentSuccessData, setAppointmentSuccessData] = useState(null)
+  const [cancelledAppointmentInfo, setCancelledAppointmentInfo] = useState(null)
+  const [showCancelSuccess, setShowCancelSuccess] = useState(false)
 
   useEffect(() => {
     fetchDoctors()
@@ -104,10 +128,11 @@ const ReceptionistDashboard = () => {
   }
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    })
+    const { name, value } = e.target
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value
+    }))
   }
 
   const handleSubmit = async (e) => {
@@ -125,20 +150,14 @@ const ReceptionistDashboard = () => {
       setShowTokenModal(true)
       
       // Reset form
-      setFormData({
-        fullName: '',
-        mobileNumber: '',
-        address: '',
-        age: '',
-        disease: '',
-        doctor: ''
-      })
+      setFormData(getInitialFormData())
       
       toast.success('Patient registered successfully!')
       
       // Refresh patient lists
       fetchTodayPatients()
       fetchPatientHistory()
+      fetchDoctors()
     } catch (error) {
       toast.error(error.response?.data?.message || 'Registration failed')
     }
@@ -169,8 +188,16 @@ const ReceptionistDashboard = () => {
       const allPatientsArrays = await Promise.all(patientPromises)
       const allTodayPatients = allPatientsArrays.flat()
       
-      // Sort by token number
-      allTodayPatients.sort((a, b) => a.tokenNumber - b.tokenNumber)
+      // Sort by visit time then token number
+      allTodayPatients.sort((a, b) => {
+        const timeA = a.registrationDate ? new Date(a.registrationDate).getTime() : 0
+        const timeB = b.registrationDate ? new Date(b.registrationDate).getTime() : 0
+        const timeDiff = timeA - timeB
+        if (!Number.isNaN(timeDiff) && timeDiff !== 0) {
+          return timeDiff
+        }
+        return (a.tokenNumber || 0) - (b.tokenNumber || 0)
+      })
       setTodayPatients(allTodayPatients)
     } catch (error) {
       console.error('Error fetching today patients:', error)
@@ -192,6 +219,36 @@ const ReceptionistDashboard = () => {
       toast.error('Failed to fetch patient history')
     }
   }
+
+  const getDateTimeLabels = (value) => {
+    if (!value) {
+      return { dateLabel: '—', timeLabel: '—' }
+    }
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
+      return { dateLabel: '—', timeLabel: '—' }
+    }
+    return {
+      dateLabel: date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
+      timeLabel: date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    }
+  }
+
+  const getAppointmentLabels = (dateStr, timeStr) => {
+    if (!dateStr) {
+      return { dateLabel: '—', timeLabel: '—' }
+    }
+    const isoString = timeStr ? `${dateStr}T${timeStr}` : dateStr
+    return getDateTimeLabels(isoString)
+  }
+
+  const limitedPatientHistory = patientHistory.slice(0, 50)
+  const generatedTokenDateTime = generatedToken ? getDateTimeLabels(generatedToken.registrationDate) : null
+  const sortedAppointments = appointments.slice().sort((a, b) => {
+    const timeA = new Date(`${a.appointmentDate}T${a.appointmentTime || '00:00'}`).getTime()
+    const timeB = new Date(`${b.appointmentDate}T${b.appointmentTime || '00:00'}`).getTime()
+    return timeA - timeB
+  })
 
   const fetchAppointments = async () => {
     setLoadingAppointments(true)
@@ -229,21 +286,17 @@ const ReceptionistDashboard = () => {
     }
 
     try {
-      const response = await api.post('/appointment', appointmentForm)
+      const response = await api.post('/appointment', {
+        ...appointmentForm,
+        skipSms: true
+      })
       
       toast.success(response.data.message || 'Appointment scheduled successfully!')
+      setAppointmentSuccessData(response.data.data)
+      setShowAppointmentSuccess(true)
       
       // Reset form
-      setAppointmentForm({
-        patientName: '',
-        mobileNumber: '',
-        email: '',
-        appointmentDate: '',
-        appointmentTime: '',
-        doctor: '',
-        reason: '',
-        notes: ''
-      })
+      setAppointmentForm(getInitialAppointmentForm())
       
       // Refresh appointments list
       fetchAppointments()
@@ -262,79 +315,14 @@ const ReceptionistDashboard = () => {
     }
   }
 
-  const openCancelModal = (appointment) => {
-    setAppointmentToCancel(appointment)
-    setCancelForm({
-      reason: appointment.cancellationReason || '',
-      refundAmount: appointment.refundAmount ? appointment.refundAmount.toString() : '',
-      refundStatus:
-        appointment.refundAmount && appointment.refundAmount > 0
-          ? appointment.refundStatus === 'processed'
-            ? 'processed'
-            : 'pending'
-          : 'not_applicable',
-      refundNotes: appointment.refundNotes || '',
-      notifyPatient: true
+  const handleCancelAppointment = async (appointment) => {
+    setCancelledAppointmentInfo({
+      patientName: appointment.patientName,
+      doctorName: appointment.doctor?.fullName || 'Assigned doctor',
+      appointmentDate: appointment.appointmentDate,
+      appointmentTime: appointment.appointmentTime
     })
-    setShowCancelModal(true)
-  }
-
-  const closeCancelModal = () => {
-    setShowCancelModal(false)
-    setAppointmentToCancel(null)
-    setCancelForm({
-      reason: '',
-      refundAmount: '',
-      refundStatus: 'pending',
-      refundNotes: '',
-      notifyPatient: true
-    })
-  }
-
-  const handleCancelFormChange = (e) => {
-    const { name, value, type, checked } = e.target
-    if (name === 'refundAmount') {
-      const amountValue = value
-      setCancelForm((prev) => ({
-        ...prev,
-        refundAmount: amountValue,
-        refundStatus:
-          amountValue && Number(amountValue) > 0
-            ? prev.refundStatus === 'not_applicable' ? 'pending' : prev.refundStatus
-            : 'not_applicable'
-      }))
-      return
-    }
-
-    setCancelForm((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }))
-  }
-
-  const submitCancellation = async (e) => {
-    e.preventDefault()
-    if (!appointmentToCancel) return
-
-    try {
-      const payload = {
-        cancellationReason: cancelForm.reason,
-        refundAmount: cancelForm.refundAmount ? Number(cancelForm.refundAmount) : 0,
-        refundStatus:
-          cancelForm.refundAmount && Number(cancelForm.refundAmount) > 0
-            ? cancelForm.refundStatus || 'pending'
-            : 'not_applicable',
-        refundNotes: cancelForm.refundNotes,
-        notifyPatient: cancelForm.notifyPatient
-      }
-
-      await api.post(`/appointment/${appointmentToCancel._id}/cancel`, payload)
-      toast.success('Appointment cancelled successfully!')
-      closeCancelModal()
-      fetchAppointments()
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Failed to cancel appointment')
-    }
+    setShowCancelSuccess(true)
   }
 
   const handleEditAppointment = (appointment) => {
@@ -394,8 +382,12 @@ const ReceptionistDashboard = () => {
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Tekisky Hospital</h1>
-            <p className="text-xs sm:text-sm text-gray-600">Receptionist Dashboard</p>
+            <div className="flex items-baseline gap-3">
+              <span className="text-3xl sm:text-4xl font-black tracking-tight text-green-600">Tekisky</span>
+              <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital</span>
+            </div>
+            <p className="mt-1 inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-green-700 bg-green-50 rounded-full">Receptionist Hub</p>
+            <p className="mt-2 text-xs sm:text-sm text-slate-500">Manage arrivals, generate tokens, and coordinate with doctors seamlessly.</p>
           </div>
           <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
             <span className="text-sm text-gray-700 truncate">{user?.fullName}</span>
@@ -453,46 +445,75 @@ const ReceptionistDashboard = () => {
         {activeTab === 'doctors' && (
           <div>
             <h2 className="text-2xl font-bold text-gray-800 mb-4">Doctors Overview</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {doctors.map((doctor) => {
-                const stats = doctorStats[doctor._id]
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {doctors.map((doctor, index) => {
+                const stats = doctorStats[doctor._id] || {}
+                const dailyLimit = stats.dailyPatientLimit ?? doctor.dailyPatientLimit ?? 0
+                const todayCount = stats.todayPatientCount ?? 0
+                const remainingSlots = stats.remainingSlots ?? Math.max(dailyLimit - todayCount, 0)
+                const limitReached = stats.isLimitReached || remainingSlots <= 0
+
                 return (
-                  <div key={doctor._id} className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h3 className="font-bold text-gray-800">{doctor.fullName}</h3>
-                        <p className="text-sm text-gray-600">{doctor.specialization || 'General'}</p>
-                      </div>
-                      <button
-                        onClick={() => handleSetLimitClick(doctor)}
-                        className="text-sm px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition"
-                      >
-                        Set Limit
-                      </button>
-                    </div>
-                    {stats && (
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Daily Limit:</span>
-                          <span className="font-bold">{stats.dailyPatientLimit}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Today:</span>
-                          <span className="font-bold">{stats.todayPatientCount}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Remaining:</span>
-                          <span className={`font-bold ${stats.remainingSlots > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {stats.remainingSlots}
-                          </span>
-                        </div>
-                        {stats.isLimitReached && (
-                          <div className="mt-2 px-2 py-1 bg-red-100 border border-red-300 rounded text-xs text-red-800 font-semibold">
-                            ⚠️ Limit Reached
+                  <div
+                    key={doctor._id}
+                    className="relative overflow-hidden rounded-2xl bg-white border border-gray-100 shadow-sm transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg"
+                  >
+                    <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-green-400 to-emerald-600" aria-hidden="true"></div>
+
+                    <div className="p-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-full bg-green-100 text-green-700 font-semibold flex items-center justify-center">
+                            {String(index + 1).padStart(2, '0')}
                           </div>
-                        )}
+                          <div>
+                            <h3 className="text-lg font-semibold text-gray-900 leading-tight">{doctor.fullName}</h3>
+                            <p className="text-sm text-gray-600 capitalize">{doctor.specialization || 'General Physician'}</p>
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                Fees ₹{doctor.fees ?? '—'}
+                              </span>
+                              {doctor.experience && (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 text-blue-600 font-medium">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                                  {doctor.experience} yrs exp.
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleSetLimitClick(doctor)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition"
+                        >
+                          Set Limit
+                        </button>
                       </div>
-                    )}
+
+                      <div className="mt-5 grid grid-cols-3 gap-3 text-sm">
+                        <div className="rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
+                          <p className="text-xs uppercase tracking-wide text-gray-500">Daily Limit</p>
+                          <p className="mt-1 text-lg font-semibold text-gray-900">{dailyLimit}</p>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
+                          <p className="text-xs uppercase tracking-wide text-gray-500">Today</p>
+                          <p className="mt-1 text-lg font-semibold text-gray-900">{todayCount}</p>
+                        </div>
+                        <div className={`rounded-xl px-3 py-2 border ${limitReached ? 'bg-red-50 border-red-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                          <p className={`text-xs uppercase tracking-wide ${limitReached ? 'text-red-500' : 'text-emerald-600'}`}>Remaining</p>
+                          <p className={`mt-1 text-lg font-semibold ${limitReached ? 'text-red-600' : 'text-emerald-600'}`}>{remainingSlots}</p>
+                        </div>
+                      </div>
+
+                      {limitReached && (
+                        <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
+                          <span className="w-2 h-2 rounded-full bg-red-400"></span>
+                          Daily limit reached — consider increasing the limit or redirecting patients.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )
               })}
@@ -618,6 +639,34 @@ const ReceptionistDashboard = () => {
                 )}
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Visit Date *
+                </label>
+                <input
+                  type="date"
+                  name="visitDate"
+                  value={formData.visitDate}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Visit Time *
+                </label>
+                <input
+                  type="time"
+                  name="visitTime"
+                  value={formData.visitTime}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
+                  required
+                />
+              </div>
+
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Disease/Health Issue *
@@ -656,47 +705,70 @@ const ReceptionistDashboard = () => {
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visit</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {todayPatients.map((patient) => (
-                        <tr key={patient._id} className="hover:bg-gray-50">
-                          <td className="px-4 py-4 whitespace-nowrap">
-                            <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full font-semibold text-sm">
-                              {patient.tokenNumber}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="text-sm font-medium text-gray-900">{patient.fullName}</div>
-                            <div className="text-sm text-gray-500">{patient.age} years • {patient.mobileNumber}</div>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="text-sm text-gray-900">{patient.doctor?.fullName || 'N/A'}</div>
-                            <div className="text-sm text-gray-500">{patient.doctor?.specialization || ''}</div>
-                          </td>
-                          <td className="px-4 py-4 text-sm text-gray-900">{patient.disease}</td>
-                          <td className="px-4 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              patient.status === 'completed' 
-                                ? 'bg-green-100 text-green-800'
-                                : patient.status === 'in-progress'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {patient.status === 'completed' ? 'Completed' : patient.status === 'in-progress' ? 'In Progress' : 'Waiting'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(patient.registrationDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                          </td>
-                        </tr>
-                      ))}
+                      {todayPatients.map((patient, index) => {
+                        const { dateLabel, timeLabel } = getDateTimeLabels(patient.registrationDate)
+                        return (
+                          <tr key={patient._id} className="hover:bg-gray-50">
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 font-semibold flex items-center justify-center text-sm">
+                                {String(index + 1).padStart(2, '0')}
+                              </div>
+                            </td>
+                            <td className="px-4 py-4">
+                              <div className="text-sm font-semibold text-gray-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                                <span>{patient.fullName}</span>
+                                <span className="hidden sm:inline text-xs uppercase tracking-wide text-gray-400">•</span>
+                                <span className="text-sm text-gray-500 font-normal">Age {patient.age}</span>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
+                            </td>
+                            <td className="px-4 py-4">
+                              <div className="text-sm text-gray-900 font-medium">{patient.doctor?.fullName || 'N/A'}</div>
+                              <div className="text-xs text-gray-500">{patient.doctor?.specialization || '—'}</div>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-sm font-medium">
+                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                {patient.disease || 'Not specified'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full font-semibold text-sm">
+                                #{patient.tokenNumber}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">{dateLabel}</div>
+                              <div className="text-xs text-gray-500">{timeLabel}</div>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                patient.status === 'completed'
+                                  ? 'bg-green-100 text-green-800'
+                                  : patient.status === 'in-progress'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-gray-100 text-gray-800'
+                              }`}>
+                                {patient.status === 'completed'
+                                  ? 'Completed'
+                                  : patient.status === 'in-progress'
+                                  ? 'In Progress'
+                                  : 'Waiting'}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -713,49 +785,70 @@ const ReceptionistDashboard = () => {
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visit</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {patientHistory.slice(0, 50).map((patient) => (
-                        <tr key={patient._id} className="hover:bg-gray-50">
-                          <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(patient.registrationDate || patient.createdAt).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric'
-                            })}
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
-                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold text-sm">
-                              {patient.tokenNumber}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="text-sm font-medium text-gray-900">{patient.fullName}</div>
-                            <div className="text-sm text-gray-500">{patient.age} years</div>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="text-sm text-gray-900">{patient.doctor?.fullName || 'N/A'}</div>
-                            <div className="text-sm text-gray-500">{patient.doctor?.specialization || ''}</div>
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              patient.status === 'completed' 
-                                ? 'bg-green-100 text-green-800'
-                                : patient.status === 'in-progress'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {patient.status === 'completed' ? 'Completed' : patient.status === 'in-progress' ? 'In Progress' : 'Waiting'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {limitedPatientHistory.map((patient, index) => {
+                        const { dateLabel, timeLabel } = getDateTimeLabels(patient.registrationDate || patient.createdAt)
+                        return (
+                          <tr key={patient._id} className="hover:bg-gray-50">
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-semibold flex items-center justify-center text-sm">
+                                {String(index + 1).padStart(2, '0')}
+                              </div>
+                            </td>
+                            <td className="px-4 py-4">
+                              <div className="text-sm font-semibold text-gray-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                                <span>{patient.fullName}</span>
+                                <span className="hidden sm:inline text-xs uppercase tracking-wide text-gray-400">•</span>
+                                <span className="text-sm text-gray-500 font-normal">Age {patient.age}</span>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
+                            </td>
+                            <td className="px-4 py-4">
+                              <div className="text-sm text-gray-900 font-medium">{patient.doctor?.fullName || 'N/A'}</div>
+                              <div className="text-xs text-gray-500">{patient.doctor?.specialization || '—'}</div>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-sm font-medium">
+                                <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                {patient.disease || 'Not specified'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">{dateLabel}</div>
+                              <div className="text-xs text-gray-500">{timeLabel}</div>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold text-sm">
+                                #{patient.tokenNumber}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                patient.status === 'completed'
+                                  ? 'bg-green-100 text-green-800'
+                                  : patient.status === 'in-progress'
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-gray-100 text-gray-800'
+                              }`}>
+                                {patient.status === 'completed'
+                                  ? 'Completed'
+                                  : patient.status === 'in-progress'
+                                  ? 'In Progress'
+                                  : 'Waiting'}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -846,10 +939,11 @@ const ReceptionistDashboard = () => {
                       name="appointmentDate"
                       value={appointmentForm.appointmentDate}
                       onChange={handleAppointmentChange}
-                      min={new Date().toISOString().split('T')[0]}
+                      min={getDefaultAppointmentDate()}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
                       required
                     />
+                    <p className="mt-1 text-xs text-gray-500">We schedule visits from the next calendar day by default.</p>
                   </div>
 
                   <div>
@@ -899,7 +993,7 @@ const ReceptionistDashboard = () => {
                   type="submit"
                   className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition"
                 >
-                  Schedule Appointment & Send SMS
+                  Schedule Next-Day Appointment & Send SMS
                 </button>
               </form>
             </div>
@@ -918,7 +1012,8 @@ const ReceptionistDashboard = () => {
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visit</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reason</th>
@@ -928,44 +1023,57 @@ const ReceptionistDashboard = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {appointments.map((appointment) => {
+                      {sortedAppointments.map((appointment, index) => {
                         const appointmentDateTime = new Date(`${appointment.appointmentDate}T${appointment.appointmentTime}`)
                         const isPast = appointmentDateTime < new Date()
-                        const isToday = new Date(appointment.appointmentDate).toDateString() === new Date().toDateString()
-                        
+                        const { dateLabel, timeLabel } = getAppointmentLabels(appointment.appointmentDate, appointment.appointmentTime)
+                        const isToday = appointmentDateTime.toDateString() === new Date().toDateString()
+
                         return (
-                          <tr key={appointment._id} className={`hover:bg-gray-50 ${isPast ? 'opacity-75' : ''}`}>
+                          <tr key={appointment._id} className={`hover:bg-gray-50 ${isPast ? 'opacity-80' : ''}`}>
                             <td className="px-4 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-gray-900">
-                                {new Date(appointment.appointmentDate).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  year: 'numeric'
-                                })}
+                              <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 font-semibold flex items-center justify-center text-sm">
+                                {String(index + 1).padStart(2, '0')}
                               </div>
-                              <div className="text-sm text-gray-500">{appointment.appointmentTime}</div>
-                              {isToday && (
-                                <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full">Today</span>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                                {dateLabel}
+                                {isToday && (
+                                  <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">Today</span>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-500">{timeLabel}</div>
+                            </td>
+                            <td className="px-4 py-4">
+                              <div className="text-sm font-semibold text-gray-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                                <span>{appointment.patientName}</span>
+                                <span className="hidden sm:inline text-xs uppercase tracking-wide text-gray-400">•</span>
+                                <span className="text-sm text-gray-500 font-normal">{appointment.mobileNumber}</span>
+                              </div>
+                              {appointment.email && (
+                                <p className="text-xs text-gray-400 truncate">{appointment.email}</p>
                               )}
                             </td>
                             <td className="px-4 py-4">
-                              <div className="text-sm font-medium text-gray-900">{appointment.patientName}</div>
-                              <div className="text-sm text-gray-500">{appointment.mobileNumber}</div>
+                              <div className="text-sm text-gray-900 font-medium">{appointment.doctor?.fullName || 'N/A'}</div>
+                              <div className="text-xs text-gray-500">{appointment.doctor?.specialization || '—'}</div>
                             </td>
-                            <td className="px-4 py-4">
-                              <div className="text-sm text-gray-900">{appointment.doctor?.fullName || 'N/A'}</div>
-                              <div className="text-sm text-gray-500">{appointment.doctor?.specialization || ''}</div>
-                            </td>
-                            <td className="px-4 py-4 text-sm text-gray-900">{appointment.reason || '—'}</td>
                             <td className="px-4 py-4 whitespace-nowrap">
-                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                appointment.status === 'completed' 
+                              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                {appointment.reason || 'General consultation'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                appointment.status === 'completed'
                                   ? 'bg-green-100 text-green-800'
                                   : appointment.status === 'cancelled'
-                                  ? 'bg-red-100 text-red-800'
+                                  ? 'bg-red-100 text-red-700'
                                   : appointment.status === 'confirmed'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-yellow-100 text-yellow-800'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-yellow-100 text-yellow-700'
                               }`}>
                                 {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
                               </span>
@@ -991,45 +1099,31 @@ const ReceptionistDashboard = () => {
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap">
                               {appointment.smsSent ? (
-                                <span className="text-xs text-green-600 font-semibold">✓ Sent</span>
+                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-600">
+                                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                  Sent
+                                </span>
                               ) : (
-                                <span className="text-xs text-gray-400">—</span>
+                                <button
+                                  onClick={() => handleResendSMS(appointment._id)}
+                                  className="text-xs text-blue-600 hover:text-blue-700 underline"
+                                >
+                                  Resend
+                                </button>
                               )}
                             </td>
                             <td className="px-4 py-4 whitespace-nowrap text-sm">
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handleEditAppointment(appointment)}
-                                  className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 transition text-xs"
-                                  title="Edit Appointment"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => handleResendSMS(appointment._id)}
-                                  disabled={appointment.status === 'cancelled'}
-                                  className={`px-3 py-1 rounded transition text-xs ${
-                                    appointment.status === 'cancelled'
-                                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                  }`}
-                                  title="Resend SMS"
-                                >
-                                  Resend SMS
-                                </button>
-                                <button
-                                  onClick={() => openCancelModal(appointment)}
-                                  disabled={appointment.status === 'cancelled' || appointment.status === 'completed'}
-                                  className={`px-3 py-1 rounded transition text-xs ${
-                                    appointment.status === 'cancelled' || appointment.status === 'completed'
-                                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                      : 'bg-red-100 text-red-700 hover:bg-red-200'
-                                  }`}
-                                  title="Cancel Appointment"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
+                              <button
+                                onClick={() => handleCancelAppointment(appointment)}
+                                disabled={appointment.status === 'cancelled' || appointment.status === 'completed'}
+                                className={`px-3 py-1 rounded transition text-xs ${
+                                  appointment.status === 'cancelled' || appointment.status === 'completed'
+                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                }`}
+                              >
+                                Cancel
+                              </button>
                             </td>
                           </tr>
                         )
@@ -1065,12 +1159,58 @@ const ReceptionistDashboard = () => {
             <div className="text-left mb-6 space-y-2 text-sm">
               <p><span className="font-semibold">Patient:</span> {generatedToken.fullName}</p>
               <p><span className="font-semibold">Doctor:</span> {generatedToken.doctor?.fullName}</p>
-              <p><span className="font-semibold">Date:</span> {new Date(generatedToken.registrationDate).toLocaleDateString()}</p>
+              <p>
+                <span className="font-semibold">Visit:</span>{' '}
+                {generatedTokenDateTime
+                  ? `${generatedTokenDateTime.dateLabel} • ${generatedTokenDateTime.timeLabel}`
+                  : new Date(generatedToken.registrationDate).toLocaleString()}
+              </p>
             </div>
 
             <button
               onClick={closeTokenModal}
               className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Appointment Success Modal */}
+      {showAppointmentSuccess && appointmentSuccessData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-8 text-center">
+            <div className="mb-6">
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-blue-100 mb-4">
+                <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">Appointment Scheduled!</h3>
+              <p className="text-gray-600">Details saved in Tekisky Hospital system.</p>
+            </div>
+
+            <div className="text-left mb-6 space-y-2 text-sm bg-blue-50 border border-blue-100 rounded-lg p-4">
+              <p><span className="font-semibold text-gray-700">Patient:</span> {appointmentSuccessData.patientName}</p>
+              <p><span className="font-semibold text-gray-700">Mobile:</span> {appointmentSuccessData.mobileNumber}</p>
+              <p><span className="font-semibold text-gray-700">Doctor:</span> {appointmentSuccessData.doctor?.fullName || '—'}</p>
+              <p><span className="font-semibold text-gray-700">Specialization:</span> {appointmentSuccessData.doctor?.specialization || '—'}</p>
+              <p><span className="font-semibold text-gray-700">Visit:</span> {(() => {
+                const { dateLabel, timeLabel } = getAppointmentLabels(
+                  appointmentSuccessData.appointmentDate,
+                  appointmentSuccessData.appointmentTime
+                )
+                return `${dateLabel} • ${timeLabel}`
+              })()}</p>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowAppointmentSuccess(false)
+                setAppointmentSuccessData(null)
+              }}
+              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
             >
               Close
             </button>
@@ -1243,97 +1383,29 @@ const ReceptionistDashboard = () => {
         </div>
       )}
 
-      {/* Cancel Appointment Modal */}
-      {showCancelModal && appointmentToCancel && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg max-w-xl w-full max-h-[90vh] overflow-y-auto p-6 my-4">
-            <h3 className="text-2xl font-bold text-gray-800 mb-4">Cancel Appointment</h3>
+      {/* Cancellation Success Modal */}
+      {showCancelSuccess && cancelledAppointmentInfo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-8 text-center shadow-xl">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-red-50 mb-4">
+              <svg className="w-10 h-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 13h6m2 9H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V20a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 mb-2">Your Appointment Has Been Cancelled</h3>
             <p className="text-sm text-gray-600 mb-6">
-              Appointment for <span className="font-semibold">{appointmentToCancel.patientName}</span> with Dr. {appointmentToCancel.doctor?.fullName}
-              {' '}on {new Date(appointmentToCancel.appointmentDate).toLocaleDateString()} at {appointmentToCancel.appointmentTime}.
+              The appointment for <span className="font-semibold">{cancelledAppointmentInfo.patientName}</span> with Dr. {cancelledAppointmentInfo.doctorName}
+              {' '}on {new Date(cancelledAppointmentInfo.appointmentDate).toLocaleString()} has been cancelled. Please inform the patient and process any refunds if applicable.
             </p>
-
-            <form onSubmit={submitCancellation} className="space-y-5">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Cancellation Reason *</label>
-                <textarea
-                  name="reason"
-                  value={cancelForm.reason}
-                  onChange={handleCancelFormChange}
-                  className="w-full min-h-[80px] px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
-                  placeholder="Provide the reason for cancellation"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Refund Amount (₹)</label>
-                  <input
-                    type="number"
-                    name="refundAmount"
-                    min="0"
-                    step="0.01"
-                    value={cancelForm.refundAmount}
-                    onChange={handleCancelFormChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Refund Status</label>
-                  <select
-                    name="refundStatus"
-                    value={cancelForm.refundStatus}
-                    onChange={handleCancelFormChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
-                    disabled={!cancelForm.refundAmount || Number(cancelForm.refundAmount) <= 0}
-                  >
-                    <option value="not_applicable">Not applicable</option>
-                    <option value="pending">Pending</option>
-                    <option value="processed">Processed</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Refund Notes</label>
-                <textarea
-                  name="refundNotes"
-                  value={cancelForm.refundNotes}
-                  onChange={handleCancelFormChange}
-                  className="w-full min-h-[60px] px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none"
-                  placeholder="Additional details about the refund (optional)"
-                />
-              </div>
-
-              <label className="inline-flex items-center text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  name="notifyPatient"
-                  checked={cancelForm.notifyPatient}
-                  onChange={handleCancelFormChange}
-                  className="w-4 h-4 text-red-500 border-gray-300 rounded focus:ring-red-500"
-                />
-                <span className="ml-2">Send SMS notification to patient</span>
-              </label>
-
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <button
-                  type="submit"
-                  className="flex-1 bg-red-600 text-white py-2 rounded-lg font-semibold hover:bg-red-700 transition"
-                >
-                  Confirm Cancellation
-                </button>
-                <button
-                  type="button"
-                  onClick={closeCancelModal}
-                  className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg font-semibold hover:bg-gray-300 transition"
-                >
-                  Close
-                </button>
-              </div>
-            </form>
+            <button
+              onClick={() => {
+                setShowCancelSuccess(false)
+                setCancelledAppointmentInfo(null)
+              }}
+              className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}

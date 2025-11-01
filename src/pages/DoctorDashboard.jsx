@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
@@ -50,9 +50,17 @@ const DoctorDashboard = () => {
   const [searchMedical, setSearchMedical] = useState('')
   const [prescriptionData, setPrescriptionData] = useState({
     diagnosis: '',
-    medicines: [{ name: '', dosage: '', duration: '' }],
+    medicines: [{
+      name: '',
+      dosage: '',
+      duration: '',
+      times: { morning: false, afternoon: false, night: false },
+      dosageNotes: ''
+    }],
     notes: ''
   })
+  const [medicineSuggestions, setMedicineSuggestions] = useState([[]])
+  const suggestionTimers = useRef({})
 
   useEffect(() => {
     fetchTodayPatients()
@@ -170,20 +178,116 @@ const DoctorDashboard = () => {
     return `${backendBase}${cleanPath}`
   }
 
-  const handleMedicineChange = (index, field, value) => {
-    const updatedMedicines = [...prescriptionData.medicines]
-    updatedMedicines[index][field] = value
-    setPrescriptionData({
-      ...prescriptionData,
-      medicines: updatedMedicines
+  const ensureTimesShape = (medicine) => ({
+    morning: medicine?.times?.morning || false,
+    afternoon: medicine?.times?.afternoon || false,
+    night: medicine?.times?.night || false
+  })
+
+  const formatDosage = (times, notes) => {
+    const selected = []
+    if (times.morning) selected.push('Morning')
+    if (times.afternoon) selected.push('Afternoon')
+    if (times.night) selected.push('Night')
+    let result = selected.join(', ')
+    if (notes && notes.trim()) {
+      result = result ? `${result} | ${notes.trim()}` : notes.trim()
+    }
+    return result
+  }
+
+  const updateMedicineSuggestions = (index, suggestions) => {
+    setMedicineSuggestions((prev) => {
+      const updated = [...prev]
+      updated[index] = suggestions
+      return updated
     })
+  }
+
+  const fetchMedicineSuggestions = async (query, index) => {
+    if (!query || query.length < 2) {
+      updateMedicineSuggestions(index, [])
+      return
+    }
+
+    try {
+      const response = await fetch(
+        `https://clinicaltables.nlm.nih.gov/api/rxterms/v3/search?terms=${encodeURIComponent(query)}&ef=STRENGTHS_AND_FORMS`
+      )
+      if (!response.ok) throw new Error('Network error')
+
+      const data = await response.json()
+      const terms = Array.isArray(data?.[1]) ? data[1] : []
+      const strengths = Array.isArray(data?.[2]?.STRENGTHS_AND_FORMS)
+        ? data[2].STRENGTHS_AND_FORMS.map((item) => item?.join(' ').trim())
+        : []
+
+      const combined = [...terms, ...strengths].filter(Boolean)
+      const unique = Array.from(new Set(combined))
+      const list = unique.slice(0, 10)
+      updateMedicineSuggestions(index, list)
+    } catch (error) {
+      console.error('Failed to fetch medicine suggestions', error)
+      updateMedicineSuggestions(index, [])
+    }
+  }
+
+  const handleMedicineChange = (index, field, value, options = {}) => {
+    const updatedMedicines = [...prescriptionData.medicines]
+    const target = { ...updatedMedicines[index] }
+    target[field] = value
+
+    if (!target.times) {
+      target.times = ensureTimesShape(target)
+    }
+
+    if (field === 'dosageNotes') {
+      target.dosage = formatDosage(target.times, value)
+    }
+
+    updatedMedicines[index] = target
+    setPrescriptionData({ ...prescriptionData, medicines: updatedMedicines })
+
+    if (field === 'name') {
+      if (suggestionTimers.current[index]) {
+        clearTimeout(suggestionTimers.current[index])
+      }
+
+      if (options.skipLookup) {
+        updateMedicineSuggestions(index, [])
+      } else {
+        suggestionTimers.current[index] = setTimeout(() => {
+          fetchMedicineSuggestions(value, index)
+        }, 300)
+      }
+    }
+  }
+
+  const handleDosageToggle = (index, timeKey) => {
+    const updatedMedicines = [...prescriptionData.medicines]
+    const target = { ...updatedMedicines[index] }
+    target.times = ensureTimesShape(target)
+    target.times[timeKey] = !target.times[timeKey]
+    target.dosage = formatDosage(target.times, target.dosageNotes)
+    updatedMedicines[index] = target
+    setPrescriptionData({ ...prescriptionData, medicines: updatedMedicines })
   }
 
   const addMedicineField = () => {
     setPrescriptionData({
       ...prescriptionData,
-      medicines: [...prescriptionData.medicines, { name: '', dosage: '', duration: '' }]
+      medicines: [
+        ...prescriptionData.medicines,
+        {
+          name: '',
+          dosage: '',
+          duration: '',
+          times: { morning: false, afternoon: false, night: false },
+          dosageNotes: ''
+        }
+      ]
     })
+    setMedicineSuggestions((prev) => [...prev, []])
   }
 
   const removeMedicineField = (index) => {
@@ -193,6 +297,7 @@ const DoctorDashboard = () => {
         ...prescriptionData,
         medicines: updatedMedicines
       })
+      setMedicineSuggestions((prev) => prev.filter((_, i) => i !== index))
     }
   }
 
@@ -200,9 +305,16 @@ const DoctorDashboard = () => {
     setSelectedPatient(patient)
     setPrescriptionData({
       diagnosis: '',
-      medicines: [{ name: '', dosage: '', duration: '' }],
+      medicines: [{
+        name: '',
+        dosage: '',
+        duration: '',
+        times: { morning: false, afternoon: false, night: false },
+        dosageNotes: ''
+      }],
       notes: ''
     })
+    setMedicineSuggestions([[]])
     setShowPrescriptionModal(true)
   }
 
@@ -258,6 +370,7 @@ const DoctorDashboard = () => {
   const filteredTodayPatients = filterPatients(patients, searchToday)
   const filteredHistoryPatients = filterPatients(patientHistory, searchHistory)
   const filteredMedicalRecords = filterPatients(medicalRecords, searchMedical)
+  const limitedHistoryPatients = filteredHistoryPatients.slice(0, 100)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -266,8 +379,14 @@ const DoctorDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-800">Tekisky Hospital</h1>
-              <p className="text-xs sm:text-sm text-gray-600">Doctor Dashboard - Dr. {user?.fullName}</p>
+              <div className="flex items-baseline gap-3">
+                <span className="text-3xl sm:text-4xl font-black tracking-tight text-purple-600">Tekisky</span>
+                <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital</span>
+              </div>
+              <p className="mt-1 inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700 bg-purple-50 rounded-full">
+                Doctor Dashboard • {user?.fullName}
+              </p>
+              <p className="mt-2 text-xs sm:text-sm text-slate-500">Track patient rounds, craft prescriptions, and review medical records in one place.</p>
             </div>
             <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
               <button
@@ -493,6 +612,7 @@ const DoctorDashboard = () => {
                   <table className="w-full">
                     <thead className="bg-gray-50">
                       <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
@@ -502,8 +622,13 @@ const DoctorDashboard = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredHistoryPatients.slice(0, 100).map((patient) => (
+                      {limitedHistoryPatients.map((patient, index) => (
                         <tr key={patient._id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-sm font-semibold">
+                              {String(index + 1).padStart(2, '0')}
+                            </div>
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {new Date(patient.registrationDate || patient.createdAt).toLocaleDateString('en-US', {
                               year: 'numeric',
@@ -517,26 +642,40 @@ const DoctorDashboard = () => {
                             </span>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="text-sm font-medium text-gray-900">{patient.fullName}</div>
-                            <div className="text-sm text-gray-500">{patient.age} years • {patient.mobileNumber}</div>
+                            <div className="text-sm font-semibold text-gray-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                              <span>{patient.fullName}</span>
+                              <span className="hidden sm:inline text-xs uppercase tracking-wide text-gray-400">•</span>
+                              <span className="text-sm text-gray-500 font-normal">Age {patient.age}</span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900">{patient.disease}</div>
+                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium">
+                              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                              <span className="capitalize">{patient.disease || 'Not specified'}</span>
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              patient.status === 'completed' 
-                                ? 'bg-green-100 text-green-800'
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wide ${
+                              patient.status === 'completed'
+                                ? 'bg-green-100 text-green-700'
                                 : patient.status === 'in-progress'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-gray-100 text-gray-800'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-gray-100 text-gray-700'
                             }`}>
-                              {patient.status === 'completed' ? 'Completed' : patient.status === 'in-progress' ? 'In Progress' : 'Waiting'}
+                              {patient.status === 'completed'
+                                ? 'Completed'
+                                : patient.status === 'in-progress'
+                                ? 'In Progress'
+                                : 'Waiting'}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             {patient.prescription ? (
-                              <span className="text-green-600 font-semibold">✓ Prescribed</span>
+                              <span className="inline-flex items-center gap-1 text-green-600 font-semibold">
+                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                Prescribed
+                              </span>
                             ) : (
                               <span className="text-gray-400">—</span>
                             )}
@@ -562,7 +701,11 @@ const DoctorDashboard = () => {
         {/* Medical Records Tab */}
         {activeTab === 'medical' && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-6">Medical Records</h2>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2 flex items-center gap-3">
+              <span className="px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-semibold uppercase tracking-wide">Tekisky Records</span>
+              <span>Doctor View</span>
+            </h2>
+            <p className="text-sm text-slate-500 mb-6">Review previously issued prescriptions and regenerate PDFs for your patients.</p>
 
             {loadingMedical ? (
               <div className="text-center py-12">
@@ -699,30 +842,81 @@ const DoctorDashboard = () => {
                   Prescribed Medicines *
                 </label>
                 {prescriptionData.medicines.map((medicine, index) => (
-                  <div key={index} className="mb-4 p-4 border border-gray-200 rounded-lg">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-2">
-                      <input
-                        type="text"
-                        placeholder="Medicine name"
-                        value={medicine.name}
-                        onChange={(e) => handleMedicineChange(index, 'name', e.target.value)}
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Dosage"
-                        value={medicine.dosage}
-                        onChange={(e) => handleMedicineChange(index, 'dosage', e.target.value)}
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Duration"
-                        value={medicine.duration}
-                        onChange={(e) => handleMedicineChange(index, 'duration', e.target.value)}
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
-                      />
+                  <div key={index} className="mb-4 p-4 border border-gray-200 rounded-xl bg-white shadow-sm">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                      <div className="lg:col-span-4">
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Medicine</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Start typing to search..."
+                            value={medicine.name}
+                            onChange={(e) => handleMedicineChange(index, 'name', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
+                          />
+                          {medicineSuggestions[index] && medicineSuggestions[index].length > 0 && (
+                            <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                              {medicineSuggestions[index].map((suggestion) => (
+                                <button
+                                  type="button"
+                                  key={suggestion}
+                                onClick={() => {
+                                  handleMedicineChange(index, 'name', suggestion, { skipLookup: true })
+                                }}
+                                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-purple-50"
+                                >
+                                  {suggestion}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="lg:col-span-3">
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Duration</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 5 days"
+                          value={medicine.duration}
+                          onChange={(e) => handleMedicineChange(index, 'duration', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
+                        />
+                      </div>
+
+                      <div className="lg:col-span-5">
+                        <fieldset className="border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
+                          <legend className="text-xs font-semibold text-gray-500 px-1">Dosage Times</legend>
+                          <div className="flex flex-wrap gap-3 text-sm text-gray-700 mb-2">
+                            {[
+                              { key: 'morning', label: 'Morning' },
+                              { key: 'afternoon', label: 'Afternoon' },
+                              { key: 'night', label: 'Night' }
+                            ].map((time) => (
+                              <label key={time.key} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-100 px-3 py-1 rounded-lg hover:border-purple-300">
+                                <input
+                                  type="checkbox"
+                                  checked={ensureTimesShape(medicine)[time.key]}
+                                  onChange={() => handleDosageToggle(index, time.key)}
+                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                                <span className="font-medium text-purple-700 text-xs uppercase">{time.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            placeholder="Additional instructions (optional)"
+                            value={medicine.dosageNotes || ''}
+                            onChange={(e) => handleMedicineChange(index, 'dosageNotes', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm"
+                          />
+                        </fieldset>
+                      </div>
                     </div>
+                    {medicine.dosage && (
+                      <p className="mt-2 text-xs text-gray-500">Generated dosage: {medicine.dosage}</p>
+                    )}
                     {prescriptionData.medicines.length > 1 && (
                       <button
                         onClick={() => removeMedicineField(index)}

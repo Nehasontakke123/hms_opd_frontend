@@ -81,8 +81,12 @@ const MedicalDashboard = () => {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Medical Records</h1>
-              <p className="text-sm text-gray-600">View-only access to prescriptions</p>
+              <div className="flex items-baseline gap-3">
+                <span className="text-3xl sm:text-4xl font-black tracking-tight text-purple-600">Tekisky</span>
+                <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital</span>
+              </div>
+              <p className="mt-1 inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700 bg-purple-50 rounded-full">Medical Records Team</p>
+              <p className="mt-2 text-xs sm:text-sm text-slate-500">Secure, view-only access to doctor-issued prescriptions and patient history.</p>
             </div>
             <button onClick={logout} className="px-4 py-2 rounded-md bg-gray-900 text-white hover:bg-gray-800">Logout</button>
           </div>
@@ -119,7 +123,7 @@ const MedicalDashboard = () => {
             </div>
             <div className="space-y-4">
               {patients
-                .filter(p => {
+                .filter((p) => {
                   const q = query.trim().toLowerCase()
                   if (!q) return true
                   return (
@@ -127,39 +131,91 @@ const MedicalDashboard = () => {
                     p.mobileNumber?.toLowerCase().includes(q)
                   )
                 })
-                .map((p) => (
-                  <div key={p._id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-3">
-                          <h3 className="text-lg font-semibold text-gray-900">{p.fullName}</h3>
-                          <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 font-semibold">Token {p.tokenNumber}</span>
+                .map((p, index) => {
+                  const pdfUrl = p.prescription?.pdfPath && getPDFUrl(p.prescription.pdfPath)
+                  return (
+                    <div key={p._id} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+                      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                        <div className="flex items-start gap-4">
+                          <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-700 font-semibold flex items-center justify-center">
+                            {String(index + 1).padStart(2, '0')}
+                          </div>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <h3 className="text-lg font-semibold text-gray-900">{p.fullName}</h3>
+                              <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 font-semibold">Token {p.tokenNumber}</span>
+                              <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">Age {p.age}</span>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-1 flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                              <span className="font-medium text-gray-700">Mobile:</span>
+                              <span>{p.mobileNumber || 'Not provided'}</span>
+                            </p>
+                            <p className="text-sm text-gray-600 mt-1 flex flex-col sm:flex-row sm:items-center sm:gap-3">
+                              <span className="font-medium text-gray-700">Issue:</span>
+                              <span className="capitalize">{p.disease || '—'}</span>
+                            </p>
+                            <p className="text-xs text-gray-500 mt-2">Prescribed on {new Date(p.prescription?.createdAt || p.createdAt).toLocaleString()}</p>
+                          </div>
                         </div>
-                        <p className="text-sm text-gray-600 mt-1">Age {p.age} • {p.mobileNumber || '—'} • {p.disease}</p>
-                        <p className="text-xs text-gray-500 mt-1">Prescribed on {new Date(p.prescription?.createdAt || p.createdAt).toLocaleString()}</p>
+
+                        <div className="flex gap-2">
+                          {pdfUrl ? (
+                            <a
+                              href={pdfUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
+                            >
+                              <span role="img" aria-label="view">📄</span>
+                              View Prescription
+                            </a>
+                          ) : (
+                            <button
+                              onClick={() => handleDownload(p)}
+                              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition"
+                            >
+                              <span role="img" aria-label="download">⬇️</span>
+                              Download Prescription
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        {p.prescription?.pdfPath && getPDFUrl(p.prescription.pdfPath) ? (
-                          <a
-                            href={getPDFUrl(p.prescription.pdfPath)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700"
-                          >
-                            <span role="img" aria-label="pdf">📄</span> View Prescription
-                          </a>
-                        ) : (
-                          <button
-                            onClick={() => handleDownload(p)}
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700"
-                          >
-                            <span role="img" aria-label="download">⬇️</span> Download Prescription
-                          </button>
-                        )}
-                      </div>
+
+                      {p.prescription?.medicines && p.prescription.medicines.length > 0 && (
+                        <div className="mt-4 overflow-hidden border border-gray-200 rounded-xl">
+                          <table className="w-full text-sm text-left text-gray-700">
+                            <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                              <tr>
+                                <th className="px-4 py-3">Medicine</th>
+                                <th className="px-4 py-3">Dosage</th>
+                                <th className="px-4 py-3">Duration</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {p.prescription.medicines.map((med, medIndex) => (
+                                <tr key={`${p._id}-${medIndex}`} className="border-t border-gray-100">
+                                  <td className="px-4 py-3 font-medium text-gray-900">{med.name || '—'}</td>
+                                  <td className="px-4 py-3 text-gray-700">{med.dosage || '—'}</td>
+                                  <td className="px-4 py-3 text-gray-700">{med.duration || '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {p.prescription?.notes && (
+                        <div className="mt-3">
+                          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Notes</h4>
+                          <p className="mt-1 text-sm text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+                            {p.prescription.notes}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
+
               {patients.length === 0 && (
                 <div className="bg-white p-10 rounded-xl text-center text-gray-600 border">No prescriptions available</div>
               )}
