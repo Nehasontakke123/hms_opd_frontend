@@ -474,25 +474,35 @@ const ReceptionistDashboard = () => {
                 return (
                   <div
                     key={doctor._id}
-                    className={`relative overflow-hidden rounded-2xl border shadow-sm transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg ${
-                      isAvailable ? 'bg-white border-gray-100' : 'bg-gray-50 border-amber-200'
+                    className={`relative overflow-hidden rounded-2xl border shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${
+                      isAvailable 
+                        ? 'bg-gradient-to-br from-white to-green-50/30 border-green-200 shadow-green-100/50' 
+                        : 'bg-gray-50 border-amber-200'
                     }`}
                   >
-                    <div className={`absolute inset-y-0 left-0 w-1 bg-gradient-to-b ${
-                      isAvailable ? 'from-green-400 to-emerald-600' : 'from-amber-400 to-orange-500'
+                    <div className={`absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b shadow-lg ${
+                      isAvailable ? 'from-green-400 to-emerald-600 shadow-green-500/50' : 'from-amber-400 to-orange-500'
                     }`} aria-hidden="true"></div>
 
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex items-start gap-3">
-                          <div className={`w-10 h-10 rounded-full font-semibold flex items-center justify-center ${
-                            isAvailable ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                          <div className={`w-10 h-10 rounded-full font-bold flex items-center justify-center shadow-sm ${
+                            isAvailable 
+                              ? 'bg-gradient-to-br from-green-100 to-emerald-100 text-green-700 border-2 border-green-300' 
+                              : 'bg-amber-100 text-amber-700'
                           }`}>
                             {String(index + 1).padStart(2, '0')}
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
                               <h3 className="text-lg font-semibold text-gray-900 leading-tight">{doctor.fullName}</h3>
+                              {isAvailable && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold uppercase tracking-wide border border-green-300">
+                                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                                  Available
+                                </span>
+                              )}
                               {!isAvailable && (
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold uppercase tracking-wide">
                                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
@@ -519,17 +529,17 @@ const ReceptionistDashboard = () => {
                         <div className="flex flex-col gap-2">
                           <button
                             onClick={() => handleToggleAvailability(doctor)}
-                            className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-full transition ${
+                            className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-bold rounded-full transition-all border ${
                               isAvailable
-                                ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
-                                : 'text-green-700 bg-green-100 hover:bg-green-200'
+                                ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-300 hover:border-amber-400 shadow-sm'
+                                : 'text-white bg-green-600 hover:bg-green-700 border-green-700 hover:border-green-800 shadow-md'
                             }`}
                           >
-                            {isAvailable ? '⛔ Not Available' : '✓ Available'}
+                            {isAvailable ? '⛔ Mark Unavailable' : '✓ Mark Available'}
                           </button>
                           <button
                             onClick={() => handleSetLimitClick(doctor)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition border border-blue-300"
                           >
                             Set Limit
                           </button>
@@ -558,17 +568,43 @@ const ReceptionistDashboard = () => {
                         </div>
                       )}
 
+                      {isAvailable && remainingSlots > 0 && (
+                        <div className="mt-4 rounded-xl border-2 border-green-500 bg-gradient-to-br from-green-50 via-emerald-50 to-green-100 px-4 py-3 shadow-md">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0">
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-sm">
+                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                              </div>
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-green-900">Doctor is available and accepting patients</p>
+                              <p className="text-xs text-green-800 mt-0.5">This card is highlighted to indicate active availability.</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {!isAvailable && (
-                        <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                          <span className="text-lg">⚠️</span>
-                          <div className="flex-1">
-                            <p className="text-xs font-semibold text-amber-800">Doctor Not Available</p>
-                            {unavailableReason && (
-                              <p className="text-xs text-amber-700 mt-1">{unavailableReason}</p>
-                            )}
-                            {!unavailableReason && (
-                              <p className="text-xs text-amber-700 mt-1">This doctor has marked themselves as unavailable.</p>
-                            )}
+                        <div className="mt-4 rounded-xl border-2 border-amber-400 bg-gradient-to-br from-amber-50 to-orange-50 px-4 py-3 shadow-sm">
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0">
+                              <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center">
+                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                              </div>
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-amber-900 mb-1">Doctor Not Available</p>
+                              {unavailableReason && (
+                                <p className="text-xs text-amber-800">{unavailableReason}</p>
+                              )}
+                              {!unavailableReason && (
+                                <p className="text-xs text-amber-800">This doctor has marked themselves as unavailable. Patients cannot be registered with this doctor.</p>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}
