@@ -33,6 +33,27 @@ const DoctorDashboard = () => {
     }
   }
 
+  const viewPdf = async (pdfUrl) => {
+    try {
+      const response = await fetch(pdfUrl, {
+        credentials: pdfUrl.startsWith('http') ? 'omit' : 'include'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch PDF')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      window.open(url, '_blank')
+      // Clean up after a delay to allow the window to load
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000)
+    } catch (error) {
+      console.error('PDF view failed:', error)
+      toast.error('Failed to view PDF')
+    }
+  }
+
   const [activeTab, setActiveTab] = useState('today') // 'today', 'history', or 'medical'
   const [patients, setPatients] = useState([])
   const [patientHistory, setPatientHistory] = useState([])
@@ -92,6 +113,19 @@ const DoctorDashboard = () => {
       setDoctorStats(response.data.data)
     } catch (error) {
       console.error('Failed to fetch doctor stats:', error)
+    }
+  }
+
+  const handleToggleAvailability = async () => {
+    try {
+      const response = await api.put(`/doctor/${user?.id}/availability`, {
+        isAvailable: !doctorStats?.isAvailable
+      })
+      toast.success(response.data.message)
+      await fetchDoctorStats() // Refresh stats
+      fetchTodayPatients() // Refresh today's patients
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update availability')
     }
   }
 
@@ -389,6 +423,18 @@ const DoctorDashboard = () => {
               <p className="mt-2 text-xs sm:text-sm text-slate-500">Track patient rounds, craft prescriptions, and review medical records in one place.</p>
             </div>
             <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+              {doctorStats && (
+                <button
+                  onClick={handleToggleAvailability}
+                  className={`px-3 sm:px-4 py-2 rounded-lg transition text-sm whitespace-nowrap font-semibold ${
+                    doctorStats.isAvailable
+                      ? 'bg-amber-500 text-white hover:bg-amber-600'
+                      : 'bg-green-500 text-white hover:bg-green-600'
+                  }`}
+                >
+                  {doctorStats.isAvailable ? '⛔ Mark Unavailable' : '✓ Mark Available'}
+                </button>
+              )}
               <button
                 onClick={() => setShowLimitModal(true)}
                 className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm whitespace-nowrap"
@@ -425,6 +471,11 @@ const DoctorDashboard = () => {
                     </p>
                   </div>
                 </div>
+                {!doctorStats.isAvailable && (
+                  <div className="px-4 py-2 bg-amber-100 border border-amber-300 rounded-lg">
+                    <p className="text-sm font-semibold text-amber-800">⚠️ You are marked as NOT AVAILABLE</p>
+                  </div>
+                )}
                 {doctorStats.isLimitReached && (
                   <div className="px-4 py-2 bg-red-100 border border-red-300 rounded-lg">
                     <p className="text-sm font-semibold text-red-800">⚠️ Daily limit reached!</p>
@@ -754,17 +805,26 @@ const DoctorDashboard = () => {
                       </div>
                       <div className="flex gap-2">
                         {patient.prescription?.pdfPath && getPDFUrl(patient.prescription.pdfPath) ? (
-                          <a
-                            href={getPDFUrl(patient.prescription.pdfPath)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            View PDF
-                          </a>
+                          <>
+                            <button
+                              onClick={() => viewPdf(getPDFUrl(patient.prescription.pdfPath))}
+                              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              View PDF
+                            </button>
+                            <button
+                              onClick={() => handleDownloadPrescription(patient)}
+                              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v12m0 0l-3-3m3 3l3-3M6 20h12" />
+                              </svg>
+                              Download
+                            </button>
+                          </>
                         ) : (
                           <button
                             onClick={() => handleDownloadPrescription(patient)}

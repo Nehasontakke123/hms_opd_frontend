@@ -35,6 +35,27 @@ const MedicalDashboard = () => {
     }
   }
 
+  const viewPdf = async (pdfUrl) => {
+    try {
+      const response = await fetch(pdfUrl, {
+        credentials: pdfUrl.startsWith('http') ? 'omit' : 'include'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch PDF')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      window.open(url, '_blank')
+      // Clean up after a delay to allow the window to load
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000)
+    } catch (error) {
+      console.error('PDF view failed:', error)
+      toast.error('Failed to view PDF')
+    }
+  }
+
   useEffect(() => {
     const fetchPatients = async () => {
       try {
@@ -160,15 +181,22 @@ const MedicalDashboard = () => {
 
                         <div className="flex gap-2">
                           {pdfUrl ? (
-                            <a
-                              href={pdfUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
-                            >
-                              <span role="img" aria-label="view">📄</span>
-                              View Prescription
-                            </a>
+                            <>
+                              <button
+                                onClick={() => viewPdf(pdfUrl)}
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
+                              >
+                                <span role="img" aria-label="view">📄</span>
+                                View Prescription
+                              </button>
+                              <button
+                                onClick={() => handleDownload(p)}
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition"
+                              >
+                                <span role="img" aria-label="download">⬇️</span>
+                                Download
+                              </button>
+                            </>
                           ) : (
                             <button
                               onClick={() => handleDownload(p)}

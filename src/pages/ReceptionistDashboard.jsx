@@ -127,6 +127,22 @@ const ReceptionistDashboard = () => {
     setShowLimitModal(true)
   }
 
+  const handleToggleAvailability = async (doctor) => {
+    try {
+      const stats = doctorStats[doctor._id] || {}
+      const currentStatus = stats.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
+      
+      const response = await api.put(`/doctor/${doctor._id}/availability`, {
+        isAvailable: !currentStatus
+      })
+      
+      toast.success(response.data.message)
+      await fetchDoctors() // Refresh doctor stats
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update availability')
+    }
+  }
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setFormData((prev) => ({
@@ -452,22 +468,38 @@ const ReceptionistDashboard = () => {
                 const todayCount = stats.todayPatientCount ?? 0
                 const remainingSlots = stats.remainingSlots ?? Math.max(dailyLimit - todayCount, 0)
                 const limitReached = stats.isLimitReached || remainingSlots <= 0
+                const isAvailable = stats.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
+                const unavailableReason = stats.unavailableReason || doctor.unavailableReason
 
                 return (
                   <div
                     key={doctor._id}
-                    className="relative overflow-hidden rounded-2xl bg-white border border-gray-100 shadow-sm transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg"
+                    className={`relative overflow-hidden rounded-2xl border shadow-sm transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg ${
+                      isAvailable ? 'bg-white border-gray-100' : 'bg-gray-50 border-amber-200'
+                    }`}
                   >
-                    <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-green-400 to-emerald-600" aria-hidden="true"></div>
+                    <div className={`absolute inset-y-0 left-0 w-1 bg-gradient-to-b ${
+                      isAvailable ? 'from-green-400 to-emerald-600' : 'from-amber-400 to-orange-500'
+                    }`} aria-hidden="true"></div>
 
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex items-start gap-3">
-                          <div className="w-10 h-10 rounded-full bg-green-100 text-green-700 font-semibold flex items-center justify-center">
+                          <div className={`w-10 h-10 rounded-full font-semibold flex items-center justify-center ${
+                            isAvailable ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
                             {String(index + 1).padStart(2, '0')}
                           </div>
                           <div>
-                            <h3 className="text-lg font-semibold text-gray-900 leading-tight">{doctor.fullName}</h3>
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-lg font-semibold text-gray-900 leading-tight">{doctor.fullName}</h3>
+                              {!isAvailable && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold uppercase tracking-wide">
+                                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                                  Not Available
+                                </span>
+                              )}
+                            </div>
                             <p className="text-sm text-gray-600 capitalize">{doctor.specialization || 'General Physician'}</p>
                             <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
                               <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium">
@@ -484,12 +516,24 @@ const ReceptionistDashboard = () => {
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => handleSetLimitClick(doctor)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition"
-                        >
-                          Set Limit
-                        </button>
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={() => handleToggleAvailability(doctor)}
+                            className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-full transition ${
+                              isAvailable
+                                ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
+                                : 'text-green-700 bg-green-100 hover:bg-green-200'
+                            }`}
+                          >
+                            {isAvailable ? '⛔ Not Available' : '✓ Available'}
+                          </button>
+                          <button
+                            onClick={() => handleSetLimitClick(doctor)}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition"
+                          >
+                            Set Limit
+                          </button>
+                        </div>
                       </div>
 
                       <div className="mt-5 grid grid-cols-3 gap-3 text-sm">
@@ -511,6 +555,21 @@ const ReceptionistDashboard = () => {
                         <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
                           <span className="w-2 h-2 rounded-full bg-red-400"></span>
                           Daily limit reached — consider increasing the limit or redirecting patients.
+                        </div>
+                      )}
+
+                      {!isAvailable && (
+                        <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                          <span className="text-lg">⚠️</span>
+                          <div className="flex-1">
+                            <p className="text-xs font-semibold text-amber-800">Doctor Not Available</p>
+                            {unavailableReason && (
+                              <p className="text-xs text-amber-700 mt-1">{unavailableReason}</p>
+                            )}
+                            {!unavailableReason && (
+                              <p className="text-xs text-amber-700 mt-1">This doctor has marked themselves as unavailable.</p>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -604,13 +663,15 @@ const ReceptionistDashboard = () => {
                     const stats = doctorStats[doctor._id]
                     const slotsInfo = stats ? ` [${stats.remainingSlots} slots left]` : ''
                     const isLimitReached = stats?.isLimitReached
+                    const isAvailable = stats?.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
+                    const isDisabled = isLimitReached || !isAvailable
                     return (
                       <option 
                         key={doctor._id} 
                         value={doctor._id}
-                        disabled={isLimitReached}
+                        disabled={isDisabled}
                       >
-                        {doctor.fullName} {doctor.specialization ? `- ${doctor.specialization}` : ''} {doctor.fees ? `(₹${doctor.fees})` : ''}{slotsInfo}{isLimitReached ? ' - LIMIT REACHED' : ''}
+                        {doctor.fullName} {doctor.specialization ? `- ${doctor.specialization}` : ''} {doctor.fees ? `(₹${doctor.fees})` : ''}{slotsInfo}{!isAvailable ? ' - NOT AVAILABLE' : ''}{isLimitReached ? ' - LIMIT REACHED' : ''}
                       </option>
                     )
                   })}
