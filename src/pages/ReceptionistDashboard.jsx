@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
@@ -52,6 +52,7 @@ const getInitialAppointmentForm = () => ({
 const ReceptionistDashboard = () => {
   const { user, logout } = useAuth()
   const [activeTab, setActiveTab] = useState('doctors') // 'doctors', 'registration', or 'appointments'
+  const [appointmentsView, setAppointmentsView] = useState('today') // 'today' or 'upcoming'
   const [doctors, setDoctors] = useState([])
   const [doctorStats, setDoctorStats] = useState({})
   const [todayPatients, setTodayPatients] = useState([])
@@ -59,6 +60,12 @@ const ReceptionistDashboard = () => {
   const [appointments, setAppointments] = useState([])
   const [loadingPatients, setLoadingPatients] = useState(false)
   const [loadingAppointments, setLoadingAppointments] = useState(false)
+  const [todayPatientsPage, setTodayPatientsPage] = useState(1)
+  const [patientHistoryPage, setPatientHistoryPage] = useState(1)
+  
+  // Constants
+  const todayPatientsPerPage = 10
+  const patientHistoryPerPage = 10
   const [showTokenModal, setShowTokenModal] = useState(false)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [showEditAppointmentModal, setShowEditAppointmentModal] = useState(false)
@@ -215,6 +222,8 @@ const ReceptionistDashboard = () => {
         return (a.tokenNumber || 0) - (b.tokenNumber || 0)
       })
       setTodayPatients(allTodayPatients)
+      // Reset to first page when data is refreshed
+      setTodayPatientsPage(1)
     } catch (error) {
       console.error('Error fetching today patients:', error)
       toast.error('Failed to fetch today\'s patients')
@@ -230,6 +239,8 @@ const ReceptionistDashboard = () => {
       // Sort by most recent first
       patients.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       setPatientHistory(patients)
+      // Reset to first page when data is refreshed
+      setPatientHistoryPage(1)
     } catch (error) {
       console.error('Error fetching patient history:', error)
       toast.error('Failed to fetch patient history')
@@ -254,17 +265,188 @@ const ReceptionistDashboard = () => {
     if (!dateStr) {
       return { dateLabel: '—', timeLabel: '—' }
     }
-    const isoString = timeStr ? `${dateStr}T${timeStr}` : dateStr
-    return getDateTimeLabels(isoString)
+    
+    // Format date as "03 November 2025"
+    const appointmentDate = new Date(dateStr)
+    if (isNaN(appointmentDate.getTime())) {
+      return { dateLabel: '—', timeLabel: '—' }
+    }
+    
+    const dateLabel = appointmentDate.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    })
+    
+    // Format time as "04:30 PM"
+    let timeLabel = '—'
+    if (timeStr) {
+      const [hours, minutes] = timeStr.split(':')
+      const hour = parseInt(hours, 10)
+      const minute = minutes || '00'
+      const ampm = hour >= 12 ? 'PM' : 'AM'
+      const hour12 = hour % 12 || 12
+      timeLabel = `${String(hour12).padStart(2, '0')}:${minute.padStart(2, '0')} ${ampm}`
+    }
+    
+    return { dateLabel, timeLabel }
   }
 
-  const limitedPatientHistory = patientHistory.slice(0, 50)
   const generatedTokenDateTime = generatedToken ? getDateTimeLabels(generatedToken.registrationDate) : null
-  const sortedAppointments = appointments.slice().sort((a, b) => {
-    const timeA = new Date(`${a.appointmentDate}T${a.appointmentTime || '00:00'}`).getTime()
-    const timeB = new Date(`${b.appointmentDate}T${b.appointmentTime || '00:00'}`).getTime()
-    return timeA - timeB
-  })
+
+  // Pagination logic for Patient History
+  const patientHistoryTotalPages = Math.ceil(patientHistory.length / patientHistoryPerPage)
+  const patientHistoryStartIndex = (patientHistoryPage - 1) * patientHistoryPerPage
+  const patientHistoryEndIndex = patientHistoryStartIndex + patientHistoryPerPage
+  const paginatedPatientHistory = patientHistory.slice(patientHistoryStartIndex, patientHistoryEndIndex)
+
+  const handlePatientHistoryPageChange = (newPage) => {
+    setPatientHistoryPage(newPage)
+    // Scroll to top of the section on page change
+    const section = document.getElementById('patient-history-section')
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
+  const getVisibleHistoryPageNumbers = () => {
+    const total = patientHistoryTotalPages
+    const current = patientHistoryPage
+    const pages = []
+    
+    if (total <= 7) {
+      // Show all pages if 7 or fewer
+      for (let i = 1; i <= total; i++) {
+        pages.push(i)
+      }
+    } else {
+      // Show first page, last page, current page, and pages around it
+      pages.push(1)
+      
+      if (current > 3) {
+        pages.push('...')
+      }
+      
+      const start = Math.max(2, current - 1)
+      const end = Math.min(total - 1, current + 1)
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i)
+      }
+      
+      if (current < total - 2) {
+        pages.push('...')
+      }
+      
+      if (total > 1) {
+        pages.push(total)
+      }
+    }
+    
+    return pages
+  }
+
+  // Pagination logic for Today's Patients
+  const todayPatientsTotalPages = Math.ceil(todayPatients.length / todayPatientsPerPage)
+  const todayPatientsStartIndex = (todayPatientsPage - 1) * todayPatientsPerPage
+  const todayPatientsEndIndex = todayPatientsStartIndex + todayPatientsPerPage
+  const paginatedTodayPatients = todayPatients.slice(todayPatientsStartIndex, todayPatientsEndIndex)
+  
+  const handleTodayPatientsPageChange = (newPage) => {
+    setTodayPatientsPage(newPage)
+    // Scroll to top of the section on page change
+    const section = document.getElementById('patients-today-section')
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
+  const getVisiblePageNumbers = () => {
+    const total = todayPatientsTotalPages
+    const current = todayPatientsPage
+    const pages = []
+    
+    if (total <= 7) {
+      // Show all pages if 7 or fewer
+      for (let i = 1; i <= total; i++) {
+        pages.push(i)
+      }
+    } else {
+      // Show first page, last page, current page, and pages around it
+      pages.push(1)
+      
+      if (current > 3) {
+        pages.push('...')
+      }
+      
+      const start = Math.max(2, current - 1)
+      const end = Math.min(total - 1, current + 1)
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i)
+      }
+      
+      if (current < total - 2) {
+        pages.push('...')
+      }
+      
+      if (total > 1) {
+        pages.push(total)
+      }
+    }
+    
+    return pages
+  }
+  
+  // Separate appointments into Today's and Upcoming
+  const { todayAppointments, upcomingAppointments } = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const tomorrow = new Date(today)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+
+    const todayApps = []
+    const upcomingApps = []
+
+    appointments.forEach(appointment => {
+      // Parse appointment date (handles both Date objects and date strings)
+      const appointmentDate = new Date(appointment.appointmentDate)
+      if (isNaN(appointmentDate.getTime())) {
+        // Skip invalid dates
+        return
+      }
+      
+      // Compare dates by setting time to midnight
+      const appointmentDateOnly = new Date(appointmentDate)
+      appointmentDateOnly.setHours(0, 0, 0, 0)
+      
+      if (appointmentDateOnly.getTime() === today.getTime()) {
+        todayApps.push(appointment)
+      } else if (appointmentDateOnly.getTime() >= tomorrow.getTime()) {
+        upcomingApps.push(appointment)
+      }
+    })
+
+    // Sort today's appointments by time
+    todayApps.sort((a, b) => {
+      const dateStrA = typeof a.appointmentDate === 'string' ? a.appointmentDate : new Date(a.appointmentDate).toISOString().split('T')[0]
+      const dateStrB = typeof b.appointmentDate === 'string' ? b.appointmentDate : new Date(b.appointmentDate).toISOString().split('T')[0]
+      const timeA = new Date(`${dateStrA}T${a.appointmentTime || '00:00'}`).getTime()
+      const timeB = new Date(`${dateStrB}T${b.appointmentTime || '00:00'}`).getTime()
+      return timeA - timeB
+    })
+
+    // Sort upcoming appointments by date and time
+    upcomingApps.sort((a, b) => {
+      const dateStrA = typeof a.appointmentDate === 'string' ? a.appointmentDate : new Date(a.appointmentDate).toISOString().split('T')[0]
+      const dateStrB = typeof b.appointmentDate === 'string' ? b.appointmentDate : new Date(b.appointmentDate).toISOString().split('T')[0]
+      const timeA = new Date(`${dateStrA}T${a.appointmentTime || '00:00'}`).getTime()
+      const timeB = new Date(`${dateStrB}T${b.appointmentTime || '00:00'}`).getTime()
+      return timeA - timeB
+    })
+
+    return { todayAppointments: todayApps, upcomingAppointments: upcomingApps }
+  }, [appointments])
 
   const fetchAppointments = async () => {
     setLoadingAppointments(true)
@@ -789,169 +971,393 @@ const ReceptionistDashboard = () => {
         </div>
 
             {/* Patients Today Section */}
-            <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-              <h3 className="text-xl font-bold text-gray-800 mb-4">Patients Today</h3>
+            <div id="patients-today-section" className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
+              {/* Section Header */}
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3 border-b border-green-200">
+                <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <span className="text-green-600">🟢</span>
+                  Patients Today
+                  <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold ml-2">
+                    {todayPatients.length} patient{todayPatients.length !== 1 ? 's' : ''}
+                  </span>
+                </h4>
+              </div>
+
               {loadingPatients ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto"></div>
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+                  <p className="mt-4 text-slate-500">Loading patients...</p>
                 </div>
               ) : todayPatients.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No patients registered today</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visit</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {todayPatients.map((patient, index) => {
-                        const { dateLabel, timeLabel } = getDateTimeLabels(patient.registrationDate)
-                        return (
-                          <tr key={patient._id} className="hover:bg-gray-50">
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 font-semibold flex items-center justify-center text-sm">
-                                {String(index + 1).padStart(2, '0')}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-sm font-semibold text-gray-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                                <span>{patient.fullName}</span>
-                                <span className="hidden sm:inline text-xs uppercase tracking-wide text-gray-400">•</span>
-                                <span className="text-sm text-gray-500 font-normal">Age {patient.age}</span>
-                              </div>
-                              <p className="text-xs text-gray-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-sm text-gray-900 font-medium">{patient.doctor?.fullName || 'N/A'}</div>
-                              <div className="text-xs text-gray-500">{patient.doctor?.specialization || '—'}</div>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-sm font-medium">
-                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                {patient.disease || 'Not specified'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full font-semibold text-sm">
-                                #{patient.tokenNumber}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-gray-900">{dateLabel}</div>
-                              <div className="text-xs text-gray-500">{timeLabel}</div>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                patient.status === 'completed'
-                                  ? 'bg-green-100 text-green-800'
-                                  : patient.status === 'in-progress'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {patient.status === 'completed'
-                                  ? 'Completed'
-                                  : patient.status === 'in-progress'
-                                  ? 'In Progress'
-                                  : 'Waiting'}
-                              </span>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                <div className="text-center py-12 px-6">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                    <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-3-3H5a3 3 0 00-3 3v2h5m6 0v-5a2 2 0 012-2h2a2 2 0 012 2v5m-6 0H9" />
+                    </svg>
+                  </div>
+                  <p className="text-lg font-semibold text-slate-700 mb-2">No patients registered today</p>
+                  <p className="text-sm text-slate-500">New patient registrations will appear here.</p>
                 </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-green-100">
+                      <thead className="bg-green-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-green-100">
+                        {paginatedTodayPatients.map((patient, index) => {
+                          const { dateLabel, timeLabel } = getDateTimeLabels(patient.registrationDate)
+                          const globalIndex = todayPatientsStartIndex + index
+                          return (
+                            <tr key={patient._id} className="bg-green-50/30 hover:bg-green-50/50 transition border-l-4 border-green-400">
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
+                                  {String(globalIndex + 1).padStart(2, '0')}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="text-sm font-semibold text-slate-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                                  <span>{patient.fullName}</span>
+                                  <span className="hidden sm:inline text-xs uppercase tracking-wide text-slate-400">•</span>
+                                  <span className="text-sm text-slate-600 font-normal">Age {patient.age}</span>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
+                              </td>
+                              <td className="px-6 py-4">
+                                <div className="text-sm font-semibold text-slate-900">{patient.doctor?.fullName || 'N/A'}</div>
+                                <div className="text-xs text-slate-500">{patient.doctor?.specialization || '—'}</div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">
+                                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                  {patient.disease || 'Not specified'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className="px-3 py-1.5 bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 rounded-full font-bold text-sm border border-green-200 shadow-sm">
+                                  #{patient.tokenNumber}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  {dateLabel}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  {timeLabel}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                                  patient.status === 'completed'
+                                    ? 'bg-green-100 text-green-700 border-green-200'
+                                    : patient.status === 'in-progress'
+                                    ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                                }`}>
+                                  <span className={`w-2 h-2 rounded-full ${
+                                    patient.status === 'completed' ? 'bg-green-500'
+                                    : patient.status === 'in-progress' ? 'bg-yellow-500'
+                                    : 'bg-slate-400'
+                                  }`}></span>
+                                  {patient.status === 'completed'
+                                    ? 'Completed'
+                                    : patient.status === 'in-progress'
+                                    ? 'In Progress'
+                                    : 'Waiting'}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {todayPatientsTotalPages > 1 && (
+                    <div className="bg-slate-50 border-t border-slate-200 px-6 py-4">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                        {/* Results Info */}
+                        <div className="text-sm text-slate-600">
+                          Showing <span className="font-semibold text-slate-900">{todayPatientsStartIndex + 1}</span> to{' '}
+                          <span className="font-semibold text-slate-900">
+                            {Math.min(todayPatientsEndIndex, todayPatients.length)}
+                          </span>{' '}
+                          of <span className="font-semibold text-slate-900">{todayPatients.length}</span> patients
+                        </div>
+
+                        {/* Pagination Controls */}
+                        <div className="flex items-center gap-2">
+                          {/* Previous Button */}
+                          <button
+                            onClick={() => handleTodayPatientsPageChange(todayPatientsPage - 1)}
+                            disabled={todayPatientsPage === 1}
+                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                              todayPatientsPage === 1
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                : 'bg-white text-slate-700 hover:bg-green-50 hover:text-green-700 border border-slate-300 hover:border-green-300 shadow-sm'
+                            }`}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Previous
+                          </button>
+
+                          {/* Page Numbers */}
+                          <div className="flex items-center gap-1">
+                            {getVisiblePageNumbers().map((page, idx) => (
+                              page === '...' ? (
+                                <span key={`ellipsis-${idx}`} className="px-2 text-slate-400">
+                                  ...
+                                </span>
+                              ) : (
+                                <button
+                                  key={page}
+                                  onClick={() => handleTodayPatientsPageChange(page)}
+                                  className={`min-w-[2.5rem] px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
+                                    todayPatientsPage === page
+                                      ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-md border border-green-700'
+                                      : 'bg-white text-slate-700 hover:bg-green-50 hover:text-green-700 border border-slate-300 hover:border-green-300 shadow-sm'
+                                  }`}
+                                >
+                                  {page}
+                                </button>
+                              )
+                            ))}
+                          </div>
+
+                          {/* Next Button */}
+                          <button
+                            onClick={() => handleTodayPatientsPageChange(todayPatientsPage + 1)}
+                            disabled={todayPatientsPage === todayPatientsTotalPages}
+                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                              todayPatientsPage === todayPatientsTotalPages
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                : 'bg-white text-slate-700 hover:bg-green-50 hover:text-green-700 border border-slate-300 hover:border-green-300 shadow-sm'
+                            }`}
+                          >
+                            Next
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
             {/* Patient History Section */}
-            <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-              <h3 className="text-xl font-bold text-gray-800 mb-4">Patient History</h3>
+            <div id="patient-history-section" className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
+              {/* Section Header */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-3 border-b border-blue-200">
+                <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <span className="text-blue-600">🔵</span>
+                  Patient History
+                  <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold ml-2">
+                    {patientHistory.length} record{patientHistory.length !== 1 ? 's' : ''}
+                  </span>
+                </h4>
+              </div>
+
               {patientHistory.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No patient history available</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visit</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {limitedPatientHistory.map((patient, index) => {
-                        const { dateLabel, timeLabel } = getDateTimeLabels(patient.registrationDate || patient.createdAt)
-                        return (
-                          <tr key={patient._id} className="hover:bg-gray-50">
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-semibold flex items-center justify-center text-sm">
-                                {String(index + 1).padStart(2, '0')}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-sm font-semibold text-gray-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                                <span>{patient.fullName}</span>
-                                <span className="hidden sm:inline text-xs uppercase tracking-wide text-gray-400">•</span>
-                                <span className="text-sm text-gray-500 font-normal">Age {patient.age}</span>
-                              </div>
-                              <p className="text-xs text-gray-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-sm text-gray-900 font-medium">{patient.doctor?.fullName || 'N/A'}</div>
-                              <div className="text-xs text-gray-500">{patient.doctor?.specialization || '—'}</div>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-sm font-medium">
-                                <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                                {patient.disease || 'Not specified'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-gray-900">{dateLabel}</div>
-                              <div className="text-xs text-gray-500">{timeLabel}</div>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full font-semibold text-sm">
-                                #{patient.tokenNumber}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                patient.status === 'completed'
-                                  ? 'bg-green-100 text-green-800'
-                                  : patient.status === 'in-progress'
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-gray-100 text-gray-800'
-                              }`}>
-                                {patient.status === 'completed'
-                                  ? 'Completed'
-                                  : patient.status === 'in-progress'
-                                  ? 'In Progress'
-                                  : 'Waiting'}
-                              </span>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                <div className="text-center py-12 px-6">
+                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                    <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <p className="text-lg font-semibold text-slate-700 mb-2">No patient history available</p>
+                  <p className="text-sm text-slate-500">Historical patient records will appear here.</p>
                 </div>
-              )}
-              {patientHistory.length > 50 && (
-                <p className="text-sm text-gray-500 text-center mt-4">Showing latest 50 records</p>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-slate-100">
+                        {paginatedPatientHistory.map((patient, index) => {
+                          const { dateLabel, timeLabel } = getDateTimeLabels(patient.registrationDate || patient.createdAt)
+                          const globalIndex = patientHistoryStartIndex + index
+                          return (
+                            <tr key={patient._id} className="hover:bg-slate-50 transition border border-slate-200">
+                              <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
+                                  {String(globalIndex + 1).padStart(2, '0')}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 border-r border-slate-200">
+                                <div className="text-sm font-semibold text-slate-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                                  <span>{patient.fullName}</span>
+                                  <span className="hidden sm:inline text-xs uppercase tracking-wide text-slate-400">•</span>
+                                  <span className="text-sm text-slate-600 font-normal">Age {patient.age}</span>
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
+                              </td>
+                              <td className="px-6 py-4 border-r border-slate-200">
+                                <div className="text-sm font-semibold text-slate-900">{patient.doctor?.fullName || 'N/A'}</div>
+                                <div className="text-xs text-slate-500">{patient.doctor?.specialization || '—'}</div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-sm font-medium border border-purple-200">
+                                  <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                  {patient.disease || 'Not specified'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                <span className="px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-full font-bold text-sm border border-blue-200 shadow-sm">
+                                  #{patient.tokenNumber}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                  <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  {dateLabel}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                  <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  {timeLabel}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                                  patient.status === 'completed'
+                                    ? 'bg-green-100 text-green-700 border-green-200'
+                                    : patient.status === 'in-progress'
+                                    ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                                }`}>
+                                  <span className={`w-2 h-2 rounded-full ${
+                                    patient.status === 'completed' ? 'bg-green-500'
+                                    : patient.status === 'in-progress' ? 'bg-yellow-500'
+                                    : 'bg-slate-400'
+                                  }`}></span>
+                                  {patient.status === 'completed'
+                                    ? 'Completed'
+                                    : patient.status === 'in-progress'
+                                    ? 'In Progress'
+                                    : 'Waiting'}
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {patientHistoryTotalPages > 1 && (
+                    <div className="bg-slate-50 border-t border-slate-200 px-6 py-4">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                        {/* Results Info */}
+                        <div className="text-sm text-slate-600">
+                          Showing <span className="font-semibold text-slate-900">{patientHistoryStartIndex + 1}</span> to{' '}
+                          <span className="font-semibold text-slate-900">
+                            {Math.min(patientHistoryEndIndex, patientHistory.length)}
+                          </span>{' '}
+                          of <span className="font-semibold text-slate-900">{patientHistory.length}</span> records
+                        </div>
+
+                        {/* Pagination Controls */}
+                        <div className="flex items-center gap-2">
+                          {/* Previous Button */}
+                          <button
+                            onClick={() => handlePatientHistoryPageChange(patientHistoryPage - 1)}
+                            disabled={patientHistoryPage === 1}
+                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                              patientHistoryPage === 1
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                : 'bg-white text-slate-700 hover:bg-purple-50 hover:text-purple-700 border border-slate-300 hover:border-purple-300 shadow-sm'
+                            }`}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Previous
+                          </button>
+
+                          {/* Page Numbers */}
+                          <div className="flex items-center gap-1">
+                            {getVisibleHistoryPageNumbers().map((page, idx) => (
+                              page === '...' ? (
+                                <span key={`ellipsis-${idx}`} className="px-2 text-slate-400">
+                                  ...
+                                </span>
+                              ) : (
+                                <button
+                                  key={page}
+                                  onClick={() => handlePatientHistoryPageChange(page)}
+                                  className={`min-w-[2.5rem] px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
+                                    patientHistoryPage === page
+                                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md border border-purple-700'
+                                      : 'bg-white text-slate-700 hover:bg-purple-50 hover:text-purple-700 border border-slate-300 hover:border-purple-300 shadow-sm'
+                                  }`}
+                                >
+                                  {page}
+                                </button>
+                              )
+                            ))}
+                          </div>
+
+                          {/* Next Button */}
+                          <button
+                            onClick={() => handlePatientHistoryPageChange(patientHistoryPage + 1)}
+                            disabled={patientHistoryPage === patientHistoryTotalPages}
+                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                              patientHistoryPage === patientHistoryTotalPages
+                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                : 'bg-white text-slate-700 hover:bg-purple-50 hover:text-purple-700 border border-slate-300 hover:border-purple-300 shadow-sm'
+                            }`}
+                          >
+                            Next
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -1096,138 +1502,338 @@ const ReceptionistDashboard = () => {
             </div>
 
             {/* Appointments List */}
-            <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-              <h3 className="text-xl font-bold text-gray-800 mb-4">All Appointments</h3>
-              {loadingAppointments ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto"></div>
+            <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
+              {/* Header */}
+              <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h3 className="text-2xl font-bold text-slate-800">All Appointments</h3>
+                    <p className="text-sm text-slate-600 mt-1">View today's appointments and upcoming scheduled visits</p>
+                  </div>
+                  {/* Toggle Buttons */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setAppointmentsView('today')}
+                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm border ${
+                        appointmentsView === 'today'
+                          ? 'bg-green-50 text-green-700 border-green-300 shadow-md'
+                          : 'bg-white text-slate-600 border-slate-300 hover:bg-green-50 hover:text-green-700 hover:border-green-200'
+                      }`}
+                    >
+                      <span className="text-lg">🟢</span>
+                      <span>Today's Patients</span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                        appointmentsView === 'today'
+                          ? 'bg-green-600 text-white'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {todayAppointments.length}
+                      </span>
+                      <span className="text-xs opacity-75">appointments</span>
+                    </button>
+                    <button
+                      onClick={() => setAppointmentsView('upcoming')}
+                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm border ${
+                        appointmentsView === 'upcoming'
+                          ? 'bg-blue-50 text-blue-700 border-blue-300 shadow-md'
+                          : 'bg-white text-slate-600 border-slate-300 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200'
+                      }`}
+                    >
+                      <span className="text-lg">🔵</span>
+                      <span>Upcoming Patients</span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                        appointmentsView === 'upcoming'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {upcomingAppointments.length}
+                      </span>
+                      <span className="text-xs opacity-75">appointments</span>
+                    </button>
+                  </div>
                 </div>
-              ) : appointments.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No appointments scheduled</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Visit</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reason</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SMS</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {sortedAppointments.map((appointment, index) => {
-                        const appointmentDateTime = new Date(`${appointment.appointmentDate}T${appointment.appointmentTime}`)
-                        const isPast = appointmentDateTime < new Date()
-                        const { dateLabel, timeLabel } = getAppointmentLabels(appointment.appointmentDate, appointment.appointmentTime)
-                        const isToday = appointmentDateTime.toDateString() === new Date().toDateString()
+              </div>
 
-                        return (
-                          <tr key={appointment._id} className={`hover:bg-gray-50 ${isPast ? 'opacity-80' : ''}`}>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 font-semibold flex items-center justify-center text-sm">
-                                {String(index + 1).padStart(2, '0')}
-                              </div>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-gray-900 flex items-center gap-2">
-                                {dateLabel}
-                                {isToday && (
-                                  <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">Today</span>
-                                )}
-                              </div>
-                              <div className="text-xs text-gray-500">{timeLabel}</div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-sm font-semibold text-gray-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                                <span>{appointment.patientName}</span>
-                                <span className="hidden sm:inline text-xs uppercase tracking-wide text-gray-400">•</span>
-                                <span className="text-sm text-gray-500 font-normal">{appointment.mobileNumber}</span>
-                              </div>
-                              {appointment.email && (
-                                <p className="text-xs text-gray-400 truncate">{appointment.email}</p>
-                              )}
-                            </td>
-                            <td className="px-4 py-4">
-                              <div className="text-sm text-gray-900 font-medium">{appointment.doctor?.fullName || 'N/A'}</div>
-                              <div className="text-xs text-gray-500">{appointment.doctor?.specialization || '—'}</div>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium">
-                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                {appointment.reason || 'General consultation'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                appointment.status === 'completed'
-                                  ? 'bg-green-100 text-green-800'
-                                  : appointment.status === 'cancelled'
-                                  ? 'bg-red-100 text-red-700'
-                                  : appointment.status === 'confirmed'
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : 'bg-yellow-100 text-yellow-700'
-                              }`}>
-                                {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
-                              </span>
-                              {appointment.status === 'cancelled' && (
-                                <div className="mt-2 text-xs text-red-600 space-y-1">
-                                  <p>
-                                    Cancelled {appointment.cancelledAt ? new Date(appointment.cancelledAt).toLocaleString() : ''}
-                                  </p>
-                                  {appointment.cancellationReason && (
-                                    <p>Reason: {appointment.cancellationReason}</p>
-                                  )}
-                                  {appointment.refundAmount > 0 && (
-                                    <p>
-                                      Refund: ₹{appointment.refundAmount}{' '}
-                                      ({appointment.refundStatus?.replace(/_/g, ' ')})
-                                    </p>
-                                  )}
-                                  {appointment.refundNotes && (
-                                    <p className="text-gray-500">Notes: {appointment.refundNotes}</p>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap">
-                              {appointment.smsSent ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-600">
-                                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                  Sent
-                                </span>
-                              ) : (
-                                <button
-                                  onClick={() => handleResendSMS(appointment._id)}
-                                  className="text-xs text-blue-600 hover:text-blue-700 underline"
-                                >
-                                  Resend
-                                </button>
-                              )}
-                            </td>
-                            <td className="px-4 py-4 whitespace-nowrap text-sm">
-                              <button
-                                onClick={() => handleCancelAppointment(appointment)}
-                                disabled={appointment.status === 'cancelled' || appointment.status === 'completed'}
-                                className={`px-3 py-1 rounded transition text-xs ${
-                                  appointment.status === 'cancelled' || appointment.status === 'completed'
-                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : 'bg-red-100 text-red-700 hover:bg-red-200'
-                                }`}
-                              >
-                                Cancel
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+              {loadingAppointments ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="mt-4 text-slate-500">Loading appointments...</p>
                 </div>
+              ) : (
+                <>
+                  {/* Today's Patients Section */}
+                  {appointmentsView === 'today' && (
+                    <div>
+                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3 border-b border-green-200">
+                        <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                          <span className="text-green-600">🟢</span>
+                          Today's Patients
+                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold ml-2">
+                            {todayAppointments.length} appointment{todayAppointments.length !== 1 ? 's' : ''}
+                          </span>
+                        </h4>
+                      </div>
+                    {todayAppointments.length === 0 ? (
+                      <div className="text-center py-8 px-6">
+                        <p className="text-slate-500">No appointments scheduled for today</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-green-100">
+                          <thead className="bg-green-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Reason</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">SMS</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-green-100">
+                            {todayAppointments.map((appointment, index) => {
+                              const { dateLabel, timeLabel } = getAppointmentLabels(appointment.appointmentDate, appointment.appointmentTime)
+                              return (
+                                <tr key={appointment._id} className="bg-green-50/30 hover:bg-green-50/50 transition border-l-4 border-green-400">
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
+                                      {String(index + 1).padStart(2, '0')}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                      {dateLabel}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                      {timeLabel}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="text-sm font-semibold text-slate-900">{appointment.patientName}</div>
+                                    <div className="text-xs text-slate-500 mt-1">{appointment.mobileNumber}</div>
+                                    {appointment.email && (
+                                      <div className="text-xs text-slate-400 truncate max-w-xs">{appointment.email}</div>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="text-sm font-semibold text-slate-900">{appointment.doctor?.fullName || 'N/A'}</div>
+                                    <div className="text-xs text-slate-500">{appointment.doctor?.specialization || '—'}</div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium border border-emerald-200">
+                                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                      {appointment.reason || 'General consultation'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                                      appointment.status === 'completed'
+                                        ? 'bg-green-100 text-green-700 border-green-200'
+                                        : appointment.status === 'cancelled'
+                                        ? 'bg-red-100 text-red-700 border-red-200'
+                                        : appointment.status === 'confirmed'
+                                        ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                        : 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                                    }`}>
+                                      <span className={`w-2 h-2 rounded-full ${
+                                        appointment.status === 'completed' ? 'bg-green-500'
+                                        : appointment.status === 'cancelled' ? 'bg-red-500'
+                                        : appointment.status === 'confirmed' ? 'bg-blue-500'
+                                        : 'bg-yellow-500'
+                                      }`}></span>
+                                      {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    {appointment.smsSent ? (
+                                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold border border-green-200">
+                                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                        Sent
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleResendSMS(appointment._id)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                        Resend
+                                      </button>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <button
+                                      onClick={() => handleCancelAppointment(appointment)}
+                                      disabled={appointment.status === 'cancelled' || appointment.status === 'completed'}
+                                      className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+                                        appointment.status === 'cancelled' || appointment.status === 'completed'
+                                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                          : 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-200'
+                                      }`}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    </div>
+                  )}
+
+                  {/* Upcoming Patients Section */}
+                  {appointmentsView === 'upcoming' && (
+                    <div>
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-3 border-b border-blue-200">
+                        <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                          <span className="text-blue-600">🔵</span>
+                          Upcoming Patients
+                          <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold ml-2">
+                            {upcomingAppointments.length} appointment{upcomingAppointments.length !== 1 ? 's' : ''}
+                          </span>
+                        </h4>
+                      </div>
+                    {upcomingAppointments.length === 0 ? (
+                      <div className="text-center py-8 px-6">
+                        <p className="text-slate-500">No upcoming appointments scheduled</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-slate-200">
+                          <thead className="bg-slate-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Reason</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">SMS</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-slate-100">
+                            {upcomingAppointments.map((appointment, index) => {
+                              const appointmentDateTime = new Date(`${appointment.appointmentDate}T${appointment.appointmentTime}`)
+                              const { dateLabel, timeLabel } = getAppointmentLabels(appointment.appointmentDate, appointment.appointmentTime)
+                              const daysUntil = Math.ceil((appointmentDateTime - new Date()) / (1000 * 60 * 60 * 24))
+
+                              return (
+                                <tr key={appointment._id} className="hover:bg-slate-50 transition border border-slate-200">
+                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
+                                      {String(index + 1).padStart(2, '0')}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                    <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                      {dateLabel}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                    <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                      {timeLabel}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 border-r border-slate-200">
+                                    <div className="text-sm font-semibold text-slate-900">{appointment.patientName}</div>
+                                    <div className="text-xs text-slate-500 mt-1">{appointment.mobileNumber}</div>
+                                    {appointment.email && (
+                                      <div className="text-xs text-slate-400 truncate max-w-xs">{appointment.email}</div>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 border-r border-slate-200">
+                                    <div className="text-sm font-semibold text-slate-900">{appointment.doctor?.fullName || 'N/A'}</div>
+                                    <div className="text-xs text-slate-500">{appointment.doctor?.specialization || '—'}</div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium border border-emerald-200">
+                                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                      {appointment.reason || 'General consultation'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                                      appointment.status === 'completed'
+                                        ? 'bg-green-100 text-green-700 border-green-200'
+                                        : appointment.status === 'cancelled'
+                                        ? 'bg-red-100 text-red-700 border-red-200'
+                                        : appointment.status === 'confirmed'
+                                        ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                        : 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                                    }`}>
+                                      <span className={`w-2 h-2 rounded-full ${
+                                        appointment.status === 'completed' ? 'bg-green-500'
+                                        : appointment.status === 'cancelled' ? 'bg-red-500'
+                                        : appointment.status === 'confirmed' ? 'bg-blue-500'
+                                        : 'bg-yellow-500'
+                                      }`}></span>
+                                      {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                    {appointment.smsSent ? (
+                                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold border border-green-200">
+                                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                        Sent
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleResendSMS(appointment._id)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                        Resend
+                                      </button>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <button
+                                      onClick={() => handleCancelAppointment(appointment)}
+                                      disabled={appointment.status === 'cancelled' || appointment.status === 'completed'}
+                                      className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+                                        appointment.status === 'cancelled' || appointment.status === 'completed'
+                                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                          : 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-200'
+                                      }`}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
