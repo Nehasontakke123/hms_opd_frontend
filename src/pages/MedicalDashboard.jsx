@@ -56,18 +56,20 @@ const MedicalDashboard = () => {
     }
   }
 
-  useEffect(() => {
-    const fetchPatients = async () => {
-      try {
-        const res = await api.get('/patient')
-        const withRx = (res.data.data || []).filter(p => p.prescription)
-        setPatients(withRx)
-      } catch (e) {
-        toast.error('Failed to load patients')
-      } finally {
-        setLoading(false)
-      }
+  const fetchPatients = async () => {
+    try {
+      setLoading(true)
+      const res = await api.get('/patient')
+      const withRx = (res.data.data || []).filter(p => p.prescription)
+      setPatients(withRx)
+    } catch (e) {
+      toast.error('Failed to load patients')
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchPatients()
   }, [])
 
@@ -82,17 +84,70 @@ const MedicalDashboard = () => {
     return `${backendBase}${cleanPath}`
   }
 
-  const handleDownload = (patient) => {
+  const handleDownload = async (patient) => {
     try {
-      // Use the actual prescribing doctor's details if available
-      const pdfUrl = getPDFUrl(patient.prescription.pdfPath)
+      if (!patient?.prescription) {
+        toast.error('No prescription available')
+        return
+      }
+
+      // First try to get the stored PDF URL
+      const pdfUrl = patient.prescription.pdfPath ? getPDFUrl(patient.prescription.pdfPath) : null
+      
       if (pdfUrl) {
+        // Use the stored PDF
         downloadPdf(pdfUrl, `prescription_${patient.fullName}_${patient.tokenNumber}`)
       } else {
-        toast.error('PDF not available')
+        // Generate PDF on the fly if no stored PDF exists
+        try {
+          const doctorInfo = patient.doctor || {}
+          const pdfBase64 = generatePrescriptionPDF(patient, doctorInfo, patient.prescription)
+          
+          // Convert base64 to blob and download
+          const base64Data = pdfBase64.split(',')[1]
+          const byteCharacters = atob(base64Data)
+          const byteNumbers = new Array(byteCharacters.length)
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i)
+          }
+          const byteArray = new Uint8Array(byteNumbers)
+          const blob = new Blob([byteArray], { type: 'application/pdf' })
+          
+          const url = window.URL.createObjectURL(blob)
+          const anchor = document.createElement('a')
+          const dateStr = new Date().toLocaleDateString()
+          anchor.href = url
+          anchor.download = `prescription_${patient.fullName.replace(/\s/g, '_')}_${patient.tokenNumber}.pdf`
+          document.body.appendChild(anchor)
+          anchor.click()
+          document.body.removeChild(anchor)
+          window.URL.revokeObjectURL(url)
+          
+          // Save PDF to backend so it's available for viewing
+          try {
+            await api.put(`/prescription/${patient._id}`, {
+              diagnosis: patient.prescription.diagnosis,
+              medicines: patient.prescription.medicines,
+              notes: patient.prescription.notes || '',
+              pdfData: pdfBase64
+            })
+            
+            // Refresh the patient list to show the updated PDF path
+            await fetchPatients()
+            
+            toast.success('Prescription downloaded and saved successfully')
+          } catch (saveError) {
+            console.error('Failed to save PDF to backend:', saveError)
+            toast.success('Prescription downloaded successfully (not saved)')
+          }
+        } catch (err) {
+          console.error('PDF generation failed:', err)
+          toast.error('Failed to generate PDF. Please try again.')
+        }
       }
     } catch (e) {
-      toast.error('Failed to generate PDF')
+      console.error('Download failed:', e)
+      toast.error('Failed to download PDF')
     }
   }
 
