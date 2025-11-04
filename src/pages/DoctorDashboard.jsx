@@ -129,6 +129,40 @@ const DoctorDashboard = () => {
     }
   }
 
+  const handleMarkAsPaid = async (patient) => {
+    if (!patient || !patient._id) {
+      toast.error('Invalid patient data')
+      return
+    }
+
+    if (patient.isRecheck) {
+      toast.error('Recheck-up patients do not require payment')
+      return
+    }
+
+    if (patient.feeStatus === 'paid') {
+      toast.error('Payment is already marked as paid')
+      return
+    }
+
+    try {
+      const response = await api.put(`/patient/${patient._id}/payment`, {
+        paymentAmount: patient.fees || 0
+      })
+
+      if (response.data.success) {
+        toast.success('Payment marked as paid successfully')
+        // Refresh patient lists
+        fetchTodayPatients()
+        if (activeTab === 'history') {
+          fetchPatientHistory()
+        }
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update payment status')
+    }
+  }
+
   const fetchPatientHistory = async () => {
     setLoadingHistory(true)
     try {
@@ -622,56 +656,89 @@ const DoctorDashboard = () => {
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                          {filteredTodayPatients.map((patient) => (
-                            <tr key={patient._id} className="hover:bg-gray-50">
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold text-sm">
-                                  {patient.tokenNumber}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="text-sm font-medium text-gray-900">{patient.fullName}</div>
-                                <div className="text-sm text-gray-500">{patient.age} years • {patient.mobileNumber}</div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="text-sm text-gray-900">{patient.disease}</div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                  patient.status === 'completed'
-                                    ? 'bg-green-100 text-green-800'
-                                    : patient.status === 'in-progress'
-                                    ? 'bg-yellow-100 text-yellow-800'
-                                    : 'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {patient.status === 'completed'
-                                    ? 'Completed'
-                                    : patient.status === 'in-progress'
-                                    ? 'In Progress'
-                                    : 'Waiting'}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                {new Date(patient.registrationDate).toLocaleTimeString('en-US', {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                {patient.status !== 'completed' && (
-                                  <button
-                                    onClick={() => handleOpenPrescriptionModal(patient)}
-                                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
-                                  >
-                                    Add Prescription
-                                  </button>
-                                )}
-                                {patient.status === 'completed' && patient.prescription && (
-                                  <span className="text-green-600 font-semibold">✓ Prescribed</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                          {filteredTodayPatients.map((patient) => {
+                            const hasPendingFees = !patient.isRecheck && patient.feeStatus === 'pending'
+                            return (
+                              <tr 
+                                key={patient._id} 
+                                className={`hover:bg-gray-50 transition-colors ${
+                                  hasPendingFees ? 'bg-orange-50/50 border-l-4 border-orange-400' : ''
+                                }`}
+                              >
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold text-sm">
+                                    {patient.tokenNumber}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="text-sm font-medium text-gray-900">{patient.fullName}</div>
+                                  <div className="text-sm text-gray-500">{patient.age} years • {patient.mobileNumber}</div>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    {patient.isRecheck ? (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
+                                        No Fees Required
+                                      </span>
+                                    ) : (
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                        patient.feeStatus === 'paid'
+                                          ? 'bg-green-100 text-green-700 border border-green-200'
+                                          : 'bg-orange-100 text-orange-700 border border-orange-200'
+                                      }`}>
+                                        {patient.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="text-sm text-gray-900">{patient.disease}</div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                    patient.status === 'completed'
+                                      ? 'bg-green-100 text-green-800'
+                                      : patient.status === 'in-progress'
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {patient.status === 'completed'
+                                      ? 'Completed'
+                                      : patient.status === 'in-progress'
+                                      ? 'In Progress'
+                                      : 'Waiting'}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                  {new Date(patient.registrationDate).toLocaleTimeString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                  <div className="flex flex-col gap-2">
+                                    {hasPendingFees && (
+                                      <button
+                                        onClick={() => handleMarkAsPaid(patient)}
+                                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-semibold"
+                                      >
+                                        Mark as Paid
+                                      </button>
+                                    )}
+                                    {patient.status !== 'completed' && (
+                                      <button
+                                        onClick={() => handleOpenPrescriptionModal(patient)}
+                                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm"
+                                      >
+                                        Add Prescription
+                                      </button>
+                                    )}
+                                    {patient.status === 'completed' && patient.prescription && (
+                                      <span className="text-green-600 font-semibold text-sm">✓ Prescribed</span>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -720,33 +787,55 @@ const DoctorDashboard = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {limitedHistoryPatients.map((patient, index) => (
-                        <tr key={patient._id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-sm font-semibold">
-                              {String(index + 1).padStart(2, '0')}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(patient.registrationDate || patient.createdAt).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric'
-                            })}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold text-sm">
-                              {patient.tokenNumber}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm font-semibold text-gray-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                              <span>{patient.fullName}</span>
-                              <span className="hidden sm:inline text-xs uppercase tracking-wide text-gray-400">•</span>
-                              <span className="text-sm text-gray-500 font-normal">Age {patient.age}</span>
-                            </div>
-                            <p className="text-xs text-gray-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
-                          </td>
+                      {limitedHistoryPatients.map((patient, index) => {
+                        const hasPendingFees = !patient.isRecheck && patient.feeStatus === 'pending'
+                        return (
+                          <tr 
+                            key={patient._id} 
+                            className={`hover:bg-gray-50 transition-colors ${
+                              hasPendingFees ? 'bg-orange-50/50 border-l-4 border-orange-400' : ''
+                            }`}
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-sm font-semibold">
+                                {String(index + 1).padStart(2, '0')}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {new Date(patient.registrationDate || patient.createdAt).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                              })}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold text-sm">
+                                {patient.tokenNumber}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm font-semibold text-gray-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                                <span>{patient.fullName}</span>
+                                <span className="hidden sm:inline text-xs uppercase tracking-wide text-gray-400">•</span>
+                                <span className="text-sm text-gray-500 font-normal">Age {patient.age}</span>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                {patient.isRecheck ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
+                                    No Fees Required
+                                  </span>
+                                ) : (
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    patient.feeStatus === 'paid'
+                                      ? 'bg-green-100 text-green-700 border border-green-200'
+                                      : 'bg-orange-100 text-orange-700 border border-orange-200'
+                                  }`}>
+                                    {patient.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                           <td className="px-6 py-4">
                             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium">
                               <span className="w-2 h-2 rounded-full bg-blue-500"></span>
@@ -769,17 +858,28 @@ const DoctorDashboard = () => {
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            {patient.prescription ? (
-                              <span className="inline-flex items-center gap-1 text-green-600 font-semibold">
-                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                Prescribed
-                              </span>
-                            ) : (
-                              <span className="text-gray-400">—</span>
-                            )}
+                            <div className="flex flex-col gap-2">
+                              {hasPendingFees && (
+                                <button
+                                  onClick={() => handleMarkAsPaid(patient)}
+                                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-xs font-semibold w-full"
+                                >
+                                  Mark as Paid
+                                </button>
+                              )}
+                              {patient.prescription ? (
+                                <span className="inline-flex items-center gap-1 text-green-600 font-semibold text-xs">
+                                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                  Prescribed
+                                </span>
+                              ) : (
+                                <span className="text-gray-400 text-xs">—</span>
+                              )}
+                            </div>
                           </td>
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -846,6 +946,21 @@ const DoctorDashboard = () => {
                         <p className="text-sm text-gray-600">
                           {patient.age} years • {patient.mobileNumber} • {patient.disease}
                         </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          {patient.isRecheck ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
+                              No Fees Required
+                            </span>
+                          ) : (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                              patient.feeStatus === 'paid'
+                                ? 'bg-green-100 text-green-700 border border-green-200'
+                                : 'bg-orange-100 text-orange-700 border border-orange-200'
+                            }`}>
+                              {patient.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-500 mt-1">
                           Prescribed on: {new Date(patient.prescription?.createdAt || patient.createdAt).toLocaleString()}
                         </p>

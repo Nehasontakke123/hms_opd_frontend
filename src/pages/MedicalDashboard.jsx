@@ -327,6 +327,15 @@ const MedicalDashboard = () => {
                               <span className="font-medium text-gray-700">Issue:</span>
                               <span className="capitalize">{p.disease || '—'}</span>
                             </p>
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                p.feeStatus === 'paid'
+                                  ? 'bg-green-100 text-green-700 border border-green-200'
+                                  : 'bg-orange-100 text-orange-700 border border-orange-200'
+                              }`}>
+                                {p.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
+                              </span>
+                            </div>
                             <p className="text-xs text-gray-500 mt-2">Prescribed on {new Date(p.prescription?.createdAt || p.createdAt).toLocaleString()}</p>
                           </div>
                         </div>

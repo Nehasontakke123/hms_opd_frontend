@@ -24,11 +24,91 @@ const getInitialFormData = () => ({
   mobileNumber: '',
   address: '',
   age: '',
-  disease: '',
+  disease: '', // Empty by default - will populate based on doctor selection
   doctor: '',
   visitDate: getDefaultVisitDate(),
-  visitTime: getDefaultVisitTime()
+  visitTime: getDefaultVisitTime(),
+  isRecheck: false,
+  feeStatus: 'pending'
 })
+
+// Mapping of doctor specializations to diseases/health issues
+const SPECIALIZATION_DISEASES = {
+  'Cardiologist': [
+    'Chest Pain',
+    'High Blood Pressure',
+    'Irregular Heartbeat',
+    'Heart Attack Follow-up',
+    'Shortness of Breath'
+  ],
+  'Heart Specialist': [
+    'Chest Pain',
+    'High Blood Pressure',
+    'Irregular Heartbeat',
+    'Heart Attack Follow-up',
+    'Shortness of Breath'
+  ],
+  'General Physician': [
+    'Fever',
+    'Cough & Cold',
+    'Headache',
+    'Body Pain',
+    'Weakness / Fatigue',
+    'Stomach Ache'
+  ],
+  'Gynecologist': [
+    'Irregular Periods',
+    'Pregnancy Checkup',
+    'PCOD / PCOS',
+    'Lower Abdominal Pain',
+    'Menstrual Cramps'
+  ],
+  'Psychiatrist': [
+    'Depression',
+    'Anxiety',
+    'Stress',
+    'Insomnia',
+    'Bipolar Disorder'
+  ],
+  'Orthopedic Surgeon': [
+    'Joint Pain',
+    'Back Pain',
+    'Knee Pain',
+    'Bone Fracture',
+    'Arthritis'
+  ],
+  'Neurologist': [
+    'Migraine',
+    'Paralysis',
+    'Seizures',
+    'Memory Loss',
+    'Nerve Pain'
+  ]
+}
+
+// Helper function to get diseases based on doctor specialization
+const getDiseasesForSpecialization = (specialization) => {
+  if (!specialization) return []
+  
+  // Normalize specialization (case-insensitive, handle variations)
+  const normalized = specialization.trim()
+  
+  // Check exact match first
+  if (SPECIALIZATION_DISEASES[normalized]) {
+    return SPECIALIZATION_DISEASES[normalized]
+  }
+  
+  // Check case-insensitive match
+  const lowerNormalized = normalized.toLowerCase()
+  for (const key in SPECIALIZATION_DISEASES) {
+    if (key.toLowerCase() === lowerNormalized) {
+      return SPECIALIZATION_DISEASES[key]
+    }
+  }
+  
+  // If no match found, return empty array
+  return []
+}
 
 const getDefaultAppointmentDate = () => {
   const date = new Date()
@@ -53,7 +133,11 @@ const ReceptionistDashboard = () => {
   const { user, logout } = useAuth()
   const [activeTab, setActiveTab] = useState('doctors') // 'doctors', 'registration', or 'appointments'
   const [appointmentsView, setAppointmentsView] = useState('today') // 'today' or 'upcoming'
-  const [patientsRegisterView, setPatientsRegisterView] = useState('today') // 'today' or 'history'
+  const [patientsRegisterView, setPatientsRegisterView] = useState('today') // 'today', 'recheck', or 'history'
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [showCancelSuccessModal, setShowCancelSuccessModal] = useState(false)
+  const [patientToCancel, setPatientToCancel] = useState(null)
+  const [cancelledPatientName, setCancelledPatientName] = useState(null)
   const [doctors, setDoctors] = useState([])
   const [doctorStats, setDoctorStats] = useState({})
   const [todayPatients, setTodayPatients] = useState([])
@@ -156,15 +240,39 @@ const ReceptionistDashboard = () => {
   }
 
   const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value
-    }))
+    const { name, value, type, checked } = e.target
+    
+    // If doctor is changed, clear disease and reset to new doctor's diseases
+    if (name === 'doctor') {
+      const selectedDoctor = doctors.find(d => d._id === value)
+      const specialization = selectedDoctor?.specialization || ''
+      const diseases = getDiseasesForSpecialization(specialization)
+      
+      setFormData((prev) => ({
+        ...prev,
+        doctor: value,
+        disease: '' // Clear disease when doctor changes
+      }))
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value
+      }))
+    }
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    // Payment validation: Normal patients (non-recheck) must have fees paid before confirming
+    if (!formData.isRecheck && formData.feeStatus !== 'paid') {
+      toast.error('Normal patients must complete payment before confirming the appointment. Please select "Fees Paid" in the Fee Status field.', {
+        duration: 5000,
+        icon: '⚠️'
+      })
+      return
+    }
+    
     try {
       // Find the selected doctor to get the fees
       const selectedDoctor = doctors.find(d => d._id === formData.doctor)
@@ -172,7 +280,9 @@ const ReceptionistDashboard = () => {
       
       const response = await api.post('/patient/register', {
         ...formData,
-        fees
+        fees,
+        isRecheck: formData.isRecheck || false,
+        feeStatus: formData.feeStatus || 'pending'
       })
       setGeneratedToken(response.data.data)
       setShowTokenModal(true)
@@ -197,6 +307,64 @@ const ReceptionistDashboard = () => {
     // Refresh patient lists after registration
     fetchTodayPatients()
     fetchPatientHistory()
+  }
+
+  const handleCancelClick = (patient) => {
+    console.log('Cancel button clicked for patient:', patient)
+    if (!patient || !patient._id) {
+      console.error('Invalid patient object:', patient)
+      toast.error('Invalid patient data')
+      return
+    }
+    setPatientToCancel(patient)
+    setShowCancelModal(true)
+  }
+
+  const handleCancelConfirm = async () => {
+    if (!patientToCancel) {
+      console.error('No patient selected for cancellation')
+      return
+    }
+
+    try {
+      console.log('Cancelling patient:', patientToCancel._id, patientToCancel.fullName)
+      const response = await api.put(`/patient/${patientToCancel._id}/cancel`)
+      
+      if (response.data.success) {
+        // Store patient name for success modal
+        setCancelledPatientName(patientToCancel.fullName)
+        
+        // Close confirmation modal
+        setShowCancelModal(false)
+        
+        // Remove patient from lists immediately
+        setTodayPatients(prev => prev.filter(p => p._id !== patientToCancel._id))
+        setPatientHistory(prev => prev.filter(p => p._id !== patientToCancel._id))
+        
+        // Show success modal
+        setShowCancelSuccessModal(true)
+        
+        // Clear patient to cancel
+        setPatientToCancel(null)
+      } else {
+        throw new Error(response.data.message || 'Failed to cancel patient')
+      }
+    } catch (error) {
+      console.error('Error cancelling patient:', error)
+      toast.error(error.response?.data?.message || error.message || 'Failed to cancel patient')
+      setShowCancelModal(false)
+      setPatientToCancel(null)
+    }
+  }
+
+  const handleCancelClose = () => {
+    setShowCancelModal(false)
+    setPatientToCancel(null)
+  }
+
+  const handleCancelSuccessClose = () => {
+    setShowCancelSuccessModal(false)
+    setCancelledPatientName(null)
   }
 
   const fetchTodayPatients = async () => {
@@ -299,40 +467,77 @@ const ReceptionistDashboard = () => {
 
   const generatedTokenDateTime = generatedToken ? getDateTimeLabels(generatedToken.registrationDate) : null
 
-  // Filter patients based on search query (using debounced value)
+  // Filter patients based on view type and search query
   const filteredTodayPatients = useMemo(() => {
-    if (!patientsRegisterSearchDebounced.trim()) {
-      return todayPatients
+    let filtered = todayPatients
+    
+    // Filter by view type
+    if (patientsRegisterView === 'recheck') {
+      filtered = filtered.filter(patient => patient.isRecheck === true && !patient.isCancelled)
+    } else if (patientsRegisterView === 'today') {
+      filtered = filtered.filter(patient => !patient.isRecheck && !patient.isCancelled)
     }
-    const searchTerm = patientsRegisterSearchDebounced.trim().toLowerCase()
-    return todayPatients.filter((patient) => {
-      const fullName = patient.fullName?.toLowerCase() || ''
-      const mobileNumber = patient.mobileNumber?.toLowerCase() || ''
-      const tokenNumber = patient.tokenNumber?.toString() || ''
-      return (
-        fullName.includes(searchTerm) ||
-        mobileNumber.includes(searchTerm) ||
-        tokenNumber.includes(searchTerm)
-      )
-    })
-  }, [todayPatients, patientsRegisterSearchDebounced])
+    // 'history' view shows all patients including cancelled
+    
+    // Apply search filter
+    if (patientsRegisterSearchDebounced.trim()) {
+      const searchTerm = patientsRegisterSearchDebounced.trim().toLowerCase()
+      filtered = filtered.filter((patient) => {
+        const fullName = patient.fullName?.toLowerCase() || ''
+        const mobileNumber = patient.mobileNumber?.toLowerCase() || ''
+        const tokenNumber = patient.tokenNumber?.toString() || ''
+        return (
+          fullName.includes(searchTerm) ||
+          mobileNumber.includes(searchTerm) ||
+          tokenNumber.includes(searchTerm)
+        )
+      })
+    }
+    
+    return filtered
+  }, [todayPatients, patientsRegisterView, patientsRegisterSearchDebounced])
 
   const filteredPatientHistory = useMemo(() => {
-    if (!patientsRegisterSearchDebounced.trim()) {
-      return patientHistory
+    let filtered = patientHistory
+    
+    // Filter by view type
+    if (patientsRegisterView === 'recheck') {
+      filtered = filtered.filter(patient => patient.isRecheck === true)
+    } else if (patientsRegisterView === 'today') {
+      filtered = filtered.filter(patient => !patient.isRecheck)
     }
-    const searchTerm = patientsRegisterSearchDebounced.trim().toLowerCase()
-    return patientHistory.filter((patient) => {
-      const fullName = patient.fullName?.toLowerCase() || ''
-      const mobileNumber = patient.mobileNumber?.toLowerCase() || ''
-      const tokenNumber = patient.tokenNumber?.toString() || ''
-      return (
-        fullName.includes(searchTerm) ||
-        mobileNumber.includes(searchTerm) ||
-        tokenNumber.includes(searchTerm)
-      )
-    })
-  }, [patientHistory, patientsRegisterSearchDebounced])
+    // 'history' view shows all patients
+    
+    // Apply search filter
+    if (patientsRegisterSearchDebounced.trim()) {
+      const searchTerm = patientsRegisterSearchDebounced.trim().toLowerCase()
+      filtered = filtered.filter((patient) => {
+        const fullName = patient.fullName?.toLowerCase() || ''
+        const mobileNumber = patient.mobileNumber?.toLowerCase() || ''
+        const tokenNumber = patient.tokenNumber?.toString() || ''
+        return (
+          fullName.includes(searchTerm) ||
+          mobileNumber.includes(searchTerm) ||
+          tokenNumber.includes(searchTerm)
+        )
+      })
+    }
+    
+    return filtered
+  }, [patientHistory, patientsRegisterView, patientsRegisterSearchDebounced])
+
+  // Calculate counts for each view
+  const todayPatientsCount = useMemo(() => {
+    return todayPatients.filter(p => !p.isRecheck && !p.isCancelled).length
+  }, [todayPatients])
+
+  const recheckPatientsCount = useMemo(() => {
+    return todayPatients.filter(p => p.isRecheck === true && !p.isCancelled).length
+  }, [todayPatients])
+
+  const historyPatientsCount = useMemo(() => {
+    return patientHistory.length
+  }, [patientHistory])
 
   // Debounce search input for smooth UX
   useEffect(() => {
@@ -1046,14 +1251,93 @@ const ReceptionistDashboard = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Disease/Health Issue *
                 </label>
-                <textarea
+                <select
                   name="disease"
                   value={formData.disease}
                   onChange={handleChange}
-                  rows="3"
+                  disabled={!formData.doctor}
+                  className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${
+                    !formData.doctor ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''
+                  }`}
+                  required
+                >
+                  {!formData.doctor ? (
+                    <option value="">Please select a doctor first</option>
+                  ) : (() => {
+                    const selectedDoctor = doctors.find(d => d._id === formData.doctor)
+                    const specialization = selectedDoctor?.specialization || ''
+                    const diseases = getDiseasesForSpecialization(specialization)
+                    
+                    if (diseases.length === 0) {
+                      return (
+                        <option value="">
+                          No diseases available for {specialization || 'this doctor'}
+                        </option>
+                      )
+                    }
+                    
+                    return (
+                      <>
+                        <option value="">Select a disease/health issue</option>
+                        {diseases.map((disease) => (
+                          <option key={disease} value={disease}>
+                            {disease}
+                          </option>
+                        ))}
+                      </>
+                    )
+                  })()}
+                </select>
+                {formData.doctor && (() => {
+                  const selectedDoctor = doctors.find(d => d._id === formData.doctor)
+                  const specialization = selectedDoctor?.specialization || ''
+                  const diseases = getDiseasesForSpecialization(specialization)
+                  
+                  if (diseases.length > 0) {
+                    return (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Select a health issue for {specialization}
+                      </p>
+                    )
+                  }
+                  return null
+                })()}
+              </div>
+
+              {/* Recheck-Up Checkbox */}
+              <div className="md:col-span-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="isRecheck"
+                    checked={formData.isRecheck}
+                    onChange={handleChange}
+                    className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-2 focus:ring-green-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    Recheck-Up
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    (Check if this is a follow-up visit)
+                  </span>
+                </label>
+              </div>
+
+              {/* Fee Status Dropdown */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fee Status *
+                </label>
+                <select
+                  name="feeStatus"
+                  value={formData.feeStatus}
+                  onChange={handleChange}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
                   required
-                ></textarea>
+                >
+                  <option value="pending">Pending</option>
+                  <option value="paid">Fees Paid</option>
+                </select>
               </div>
             </div>
 
@@ -1072,19 +1356,29 @@ const ReceptionistDashboard = () => {
               <div className={`px-6 py-4 border-b transition-colors duration-300 ${
                 patientsRegisterView === 'today'
                   ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200'
+                  : patientsRegisterView === 'recheck'
+                  ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200'
                   : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'
               }`}>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                   <div>
                     <h4 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                      <span className={patientsRegisterView === 'today' ? 'text-green-600' : 'text-blue-600'}>
-                        {patientsRegisterView === 'today' ? '🟢' : '🔵'}
+                      <span className={
+                        patientsRegisterView === 'today' ? 'text-green-600' 
+                        : patientsRegisterView === 'recheck' ? 'text-purple-600'
+                        : 'text-blue-600'
+                      }>
+                        {patientsRegisterView === 'today' ? '🟢' 
+                        : patientsRegisterView === 'recheck' ? '🩵'
+                        : '🔵'}
                       </span>
                       Patients Register
                     </h4>
                     <p className="text-sm text-slate-600 mt-1">
                       {patientsRegisterView === 'today' 
-                        ? 'View and manage today\'s patient registrations' 
+                        ? 'View and manage today\'s new patient registrations' 
+                        : patientsRegisterView === 'recheck'
+                        ? 'View and manage returning patients for follow-up'
                         : 'Browse complete historical patient records'}
                     </p>
                   </div>
@@ -1106,6 +1400,8 @@ const ReceptionistDashboard = () => {
                           className={`block w-full pl-10 pr-10 py-2.5 border rounded-xl text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
                             patientsRegisterView === 'today'
                               ? 'border-green-300 focus:ring-green-500 focus:border-green-500 bg-white/90'
+                              : patientsRegisterView === 'recheck'
+                              ? 'border-purple-300 focus:ring-purple-500 focus:border-purple-500 bg-white/90'
                               : 'border-blue-300 focus:ring-blue-500 focus:border-blue-500 bg-white/90'
                           } ${patientsRegisterSearch ? 'shadow-sm' : ''}`}
                         />
@@ -1123,7 +1419,7 @@ const ReceptionistDashboard = () => {
                       </div>
                     </div>
                     {/* Toggle Tabs */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <button
                         onClick={() => setPatientsRegisterView('today')}
                         className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 shadow-sm ${
@@ -1139,7 +1435,25 @@ const ReceptionistDashboard = () => {
                             ? 'bg-white/20 text-white'
                             : 'bg-green-100 text-green-700'
                         }`}>
-                          {patientsRegisterSearchDebounced ? filteredTodayPatients.length : todayPatients.length}
+                          {patientsRegisterSearchDebounced ? filteredTodayPatients.length : todayPatientsCount}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setPatientsRegisterView('recheck')}
+                        className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 shadow-sm ${
+                          patientsRegisterView === 'recheck'
+                            ? 'bg-purple-600 text-white shadow-md hover:bg-purple-700'
+                            : 'bg-white text-purple-700 border-2 border-purple-300 hover:bg-purple-50'
+                        }`}
+                      >
+                        <span>🩵</span>
+                        <span>Recheck-up Patients</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                          patientsRegisterView === 'recheck'
+                            ? 'bg-white/20 text-white'
+                            : 'bg-purple-100 text-purple-700'
+                        }`}>
+                          {patientsRegisterSearchDebounced ? filteredTodayPatients.length : recheckPatientsCount}
                         </span>
                       </button>
                       <button
@@ -1157,7 +1471,7 @@ const ReceptionistDashboard = () => {
                             ? 'bg-white/20 text-white'
                             : 'bg-blue-100 text-blue-700'
                         }`}>
-                          {patientsRegisterSearchDebounced ? filteredPatientHistory.length : patientHistory.length}
+                          {patientsRegisterSearchDebounced ? filteredPatientHistory.length : historyPatientsCount}
                         </span>
                       </button>
                     </div>
@@ -1165,8 +1479,8 @@ const ReceptionistDashboard = () => {
                 </div>
               </div>
 
-              {/* Patients Today View */}
-              {patientsRegisterView === 'today' && (
+              {/* Patients Today & Recheck-up View */}
+              {(patientsRegisterView === 'today' || patientsRegisterView === 'recheck') && (
                 <div className="fade-enter">
                   {loadingPatients ? (
                     <div className="text-center py-12">
@@ -1183,11 +1497,15 @@ const ReceptionistDashboard = () => {
                       <p className="text-lg font-semibold text-slate-700 mb-2">
                         {patientsRegisterSearchDebounced 
                           ? 'No patients found matching your search' 
+                          : patientsRegisterView === 'recheck'
+                          ? 'No recheck-up patients registered today'
                           : 'No patients registered today'}
                       </p>
                       <p className="text-sm text-slate-500">
                         {patientsRegisterSearchDebounced 
                           ? 'Try adjusting your search terms' 
+                          : patientsRegisterView === 'recheck'
+                          ? 'Returning patients for follow-up will appear here.'
                           : 'New patient registrations will appear here.'}
                       </p>
                     </div>
@@ -1205,6 +1523,7 @@ const ReceptionistDashboard = () => {
                           <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
                           <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
                           <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-green-100">
@@ -1221,10 +1540,24 @@ const ReceptionistDashboard = () => {
                               <td className="px-6 py-4">
                                 <div className="text-sm font-semibold text-slate-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
                                   <span>{patient.fullName}</span>
+                                  {patient.isRecheck && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold uppercase tracking-wide border border-purple-200">
+                                      🔄 Recheck-Up
+                                    </span>
+                                  )}
                                   <span className="hidden sm:inline text-xs uppercase tracking-wide text-slate-400">•</span>
                                   <span className="text-sm text-slate-600 font-normal">Age {patient.age}</span>
                                 </div>
                                 <p className="text-xs text-slate-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                    patient.feeStatus === 'paid'
+                                      ? 'bg-green-100 text-green-700 border border-green-200'
+                                      : 'bg-orange-100 text-orange-700 border border-orange-200'
+                                  }`}>
+                                    {patient.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
+                                  </span>
+                                </div>
                               </td>
                               <td className="px-6 py-4">
                                 <div className="text-sm font-semibold text-slate-900">{patient.doctor?.fullName || 'N/A'}</div>
@@ -1263,19 +1596,42 @@ const ReceptionistDashboard = () => {
                                     ? 'bg-green-100 text-green-700 border-green-200'
                                     : patient.status === 'in-progress'
                                     ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                                    : patient.status === 'cancelled'
+                                    ? 'bg-red-100 text-red-700 border-red-200'
                                     : 'bg-slate-100 text-slate-700 border-slate-200'
                                 }`}>
                                   <span className={`w-2 h-2 rounded-full ${
                                     patient.status === 'completed' ? 'bg-green-500'
                                     : patient.status === 'in-progress' ? 'bg-yellow-500'
+                                    : patient.status === 'cancelled' ? 'bg-red-500'
                                     : 'bg-slate-400'
                                   }`}></span>
                                   {patient.status === 'completed'
                                     ? 'Completed'
                                     : patient.status === 'in-progress'
                                     ? 'In Progress'
+                                    : patient.status === 'cancelled'
+                                    ? 'Cancelled'
                                     : 'Waiting'}
                                 </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                {!patient.isCancelled && patient.status !== 'cancelled' && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      e.stopPropagation()
+                                      handleCancelClick(patient)
+                                    }}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-colors"
+                                  >
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                    Cancel
+                                  </button>
+                                )}
                               </td>
                             </tr>
                           )
@@ -1397,6 +1753,7 @@ const ReceptionistDashboard = () => {
                               <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
                               <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
                               <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Actions</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-slate-100">
@@ -1413,10 +1770,24 @@ const ReceptionistDashboard = () => {
                                   <td className="px-6 py-4 border-r border-slate-200">
                                     <div className="text-sm font-semibold text-slate-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
                                       <span>{patient.fullName}</span>
+                                      {patient.isRecheck && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold uppercase tracking-wide border border-purple-200">
+                                          🔄 Recheck-Up
+                                        </span>
+                                      )}
                                       <span className="hidden sm:inline text-xs uppercase tracking-wide text-slate-400">•</span>
                                       <span className="text-sm text-slate-600 font-normal">Age {patient.age}</span>
                                     </div>
                                     <p className="text-xs text-slate-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                        patient.feeStatus === 'paid'
+                                          ? 'bg-green-100 text-green-700 border border-green-200'
+                                          : 'bg-orange-100 text-orange-700 border border-orange-200'
+                                      }`}>
+                                        {patient.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
+                                      </span>
+                                    </div>
                                   </td>
                                   <td className="px-6 py-4 border-r border-slate-200">
                                     <div className="text-sm font-semibold text-slate-900">{patient.doctor?.fullName || 'N/A'}</div>
@@ -1455,19 +1826,37 @@ const ReceptionistDashboard = () => {
                                         ? 'bg-green-100 text-green-700 border-green-200'
                                         : patient.status === 'in-progress'
                                         ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                                        : patient.status === 'cancelled'
+                                        ? 'bg-red-100 text-red-700 border-red-200'
                                         : 'bg-slate-100 text-slate-700 border-slate-200'
                                     }`}>
                                       <span className={`w-2 h-2 rounded-full ${
                                         patient.status === 'completed' ? 'bg-green-500'
                                         : patient.status === 'in-progress' ? 'bg-yellow-500'
+                                        : patient.status === 'cancelled' ? 'bg-red-500'
                                         : 'bg-slate-400'
                                       }`}></span>
                                       {patient.status === 'completed'
                                         ? 'Completed'
                                         : patient.status === 'in-progress'
                                         ? 'In Progress'
+                                        : patient.status === 'cancelled'
+                                        ? 'Cancelled'
                                         : 'Waiting'}
                                     </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    {!patient.isCancelled && patient.status !== 'cancelled' && (
+                                      <button
+                                        onClick={() => handleCancelClick(patient)}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-colors"
+                                      >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                        Cancel
+                                      </button>
+                                    )}
                                   </td>
                                 </tr>
                               )
@@ -2358,6 +2747,79 @@ const ReceptionistDashboard = () => {
                 setCancelledAppointmentInfo(null)
               }}
               className="w-full bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Patient Confirmation Modal */}
+      {showCancelModal && patientToCancel && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-red-50 mb-4 mx-auto">
+              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-3 text-center">
+              Cancel Patient Confirmation
+            </h3>
+            <div className="mb-6 space-y-3">
+              <p className="text-gray-700 text-center">
+                Are you sure you want to cancel this patient's appointment?
+              </p>
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <p className="text-sm font-semibold text-gray-900">{patientToCancel.fullName}</p>
+                <p className="text-xs text-gray-600">Token #{patientToCancel.tokenNumber}</p>
+              </div>
+              <p className="text-sm text-red-600 text-center font-medium">
+                Once canceled, this appointment cannot be restored.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancelConfirm}
+                className="flex-1 bg-red-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition"
+              >
+                Confirm Cancel
+              </button>
+              <button
+                onClick={handleCancelClose}
+                className="flex-1 bg-gray-300 text-gray-700 py-3 px-4 rounded-lg font-semibold hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition"
+              >
+                Go Back
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Patient Success Modal */}
+      {showCancelSuccessModal && cancelledPatientName && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-green-50 mb-4 mx-auto">
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-900 mb-3 text-center">
+              Patient Cancelled Successfully
+            </h3>
+            <div className="mb-6 space-y-3">
+              <p className="text-gray-700 text-center font-medium text-lg">
+                Patient has been cancelled successfully.
+              </p>
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                <p className="text-sm font-semibold text-gray-900">{cancelledPatientName}</p>
+                <p className="text-xs text-gray-600">The patient has been removed from the active list.</p>
+              </div>
+            </div>
+            <button
+              onClick={handleCancelSuccessClose}
+              className="w-full bg-gray-300 text-gray-700 py-3 px-4 rounded-lg font-semibold hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition"
             >
               Close
             </button>
