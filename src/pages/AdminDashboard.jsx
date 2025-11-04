@@ -21,6 +21,7 @@ const AdminDashboard = () => {
     mobileNumber: ''
   })
   const [viewMode, setViewMode] = useState('table')
+  const [userSearch, setUserSearch] = useState('')
   const [patientSearch, setPatientSearch] = useState('')
   const [patientDate, setPatientDate] = useState('')
   const [selectedMetric, setSelectedMetric] = useState(null) // 'total', 'doctors', 'receptionists', 'patients'
@@ -140,6 +141,34 @@ const AdminDashboard = () => {
     return grouped
   }
 
+  // Filter users based on search term
+  const filteredUsers = useMemo(() => {
+    const term = userSearch.trim().toLowerCase()
+    if (!term) return users
+
+    return users.filter((user) => {
+      const fullName = user.fullName?.toLowerCase() || ''
+      const email = user.email?.toLowerCase() || ''
+      const role = user.role?.toLowerCase() || ''
+      const specialization = user.specialization?.toLowerCase() || ''
+      const mobile = user.mobileNumber?.toLowerCase() || ''
+
+      // If search term is "doctor", show only doctors
+      if (term === 'doctor' || term === 'doctors') {
+        return role === 'doctor'
+      }
+
+      // Otherwise, search across all fields
+      return (
+        fullName.includes(term) ||
+        email.includes(term) ||
+        role.includes(term) ||
+        specialization.includes(term) ||
+        mobile.includes(term)
+      )
+    })
+  }, [users, userSearch])
+
   const filteredPatients = useMemo(() => {
     const term = patientSearch.trim().toLowerCase()
     return patients.filter((patient) => {
@@ -156,12 +185,14 @@ const AdminDashboard = () => {
       const fullName = patient.fullName?.toLowerCase() || ''
       const mobile = patient.mobileNumber?.toLowerCase() || ''
       const disease = patient.disease?.toLowerCase() || ''
+      const tokenNumber = String(patient.tokenNumber || '').toLowerCase()
 
       return (
         fullName.includes(term) ||
         doctorName.includes(term) ||
         mobile.includes(term) ||
-        disease.includes(term)
+        disease.includes(term) ||
+        tokenNumber.includes(term)
       )
     })
   }, [patients, patientSearch, patientDate])
@@ -571,16 +602,32 @@ const AdminDashboard = () => {
               <div>
                 <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
                   <span>User Management</span>
-                  <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold uppercase tracking-wide">{users.length} active</span>
+                  <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold uppercase tracking-wide">
+                    {userSearch ? `${filteredUsers.length} of ${users.length}` : `${users.length} active`}
+                  </span>
                 </h2>
                 <p className="mt-2 text-sm text-slate-500">Onboard, edit, and manage Tekisky staff centrally.</p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
-                <input
-                  type="text"
-                  placeholder="Search name, email, or role..."
-                  className="w-full sm:w-72 px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
-                />
+                <div className="relative flex-1 sm:w-72">
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="Search name, email, or role..."
+                    className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
+                  />
+                  {userSearch && (
+                    <button
+                      onClick={() => setUserSearch('')}
+                      className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
                 <button
                   onClick={() => setShowModal(true)}
                   className="inline-flex items-center justify-center gap-2 px-4 sm:px-6 py-2 bg-blue-600 text-white rounded-lg shadow-sm hover:shadow-md hover:bg-blue-700 transition text-sm whitespace-nowrap"
@@ -598,6 +645,20 @@ const AdminDashboard = () => {
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
           </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+              <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <p className="text-slate-500 text-lg font-semibold mb-2">
+              {userSearch ? 'No users found matching your search' : 'No users found'}
+            </p>
+            <p className="text-slate-400 text-sm">
+              {userSearch ? 'Try adjusting your search terms' : 'Start by adding a new user'}
+            </p>
+          </div>
         ) : (
           <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
             {/* Desktop Table View */}
@@ -613,7 +674,7 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-100">
-                  {users.map((u) => (
+                  {filteredUsers.map((u) => (
                     <tr key={u._id} className="hover:bg-blue-50/40 transition">
                       <td className="px-6 py-4 text-sm font-semibold text-slate-800 flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold">
@@ -680,7 +741,7 @@ const AdminDashboard = () => {
 
             {/* Mobile Card View */}
             <div className="md:hidden">
-              {users.map((u) => (
+              {filteredUsers.map((u) => (
                 <div key={u._id} className="p-4 border-b border-slate-200 bg-white">
                   <div className="flex justify-between items-start mb-2">
                     <div>
@@ -747,15 +808,17 @@ const AdminDashboard = () => {
                     type="text"
                     value={patientSearch}
                     onChange={(e) => setPatientSearch(e.target.value)}
-                    placeholder="Search patient, doctor, or mobile"
+                    placeholder="Search patient name or token number"
                     className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
                   />
                   {patientSearch && (
                     <button
                       onClick={() => setPatientSearch('')}
-                      className="absolute inset-y-0 right-3 text-slate-400 hover:text-slate-600"
+                      className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600"
                     >
-                      ×
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
                     </button>
                   )}
                 </div>

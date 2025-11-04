@@ -53,6 +53,7 @@ const ReceptionistDashboard = () => {
   const { user, logout } = useAuth()
   const [activeTab, setActiveTab] = useState('doctors') // 'doctors', 'registration', or 'appointments'
   const [appointmentsView, setAppointmentsView] = useState('today') // 'today' or 'upcoming'
+  const [patientsRegisterView, setPatientsRegisterView] = useState('today') // 'today' or 'history'
   const [doctors, setDoctors] = useState([])
   const [doctorStats, setDoctorStats] = useState({})
   const [todayPatients, setTodayPatients] = useState([])
@@ -62,6 +63,10 @@ const ReceptionistDashboard = () => {
   const [loadingAppointments, setLoadingAppointments] = useState(false)
   const [todayPatientsPage, setTodayPatientsPage] = useState(1)
   const [patientHistoryPage, setPatientHistoryPage] = useState(1)
+  const [patientsRegisterSearch, setPatientsRegisterSearch] = useState('')
+  const [patientsRegisterSearchDebounced, setPatientsRegisterSearchDebounced] = useState('')
+  const [appointmentsSearch, setAppointmentsSearch] = useState('')
+  const [appointmentsSearchDebounced, setAppointmentsSearchDebounced] = useState('')
   
   // Constants
   const todayPatientsPerPage = 10
@@ -294,16 +299,63 @@ const ReceptionistDashboard = () => {
 
   const generatedTokenDateTime = generatedToken ? getDateTimeLabels(generatedToken.registrationDate) : null
 
+  // Filter patients based on search query (using debounced value)
+  const filteredTodayPatients = useMemo(() => {
+    if (!patientsRegisterSearchDebounced.trim()) {
+      return todayPatients
+    }
+    const searchTerm = patientsRegisterSearchDebounced.trim().toLowerCase()
+    return todayPatients.filter((patient) => {
+      const fullName = patient.fullName?.toLowerCase() || ''
+      const mobileNumber = patient.mobileNumber?.toLowerCase() || ''
+      const tokenNumber = patient.tokenNumber?.toString() || ''
+      return (
+        fullName.includes(searchTerm) ||
+        mobileNumber.includes(searchTerm) ||
+        tokenNumber.includes(searchTerm)
+      )
+    })
+  }, [todayPatients, patientsRegisterSearchDebounced])
+
+  const filteredPatientHistory = useMemo(() => {
+    if (!patientsRegisterSearchDebounced.trim()) {
+      return patientHistory
+    }
+    const searchTerm = patientsRegisterSearchDebounced.trim().toLowerCase()
+    return patientHistory.filter((patient) => {
+      const fullName = patient.fullName?.toLowerCase() || ''
+      const mobileNumber = patient.mobileNumber?.toLowerCase() || ''
+      const tokenNumber = patient.tokenNumber?.toString() || ''
+      return (
+        fullName.includes(searchTerm) ||
+        mobileNumber.includes(searchTerm) ||
+        tokenNumber.includes(searchTerm)
+      )
+    })
+  }, [patientHistory, patientsRegisterSearchDebounced])
+
+  // Debounce search input for smooth UX
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPatientsRegisterSearchDebounced(patientsRegisterSearch)
+      // Reset pagination when search changes
+      setTodayPatientsPage(1)
+      setPatientHistoryPage(1)
+    }, 300) // 300ms debounce delay
+
+    return () => clearTimeout(timer)
+  }, [patientsRegisterSearch])
+
   // Pagination logic for Patient History
-  const patientHistoryTotalPages = Math.ceil(patientHistory.length / patientHistoryPerPage)
+  const patientHistoryTotalPages = Math.ceil(filteredPatientHistory.length / patientHistoryPerPage)
   const patientHistoryStartIndex = (patientHistoryPage - 1) * patientHistoryPerPage
   const patientHistoryEndIndex = patientHistoryStartIndex + patientHistoryPerPage
-  const paginatedPatientHistory = patientHistory.slice(patientHistoryStartIndex, patientHistoryEndIndex)
+  const paginatedPatientHistory = filteredPatientHistory.slice(patientHistoryStartIndex, patientHistoryEndIndex)
 
   const handlePatientHistoryPageChange = (newPage) => {
     setPatientHistoryPage(newPage)
     // Scroll to top of the section on page change
-    const section = document.getElementById('patient-history-section')
+    const section = document.getElementById('patients-register-section')
     if (section) {
       section.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
@@ -347,15 +399,15 @@ const ReceptionistDashboard = () => {
   }
 
   // Pagination logic for Today's Patients
-  const todayPatientsTotalPages = Math.ceil(todayPatients.length / todayPatientsPerPage)
+  const todayPatientsTotalPages = Math.ceil(filteredTodayPatients.length / todayPatientsPerPage)
   const todayPatientsStartIndex = (todayPatientsPage - 1) * todayPatientsPerPage
   const todayPatientsEndIndex = todayPatientsStartIndex + todayPatientsPerPage
-  const paginatedTodayPatients = todayPatients.slice(todayPatientsStartIndex, todayPatientsEndIndex)
+  const paginatedTodayPatients = filteredTodayPatients.slice(todayPatientsStartIndex, todayPatientsEndIndex)
   
   const handleTodayPatientsPageChange = (newPage) => {
     setTodayPatientsPage(newPage)
     // Scroll to top of the section on page change
-    const section = document.getElementById('patients-today-section')
+    const section = document.getElementById('patients-register-section')
     if (section) {
       section.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
@@ -447,6 +499,50 @@ const ReceptionistDashboard = () => {
 
     return { todayAppointments: todayApps, upcomingAppointments: upcomingApps }
   }, [appointments])
+
+  // Debounce appointments search input for smooth UX
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAppointmentsSearchDebounced(appointmentsSearch)
+    }, 300) // 300ms debounce delay
+
+    return () => clearTimeout(timer)
+  }, [appointmentsSearch])
+
+  // Filter appointments based on search query
+  const filteredTodayAppointments = useMemo(() => {
+    if (!appointmentsSearchDebounced.trim()) {
+      return todayAppointments
+    }
+    const searchTerm = appointmentsSearchDebounced.trim().toLowerCase()
+    return todayAppointments.filter((appointment) => {
+      const patientName = appointment.patientName?.toLowerCase() || ''
+      const mobileNumber = appointment.mobileNumber?.toLowerCase() || ''
+      const tokenNumber = appointment.tokenNumber?.toString() || ''
+      return (
+        patientName.includes(searchTerm) ||
+        mobileNumber.includes(searchTerm) ||
+        tokenNumber.includes(searchTerm)
+      )
+    })
+  }, [todayAppointments, appointmentsSearchDebounced])
+
+  const filteredUpcomingAppointments = useMemo(() => {
+    if (!appointmentsSearchDebounced.trim()) {
+      return upcomingAppointments
+    }
+    const searchTerm = appointmentsSearchDebounced.trim().toLowerCase()
+    return upcomingAppointments.filter((appointment) => {
+      const patientName = appointment.patientName?.toLowerCase() || ''
+      const mobileNumber = appointment.mobileNumber?.toLowerCase() || ''
+      const tokenNumber = appointment.tokenNumber?.toString() || ''
+      return (
+        patientName.includes(searchTerm) ||
+        mobileNumber.includes(searchTerm) ||
+        tokenNumber.includes(searchTerm)
+      )
+    })
+  }, [upcomingAppointments, appointmentsSearchDebounced])
 
   const fetchAppointments = async () => {
     setLoadingAppointments(true)
@@ -970,35 +1066,132 @@ const ReceptionistDashboard = () => {
           </form>
         </div>
 
-            {/* Patients Today Section */}
-            <div id="patients-today-section" className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
-              {/* Section Header */}
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3 border-b border-green-200">
-                <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <span className="text-green-600">🟢</span>
-                  Patients Today
-                  <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold ml-2">
-                    {todayPatients.length} patient{todayPatients.length !== 1 ? 's' : ''}
-                  </span>
-                </h4>
+            {/* Patients Register Section - Unified with Toggle Tabs */}
+            <div id="patients-register-section" className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
+              {/* Section Header with Toggle Tabs */}
+              <div className={`px-6 py-4 border-b transition-colors duration-300 ${
+                patientsRegisterView === 'today'
+                  ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200'
+                  : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'
+              }`}>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h4 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                      <span className={patientsRegisterView === 'today' ? 'text-green-600' : 'text-blue-600'}>
+                        {patientsRegisterView === 'today' ? '🟢' : '🔵'}
+                      </span>
+                      Patients Register
+                    </h4>
+                    <p className="text-sm text-slate-600 mt-1">
+                      {patientsRegisterView === 'today' 
+                        ? 'View and manage today\'s patient registrations' 
+                        : 'Browse complete historical patient records'}
+                    </p>
+                  </div>
+                  {/* Search Bar and Toggle Tabs */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    {/* Search Bar */}
+                    <div className="relative flex-1 sm:flex-initial sm:w-80">
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </div>
+                        <input
+                          type="text"
+                          value={patientsRegisterSearch}
+                          onChange={(e) => setPatientsRegisterSearch(e.target.value)}
+                          placeholder="Search by Patient Name, Token, or Mobile..."
+                          className={`block w-full pl-10 pr-10 py-2.5 border rounded-xl text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+                            patientsRegisterView === 'today'
+                              ? 'border-green-300 focus:ring-green-500 focus:border-green-500 bg-white/90'
+                              : 'border-blue-300 focus:ring-blue-500 focus:border-blue-500 bg-white/90'
+                          } ${patientsRegisterSearch ? 'shadow-sm' : ''}`}
+                        />
+                        {patientsRegisterSearch && (
+                          <button
+                            onClick={() => setPatientsRegisterSearch('')}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                            aria-label="Clear search"
+                          >
+                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Toggle Tabs */}
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setPatientsRegisterView('today')}
+                        className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 shadow-sm ${
+                          patientsRegisterView === 'today'
+                            ? 'bg-green-600 text-white shadow-md hover:bg-green-700'
+                            : 'bg-white text-green-700 border-2 border-green-300 hover:bg-green-50'
+                        }`}
+                      >
+                        <span>🟢</span>
+                        <span>Patients Today</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                          patientsRegisterView === 'today'
+                            ? 'bg-white/20 text-white'
+                            : 'bg-green-100 text-green-700'
+                        }`}>
+                          {patientsRegisterSearchDebounced ? filteredTodayPatients.length : todayPatients.length}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setPatientsRegisterView('history')}
+                        className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 shadow-sm ${
+                          patientsRegisterView === 'history'
+                            ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700'
+                            : 'bg-white text-blue-700 border-2 border-blue-300 hover:bg-blue-50'
+                        }`}
+                      >
+                        <span>🔵</span>
+                        <span>Patient History</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                          patientsRegisterView === 'history'
+                            ? 'bg-white/20 text-white'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {patientsRegisterSearchDebounced ? filteredPatientHistory.length : patientHistory.length}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {loadingPatients ? (
-                <div className="text-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
-                  <p className="mt-4 text-slate-500">Loading patients...</p>
-                </div>
-              ) : todayPatients.length === 0 ? (
-                <div className="text-center py-12 px-6">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
-                    <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-3-3H5a3 3 0 00-3 3v2h5m6 0v-5a2 2 0 012-2h2a2 2 0 012 2v5m-6 0H9" />
-                    </svg>
-                  </div>
-                  <p className="text-lg font-semibold text-slate-700 mb-2">No patients registered today</p>
-                  <p className="text-sm text-slate-500">New patient registrations will appear here.</p>
-                </div>
-              ) : (
+              {/* Patients Today View */}
+              {patientsRegisterView === 'today' && (
+                <div className="fade-enter">
+                  {loadingPatients ? (
+                    <div className="text-center py-12">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+                      <p className="mt-4 text-slate-500">Loading patients...</p>
+                    </div>
+                  ) : filteredTodayPatients.length === 0 ? (
+                    <div className="text-center py-12 px-6">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                        <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-3-3H5a3 3 0 00-3 3v2h5m6 0v-5a2 2 0 012-2h2a2 2 0 012 2v5m-6 0H9" />
+                        </svg>
+                      </div>
+                      <p className="text-lg font-semibold text-slate-700 mb-2">
+                        {patientsRegisterSearchDebounced 
+                          ? 'No patients found matching your search' 
+                          : 'No patients registered today'}
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        {patientsRegisterSearchDebounced 
+                          ? 'Try adjusting your search terms' 
+                          : 'New patient registrations will appear here.'}
+                      </p>
+                    </div>
+                  ) : (
                 <>
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-green-100">
@@ -1099,9 +1292,9 @@ const ReceptionistDashboard = () => {
                         <div className="text-sm text-slate-600">
                           Showing <span className="font-semibold text-slate-900">{todayPatientsStartIndex + 1}</span> to{' '}
                           <span className="font-semibold text-slate-900">
-                            {Math.min(todayPatientsEndIndex, todayPatients.length)}
+                            {Math.min(todayPatientsEndIndex, filteredTodayPatients.length)}
                           </span>{' '}
-                          of <span className="font-semibold text-slate-900">{todayPatients.length}</span> patients
+                          of <span className="font-semibold text-slate-900">{filteredTodayPatients.length}</span> patients
                         </div>
 
                         {/* Pagination Controls */}
@@ -1166,198 +1359,199 @@ const ReceptionistDashboard = () => {
                   )}
                 </>
               )}
-            </div>
-
-            {/* Patient History Section */}
-            <div id="patient-history-section" className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
-              {/* Section Header */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-3 border-b border-blue-200">
-                <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  <span className="text-blue-600">🔵</span>
-                  Patient History
-                  <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold ml-2">
-                    {patientHistory.length} record{patientHistory.length !== 1 ? 's' : ''}
-                  </span>
-                </h4>
               </div>
+              )}
 
-              {patientHistory.length === 0 ? (
-                <div className="text-center py-12 px-6">
-                  <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
-                    <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                  </div>
-                  <p className="text-lg font-semibold text-slate-700 mb-2">No patient history available</p>
-                  <p className="text-sm text-slate-500">Historical patient records will appear here.</p>
-                </div>
-              ) : (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-slate-100">
-                        {paginatedPatientHistory.map((patient, index) => {
-                          const { dateLabel, timeLabel } = getDateTimeLabels(patient.registrationDate || patient.createdAt)
-                          const globalIndex = patientHistoryStartIndex + index
-                          return (
-                            <tr key={patient._id} className="hover:bg-slate-50 transition border border-slate-200">
-                              <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
-                                  {String(globalIndex + 1).padStart(2, '0')}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 border-r border-slate-200">
-                                <div className="text-sm font-semibold text-slate-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                                  <span>{patient.fullName}</span>
-                                  <span className="hidden sm:inline text-xs uppercase tracking-wide text-slate-400">•</span>
-                                  <span className="text-sm text-slate-600 font-normal">Age {patient.age}</span>
-                                </div>
-                                <p className="text-xs text-slate-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
-                              </td>
-                              <td className="px-6 py-4 border-r border-slate-200">
-                                <div className="text-sm font-semibold text-slate-900">{patient.doctor?.fullName || 'N/A'}</div>
-                                <div className="text-xs text-slate-500">{patient.doctor?.specialization || '—'}</div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
-                                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-sm font-medium border border-purple-200">
-                                  <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                                  {patient.disease || 'Not specified'}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
-                                <span className="px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-full font-bold text-sm border border-blue-200 shadow-sm">
-                                  #{patient.tokenNumber}
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
-                                <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                  <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                  </svg>
-                                  {dateLabel}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
-                                <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                  <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  {timeLabel}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
-                                  patient.status === 'completed'
-                                    ? 'bg-green-100 text-green-700 border-green-200'
-                                    : patient.status === 'in-progress'
-                                    ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
-                                    : 'bg-slate-100 text-slate-700 border-slate-200'
-                                }`}>
-                                  <span className={`w-2 h-2 rounded-full ${
-                                    patient.status === 'completed' ? 'bg-green-500'
-                                    : patient.status === 'in-progress' ? 'bg-yellow-500'
-                                    : 'bg-slate-400'
-                                  }`}></span>
-                                  {patient.status === 'completed'
-                                    ? 'Completed'
-                                    : patient.status === 'in-progress'
-                                    ? 'In Progress'
-                                    : 'Waiting'}
-                                </span>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Pagination Controls */}
-                  {patientHistoryTotalPages > 1 && (
-                    <div className="bg-slate-50 border-t border-slate-200 px-6 py-4">
-                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                        {/* Results Info */}
-                        <div className="text-sm text-slate-600">
-                          Showing <span className="font-semibold text-slate-900">{patientHistoryStartIndex + 1}</span> to{' '}
-                          <span className="font-semibold text-slate-900">
-                            {Math.min(patientHistoryEndIndex, patientHistory.length)}
-                          </span>{' '}
-                          of <span className="font-semibold text-slate-900">{patientHistory.length}</span> records
-                        </div>
-
-                        {/* Pagination Controls */}
-                        <div className="flex items-center gap-2">
-                          {/* Previous Button */}
-                          <button
-                            onClick={() => handlePatientHistoryPageChange(patientHistoryPage - 1)}
-                            disabled={patientHistoryPage === 1}
-                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                              patientHistoryPage === 1
-                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                                : 'bg-white text-slate-700 hover:bg-purple-50 hover:text-purple-700 border border-slate-300 hover:border-purple-300 shadow-sm'
-                            }`}
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                            </svg>
-                            Previous
-                          </button>
-
-                          {/* Page Numbers */}
-                          <div className="flex items-center gap-1">
-                            {getVisibleHistoryPageNumbers().map((page, idx) => (
-                              page === '...' ? (
-                                <span key={`ellipsis-${idx}`} className="px-2 text-slate-400">
-                                  ...
-                                </span>
-                              ) : (
-                                <button
-                                  key={page}
-                                  onClick={() => handlePatientHistoryPageChange(page)}
-                                  className={`min-w-[2.5rem] px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
-                                    patientHistoryPage === page
-                                      ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md border border-purple-700'
-                                      : 'bg-white text-slate-700 hover:bg-purple-50 hover:text-purple-700 border border-slate-300 hover:border-purple-300 shadow-sm'
-                                  }`}
-                                >
-                                  {page}
-                                </button>
-                              )
-                            ))}
-                          </div>
-
-                          {/* Next Button */}
-                          <button
-                            onClick={() => handlePatientHistoryPageChange(patientHistoryPage + 1)}
-                            disabled={patientHistoryPage === patientHistoryTotalPages}
-                            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                              patientHistoryPage === patientHistoryTotalPages
-                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                                : 'bg-white text-slate-700 hover:bg-purple-50 hover:text-purple-700 border border-slate-300 hover:border-purple-300 shadow-sm'
-                            }`}
-                          >
-                            Next
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </button>
-                        </div>
+              {/* Patient History View */}
+              {patientsRegisterView === 'history' && (
+                <div className="fade-enter">
+                  {filteredPatientHistory.length === 0 ? (
+                    <div className="text-center py-12 px-6">
+                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                        <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
                       </div>
+                      <p className="text-lg font-semibold text-slate-700 mb-2">
+                        {patientsRegisterSearchDebounced 
+                          ? 'No patient records found matching your search' 
+                          : 'No patient history available'}
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        {patientsRegisterSearchDebounced 
+                          ? 'Try adjusting your search terms' 
+                          : 'Historical patient records will appear here.'}
+                      </p>
                     </div>
+                  ) : (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-slate-200">
+                          <thead className="bg-slate-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
+                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-slate-100">
+                            {paginatedPatientHistory.map((patient, index) => {
+                              const { dateLabel, timeLabel } = getDateTimeLabels(patient.registrationDate || patient.createdAt)
+                              const globalIndex = patientHistoryStartIndex + index
+                              return (
+                                <tr key={patient._id} className="hover:bg-slate-50 transition border border-slate-200">
+                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
+                                      {String(globalIndex + 1).padStart(2, '0')}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 border-r border-slate-200">
+                                    <div className="text-sm font-semibold text-slate-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                                      <span>{patient.fullName}</span>
+                                      <span className="hidden sm:inline text-xs uppercase tracking-wide text-slate-400">•</span>
+                                      <span className="text-sm text-slate-600 font-normal">Age {patient.age}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
+                                  </td>
+                                  <td className="px-6 py-4 border-r border-slate-200">
+                                    <div className="text-sm font-semibold text-slate-900">{patient.doctor?.fullName || 'N/A'}</div>
+                                    <div className="text-xs text-slate-500">{patient.doctor?.specialization || '—'}</div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-sm font-medium border border-purple-200">
+                                      <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                      {patient.disease || 'Not specified'}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                    <span className="px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-full font-bold text-sm border border-blue-200 shadow-sm">
+                                      #{patient.tokenNumber}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                    <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                      {dateLabel}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                    <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                      {timeLabel}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                                      patient.status === 'completed'
+                                        ? 'bg-green-100 text-green-700 border-green-200'
+                                        : patient.status === 'in-progress'
+                                        ? 'bg-yellow-100 text-yellow-700 border-yellow-200'
+                                        : 'bg-slate-100 text-slate-700 border-slate-200'
+                                    }`}>
+                                      <span className={`w-2 h-2 rounded-full ${
+                                        patient.status === 'completed' ? 'bg-green-500'
+                                        : patient.status === 'in-progress' ? 'bg-yellow-500'
+                                        : 'bg-slate-400'
+                                      }`}></span>
+                                      {patient.status === 'completed'
+                                        ? 'Completed'
+                                        : patient.status === 'in-progress'
+                                        ? 'In Progress'
+                                        : 'Waiting'}
+                                    </span>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Pagination Controls */}
+                      {patientHistoryTotalPages > 1 && (
+                        <div className="bg-slate-50 border-t border-slate-200 px-6 py-4">
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                            {/* Results Info */}
+                            <div className="text-sm text-slate-600">
+                              Showing <span className="font-semibold text-slate-900">{patientHistoryStartIndex + 1}</span> to{' '}
+                              <span className="font-semibold text-slate-900">
+                                {Math.min(patientHistoryEndIndex, filteredPatientHistory.length)}
+                              </span>{' '}
+                              of <span className="font-semibold text-slate-900">{filteredPatientHistory.length}</span> records
+                            </div>
+
+                            {/* Pagination Controls */}
+                            <div className="flex items-center gap-2">
+                              {/* Previous Button */}
+                              <button
+                                onClick={() => handlePatientHistoryPageChange(patientHistoryPage - 1)}
+                                disabled={patientHistoryPage === 1}
+                                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                                  patientHistoryPage === 1
+                                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                    : 'bg-white text-slate-700 hover:bg-purple-50 hover:text-purple-700 border border-slate-300 hover:border-purple-300 shadow-sm'
+                                }`}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                </svg>
+                                Previous
+                              </button>
+
+                              {/* Page Numbers */}
+                              <div className="flex items-center gap-1">
+                                {getVisibleHistoryPageNumbers().map((page, idx) => (
+                                  page === '...' ? (
+                                    <span key={`ellipsis-${idx}`} className="px-2 text-slate-400">
+                                      ...
+                                    </span>
+                                  ) : (
+                                    <button
+                                      key={page}
+                                      onClick={() => handlePatientHistoryPageChange(page)}
+                                      className={`min-w-[2.5rem] px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
+                                        patientHistoryPage === page
+                                          ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md border border-purple-700'
+                                          : 'bg-white text-slate-700 hover:bg-purple-50 hover:text-purple-700 border border-slate-300 hover:border-purple-300 shadow-sm'
+                                      }`}
+                                    >
+                                      {page}
+                                    </button>
+                                  )
+                                ))}
+                              </div>
+
+                              {/* Next Button */}
+                              <button
+                                onClick={() => handlePatientHistoryPageChange(patientHistoryPage + 1)}
+                                disabled={patientHistoryPage === patientHistoryTotalPages}
+                                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                                  patientHistoryPage === patientHistoryTotalPages
+                                    ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                                    : 'bg-white text-slate-700 hover:bg-purple-50 hover:text-purple-700 border border-slate-300 hover:border-purple-300 shadow-sm'
+                                }`}
+                              >
+                                Next
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
-                </>
+                </div>
               )}
             </div>
           </div>
@@ -1510,8 +1704,38 @@ const ReceptionistDashboard = () => {
                     <h3 className="text-2xl font-bold text-slate-800">All Appointments</h3>
                     <p className="text-sm text-slate-600 mt-1">View today's appointments and upcoming scheduled visits</p>
                   </div>
-                  {/* Toggle Buttons */}
-                  <div className="flex items-center gap-3">
+                  {/* Search Bar and Toggle Buttons */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    {/* Search Bar */}
+                    <div className="relative flex-1 sm:flex-initial sm:w-80">
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                          </svg>
+                        </div>
+                        <input
+                          type="text"
+                          value={appointmentsSearch}
+                          onChange={(e) => setAppointmentsSearch(e.target.value)}
+                          placeholder="Search by Patient Name, Token, or Mobile..."
+                          className={`block w-full pl-10 pr-10 py-2.5 border rounded-xl text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 border-slate-300 focus:ring-blue-500 focus:border-blue-500 bg-white/90 ${appointmentsSearch ? 'shadow-sm' : ''}`}
+                        />
+                        {appointmentsSearch && (
+                          <button
+                            onClick={() => setAppointmentsSearch('')}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                            aria-label="Clear search"
+                          >
+                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Toggle Buttons */}
+                    <div className="flex items-center gap-3">
                     <button
                       onClick={() => setAppointmentsView('today')}
                       className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm border ${
@@ -1527,7 +1751,7 @@ const ReceptionistDashboard = () => {
                           ? 'bg-green-600 text-white'
                           : 'bg-slate-200 text-slate-700'
                       }`}>
-                        {todayAppointments.length}
+                        {appointmentsSearchDebounced ? filteredTodayAppointments.length : todayAppointments.length}
                       </span>
                       <span className="text-xs opacity-75">appointments</span>
                     </button>
@@ -1546,12 +1770,13 @@ const ReceptionistDashboard = () => {
                           ? 'bg-blue-600 text-white'
                           : 'bg-slate-200 text-slate-700'
                       }`}>
-                        {upcomingAppointments.length}
+                        {appointmentsSearchDebounced ? filteredUpcomingAppointments.length : upcomingAppointments.length}
                       </span>
                       <span className="text-xs opacity-75">appointments</span>
                     </button>
                   </div>
                 </div>
+              </div>
               </div>
 
               {loadingAppointments ? (
@@ -1569,13 +1794,27 @@ const ReceptionistDashboard = () => {
                           <span className="text-green-600">🟢</span>
                           Today's Patients
                           <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold ml-2">
-                            {todayAppointments.length} appointment{todayAppointments.length !== 1 ? 's' : ''}
+                            {appointmentsSearchDebounced ? filteredTodayAppointments.length : todayAppointments.length} appointment{(appointmentsSearchDebounced ? filteredTodayAppointments.length : todayAppointments.length) !== 1 ? 's' : ''}
                           </span>
                         </h4>
                       </div>
-                    {todayAppointments.length === 0 ? (
-                      <div className="text-center py-8 px-6">
-                        <p className="text-slate-500">No appointments scheduled for today</p>
+                    {filteredTodayAppointments.length === 0 ? (
+                      <div className="text-center py-12 px-6">
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                          <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <p className="text-lg font-semibold text-slate-700 mb-2">
+                          {appointmentsSearchDebounced 
+                            ? 'No appointments found matching your search' 
+                            : 'No appointments scheduled for today'}
+                        </p>
+                        <p className="text-sm text-slate-500">
+                          {appointmentsSearchDebounced 
+                            ? 'Try adjusting your search terms' 
+                            : 'Schedule new appointments to see them here.'}
+                        </p>
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
@@ -1594,7 +1833,7 @@ const ReceptionistDashboard = () => {
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-green-100">
-                            {todayAppointments.map((appointment, index) => {
+                            {filteredTodayAppointments.map((appointment, index) => {
                               const { dateLabel, timeLabel } = getAppointmentLabels(appointment.appointmentDate, appointment.appointmentTime)
                               return (
                                 <tr key={appointment._id} className="bg-green-50/30 hover:bg-green-50/50 transition border-l-4 border-green-400">
@@ -1704,13 +1943,27 @@ const ReceptionistDashboard = () => {
                           <span className="text-blue-600">🔵</span>
                           Upcoming Patients
                           <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold ml-2">
-                            {upcomingAppointments.length} appointment{upcomingAppointments.length !== 1 ? 's' : ''}
+                            {appointmentsSearchDebounced ? filteredUpcomingAppointments.length : upcomingAppointments.length} appointment{(appointmentsSearchDebounced ? filteredUpcomingAppointments.length : upcomingAppointments.length) !== 1 ? 's' : ''}
                           </span>
                         </h4>
                       </div>
-                    {upcomingAppointments.length === 0 ? (
-                      <div className="text-center py-8 px-6">
-                        <p className="text-slate-500">No upcoming appointments scheduled</p>
+                    {filteredUpcomingAppointments.length === 0 ? (
+                      <div className="text-center py-12 px-6">
+                        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
+                          <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <p className="text-lg font-semibold text-slate-700 mb-2">
+                          {appointmentsSearchDebounced 
+                            ? 'No appointments found matching your search' 
+                            : 'No upcoming appointments scheduled'}
+                        </p>
+                        <p className="text-sm text-slate-500">
+                          {appointmentsSearchDebounced 
+                            ? 'Try adjusting your search terms' 
+                            : 'Schedule new appointments to see them here.'}
+                        </p>
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
@@ -1729,7 +1982,7 @@ const ReceptionistDashboard = () => {
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-slate-100">
-                            {upcomingAppointments.map((appointment, index) => {
+                            {filteredUpcomingAppointments.map((appointment, index) => {
                               const appointmentDateTime = new Date(`${appointment.appointmentDate}T${appointment.appointmentTime}`)
                               const { dateLabel, timeLabel } = getAppointmentLabels(appointment.appointmentDate, appointment.appointmentTime)
                               const daysUntil = Math.ceil((appointmentDateTime - new Date()) / (1000 * 60 * 60 * 24))
@@ -1840,7 +2093,6 @@ const ReceptionistDashboard = () => {
         )}
       </div>
 
-      {/* Token Modal */}
       {showTokenModal && generatedToken && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-8 text-center">
@@ -2128,5 +2380,6 @@ const ReceptionistDashboard = () => {
     </div>
   )
 }
+
 
 export default ReceptionistDashboard

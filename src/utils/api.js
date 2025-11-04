@@ -1,13 +1,24 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
+// const api = axios.create({
+//   // Prefer env var; otherwise use deployed backend by default
+//   baseURL: import.meta.env.VITE_API_BASE_URL || "https://hms-opd-backend.vercel.app/api",
+//   headers: {
+//     'Content-Type': 'application/json',
+//   },
+// })
+
 const api = axios.create({
-  // Prefer env var; otherwise use deployed backend by default
-  baseURL: import.meta.env.VITE_API_BASE_URL || "https://hms-opd-backend.vercel.app/api",
+  // Prefer environment variable; then local; then deployed backend
+  baseURL:
+    import.meta.env.VITE_API_BASE_URL ||
+    "http://localhost:5000/api" ||
+    "https://hms-opd-backend.vercel.app/api",
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
-})
+});
 
 // Request interceptor to add token
 api.interceptors.request.use(
