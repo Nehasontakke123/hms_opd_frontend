@@ -24,7 +24,9 @@ const MedicalDashboard = () => {
       const url = window.URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = `${fileName}.pdf`
+      // Ensure .pdf extension is always present
+      const fileNameWithExt = fileName.endsWith('.pdf') ? fileName : `${fileName}.pdf`
+      anchor.download = fileNameWithExt
       document.body.appendChild(anchor)
       anchor.click()
       document.body.removeChild(anchor)
@@ -38,20 +40,113 @@ const MedicalDashboard = () => {
   const viewPdf = async (pdfUrl) => {
     try {
       const response = await fetch(pdfUrl, {
-        credentials: pdfUrl.startsWith('http') ? 'omit' : 'include'
+        credentials: pdfUrl.startsWith('http') ? 'omit' : 'include',
+        headers: {
+          'Accept': 'application/pdf'
+        }
       })
 
       if (!response.ok) {
         throw new Error('Failed to fetch PDF')
       }
 
+      // Get the blob and ensure it has the correct MIME type
       const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      window.open(url, '_blank')
-      // Clean up after a delay to allow the window to load
-      setTimeout(() => window.URL.revokeObjectURL(url), 1000)
+      
+      // Check Content-Type header first
+      const contentType = response.headers.get('content-type') || ''
+      
+      // If blob doesn't have PDF MIME type, create new blob with correct type
+      let pdfBlob = blob
+      if (!blob.type.includes('pdf') && !contentType.includes('pdf')) {
+        // Check first few bytes to verify it's actually a PDF
+        const arrayBuffer = await blob.arrayBuffer()
+        const uint8Array = new Uint8Array(arrayBuffer)
+        const isPdf = uint8Array[0] === 0x25 && uint8Array[1] === 0x50 && uint8Array[2] === 0x44 && uint8Array[3] === 0x46
+        
+        if (!isPdf) {
+          // Check if it's HTML error page
+          const text = new TextDecoder().decode(uint8Array.slice(0, 100))
+          if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+            toast.error('PDF not found. Please try downloading instead.')
+            return
+          }
+        }
+        
+        // Create new blob with explicit PDF MIME type
+        pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' })
+      }
+      
+      const url = window.URL.createObjectURL(pdfBlob)
+      
+      // Open in new tab with proper PDF viewer
+      const newWindow = window.open('', '_blank')
+      
+      if (!newWindow) {
+        toast.error('Please allow popups to view PDF')
+        window.URL.revokeObjectURL(url)
+        return
+      }
+      
+      // Set the location to the blob URL
+      newWindow.location.href = url
+      
+      // Clean up after a longer delay to ensure PDF loads
+      setTimeout(() => window.URL.revokeObjectURL(url), 10000)
     } catch (error) {
       console.error('PDF view failed:', error)
+      toast.error('Failed to view PDF. Please try downloading instead.')
+    }
+  }
+
+  const handleViewPrescription = async (patient) => {
+    try {
+      if (!patient?.prescription) {
+        toast.error('No prescription available')
+        return
+      }
+
+      // First try to get the stored PDF URL
+      const pdfUrl = patient.prescription.pdfPath ? getPDFUrl(patient.prescription.pdfPath) : null
+      
+      if (pdfUrl) {
+        // Use the stored PDF
+        viewPdf(pdfUrl)
+      } else {
+        // Generate PDF on the fly if no stored PDF exists
+        try {
+          const doctorInfo = patient.doctor || {}
+          const pdfBase64 = generatePrescriptionPDF(patient, doctorInfo, patient.prescription)
+          
+          // Convert base64 to blob and open in new tab
+          const base64Data = pdfBase64.split(',')[1]
+          const byteCharacters = atob(base64Data)
+          const byteNumbers = new Array(byteCharacters.length)
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i)
+          }
+          const byteArray = new Uint8Array(byteNumbers)
+          const blob = new Blob([byteArray], { type: 'application/pdf' })
+          
+          const url = window.URL.createObjectURL(blob)
+          
+          // Open in new tab with proper PDF viewer
+          const newWindow = window.open(url, '_blank')
+          
+          if (!newWindow) {
+            toast.error('Please allow popups to view PDF')
+            return
+          }
+          
+          // Clean up after a longer delay to ensure PDF loads
+          setTimeout(() => window.URL.revokeObjectURL(url), 5000)
+        } catch (err) {
+          console.error('PDF generation failed:', err)
+          toast.error('Failed to generate PDF. Please try again.')
+        }
+      }
+    } catch (e) {
+      console.error('View failed:', e)
       toast.error('Failed to view PDF')
     }
   }
@@ -95,8 +190,9 @@ const MedicalDashboard = () => {
       const pdfUrl = patient.prescription.pdfPath ? getPDFUrl(patient.prescription.pdfPath) : null
       
       if (pdfUrl) {
-        // Use the stored PDF
-        downloadPdf(pdfUrl, `prescription_${patient.fullName}_${patient.tokenNumber}`)
+        // Use the stored PDF - ensure .pdf extension in filename
+        const fileName = `prescription_${patient.fullName.replace(/\s/g, '_')}_${patient.tokenNumber}`
+        downloadPdf(pdfUrl, fileName) // downloadPdf will ensure .pdf extension
       } else {
         // Generate PDF on the fly if no stored PDF exists
         try {
@@ -115,9 +211,10 @@ const MedicalDashboard = () => {
           
           const url = window.URL.createObjectURL(blob)
           const anchor = document.createElement('a')
-          const dateStr = new Date().toLocaleDateString()
           anchor.href = url
-          anchor.download = `prescription_${patient.fullName.replace(/\s/g, '_')}_${patient.tokenNumber}.pdf`
+          // Ensure .pdf extension is always present
+          const fileName = `prescription_${patient.fullName.replace(/\s/g, '_')}_${patient.tokenNumber}.pdf`
+          anchor.download = fileName
           document.body.appendChild(anchor)
           anchor.click()
           document.body.removeChild(anchor)
@@ -235,32 +332,20 @@ const MedicalDashboard = () => {
                         </div>
 
                         <div className="flex gap-2">
-                          {pdfUrl ? (
-                            <>
-                              <button
-                                onClick={() => viewPdf(pdfUrl)}
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition"
-                              >
-                                <span role="img" aria-label="view">📄</span>
-                                View Prescription
-                              </button>
-                              <button
-                                onClick={() => handleDownload(p)}
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition"
-                              >
-                                <span role="img" aria-label="download">⬇️</span>
-                                Download
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              onClick={() => handleDownload(p)}
-                              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition"
-                            >
-                              <span role="img" aria-label="download">⬇️</span>
-                              Download Prescription
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleViewPrescription(p)}
+                            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg font-medium"
+                          >
+                            <span role="img" aria-label="view">📄</span>
+                            View Prescription
+                          </button>
+                          <button
+                            onClick={() => handleDownload(p)}
+                            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-600 text-white hover:from-blue-600 hover:to-cyan-700 transition-all shadow-md hover:shadow-lg font-medium"
+                          >
+                            <span role="img" aria-label="download">📥</span>
+                            Download PDF
+                          </button>
                         </div>
                       </div>
 

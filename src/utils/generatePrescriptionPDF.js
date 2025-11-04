@@ -3,145 +3,291 @@ import jsPDF from 'jspdf'
 const generatePrescriptionPDF = (patient, doctor, prescription) => {
   const doc = new jsPDF()
 
-  // Colors to match UI (Tailwind purple-600 and subtle grays)
-  const PURPLE = [124, 58, 237]
-  const GRAY_BORDER = [229, 231, 235]
-  const TEXT_LIGHT = [75, 85, 99]
-  const TEXT_DARK = [31, 41, 55]
+  // Clean Modern UI Color Scheme - Purple Theme
+  const PURPLE_HEADER = [124, 58, 237] // Purple header (violet-600)
+  const PURPLE_DARK = [109, 40, 217] // Darker purple
+  const CARD_BG = [249, 250, 251] // Light gray card background
+  const CARD_BG_ALT = [243, 244, 246] // Alternate light gray
+  const BORDER_COLOR = [229, 231, 235] // Light border
+  const TEXT_LIGHT = [107, 114, 128] // Gray text
+  const TEXT_MEDIUM = [75, 85, 99] // Medium gray
+  const TEXT_DARK = [31, 41, 55] // Dark text
+  const SECTION_BG = [249, 250, 251] // Section background
+  const TABLE_HEADER_BG = [243, 244, 246] // Table header background
 
-  // Page metrics
+  // Page metrics - clean and compact
   const margin = 14
   const pageWidth = 210
   const contentWidth = pageWidth - margin * 2
+  const cardRadius = 6 // Rounded corners
+  const sectionSpacing = 10 // Spacing between sections
 
-  // Header bar
-  doc.setFillColor(...PURPLE)
-  doc.rect(0, 0, pageWidth, 26, 'F')
-  doc.setFontSize(18)
+  // Purple Header - Clean Modern Design
+  doc.setFillColor(...PURPLE_HEADER)
+  doc.rect(0, 0, pageWidth, 32, 'F')
+  
+  // Hospital name - clean and bold
+  doc.setFontSize(22)
   doc.setTextColor(255, 255, 255)
-  doc.setFont(undefined, 'bold')
-  doc.text('Tekisky Hospital', pageWidth / 2, 10, { align: 'center' })
-  doc.setFontSize(11)
-  doc.setFont(undefined, 'normal')
-  doc.text("Doctor's Prescription", pageWidth / 2, 18, { align: 'center' })
-
-  // Doctor card (right) and hospital tagline (left)
-  doc.setTextColor(...TEXT_DARK)
-  const topY = 32
-  // Doctor card
-  doc.setDrawColor(...GRAY_BORDER)
-  doc.roundedRect(pageWidth - margin - 70, topY, 70, 22, 2, 2)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Tekisky Hospital', pageWidth / 2, 14, { align: 'center' })
+  
+  // Subtitle
   doc.setFontSize(10)
-  doc.setFont(undefined, 'bold')
-  doc.text('Doctor', pageWidth - margin - 66, topY + 7)
-  doc.setFont(undefined, 'normal')
-  doc.text(`${doctor.fullName || 'Doctor'}`, pageWidth - margin - 66, topY + 13)
-  if (doctor?.specialization) {
-    doc.setTextColor(...TEXT_LIGHT)
-    doc.text(`${doctor.specialization}`, pageWidth - margin - 66, topY + 18)
-    doc.setTextColor(...TEXT_DARK)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(255, 255, 255)
+  doc.text("Doctor's Prescription", pageWidth / 2, 22, { align: 'center' })
+
+  // Content area - clean layout
+  let y = 40
+  
+  // Equal width cards side by side
+  const cardGap = 10
+  const totalCardWidth = contentWidth - cardGap
+  const patientCardW = totalCardWidth / 2
+  const doctorCardW = totalCardWidth / 2
+  const patientCardY = y
+  const patientCardH = 45
+  const doctorCardH = 50 // Increased to accommodate qualification
+  
+  // Patient Details Card - Light Gray Background
+  doc.setFillColor(...CARD_BG)
+  doc.setDrawColor(...BORDER_COLOR)
+  doc.setLineWidth(0.5)
+  doc.roundedRect(margin, patientCardY, patientCardW, patientCardH, cardRadius, cardRadius)
+  doc.fillStroke()
+  
+  // Card title
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...TEXT_DARK)
+  doc.text('Patient Details', margin + 8, patientCardY + 10)
+  
+  // Patient information - clean layout
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(...TEXT_DARK)
+  
+  // Name
+  doc.text(`Name: ${String(patient.fullName || 'N/A')}`, margin + 8, patientCardY + 18)
+  
+  // Age, Token, and Mobile on one line
+  const ageTokenMobile = `Age: ${String(patient.age || 'N/A')} Token: ${String(patient.tokenNumber || 'N/A')} Mobile: ${String(patient.mobileNumber || 'N/A')}`
+  doc.text(ageTokenMobile, margin + 8, patientCardY + 26)
+  
+  // Issue
+  doc.text(`Issue: ${String(patient.disease || 'N/A')}`, margin + 8, patientCardY + 34)
+
+  // Doctor Card - Light Gray Background
+  const doctorCardX = margin + patientCardW + cardGap
+  
+  // Card background
+  doc.setFillColor(...CARD_BG)
+  doc.setDrawColor(...BORDER_COLOR)
+  doc.setLineWidth(0.5)
+  doc.roundedRect(doctorCardX, patientCardY, doctorCardW, doctorCardH, cardRadius, cardRadius)
+  doc.fillStroke()
+  
+  // Card title
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...TEXT_DARK)
+  doc.text('Doctor', doctorCardX + 8, patientCardY + 10)
+  
+  // Doctor information - clean layout
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(...TEXT_DARK)
+  
+  // Doctor name
+  doc.text(String(doctor.fullName || 'Doctor'), doctorCardX + 8, patientCardY + 20)
+  
+  // Doctor qualification (if available) - positioned between name and specialization
+  if (doctor?.qualification) {
+    doc.setFontSize(8)
+    doc.setTextColor(...TEXT_MEDIUM)
+    doc.text(String(doctor.qualification), doctorCardX + 8, patientCardY + 27)
+    
+    // Specialization below qualification
+    if (doctor?.specialization) {
+      doc.setFontSize(9)
+      doc.setTextColor(...TEXT_DARK)
+      doc.text(String(doctor.specialization), doctorCardX + 8, patientCardY + 35)
+    }
+  } else {
+    // If no qualification, show specialization at original position
+    if (doctor?.specialization) {
+      doc.setFontSize(9)
+      doc.setTextColor(...TEXT_DARK)
+      doc.text(String(doctor.specialization), doctorCardX + 8, patientCardY + 28)
+    }
   }
 
-  // Patient details box
-  const patientBoxY = topY
-  const patientBoxH = 30
-  doc.roundedRect(margin, patientBoxY, contentWidth - 76, patientBoxH, 2, 2)
-  doc.setFont(undefined, 'bold')
-  doc.text('Patient Details', margin + 4, patientBoxY + 7)
-  doc.setFont(undefined, 'normal')
-  doc.setTextColor(...TEXT_LIGHT)
-  doc.text(`Name: ${patient.fullName}`, margin + 4, patientBoxY + 14)
-  doc.text(`Age: ${patient.age || 'N/A'}   Token: ${patient.tokenNumber}   Mobile: ${patient.mobileNumber || 'N/A'}`, margin + 4, patientBoxY + 20)
-  doc.text(`Issue: ${patient.disease}`, margin + 4, patientBoxY + 26)
-  doc.setTextColor(...TEXT_DARK)
-
-  // Rx + Diagnosis
-  let y = patientBoxY + patientBoxH + 10
-  doc.setFont(undefined, 'bold')
-  doc.setTextColor(...PURPLE)
-  doc.setFontSize(14)
-  doc.text('℞', margin, y)
-  doc.setTextColor(...TEXT_DARK)
+  // Diagnosis Section - Clean Design
+  y = patientCardY + patientCardH + sectionSpacing
+  
+  // Exclamation mark icon (square with !)
+  const iconSize = 8
+  doc.setFillColor(...PURPLE_HEADER)
+  doc.roundedRect(margin, y, iconSize, iconSize, 2, 2)
+  doc.fill()
+  doc.setFontSize(6)
+  doc.setTextColor(255, 255, 255)
+  doc.setFont('helvetica', 'bold')
+  doc.text('!', margin + 4, y + 6)
+  
+  // Diagnosis heading
   doc.setFontSize(11)
-  doc.text('Diagnosis', margin + 8, y)
-  y += 6
-  doc.setFont(undefined, 'normal')
-  const diagnosisLines = doc.splitTextToSize(prescription.diagnosis || 'N/A', contentWidth)
-  doc.text(diagnosisLines, margin, y)
-  y += diagnosisLines.length * 6 + 6
+  doc.setTextColor(...TEXT_DARK)
+  doc.setFont('helvetica', 'bold')
+  doc.text('Diagnosis', margin + 12, y + 7)
+  
+  // Diagnosis text
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(...TEXT_DARK)
+  const diagnosisText = String(prescription.diagnosis || 'N/A')
+  const diagnosisLines = doc.splitTextToSize(diagnosisText, contentWidth - 12)
+  doc.text(diagnosisLines, margin, y + 16)
+  
+  y += 16 + Math.max(0, (diagnosisLines.length - 1) * 5) + sectionSpacing
 
-  // Medicines table with precise columns and borders
-  const colMedW = contentWidth * 0.5
+  // Prescribed Medicines Section - Clean Design
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...TEXT_DARK)
+  doc.text('Prescribed Medicines', margin, y)
+  y += 8
+
+  // Medicine table with proper alignment and spacing
+  const colMedW = contentWidth * 0.48
   const colDosW = contentWidth * 0.28
-  const colDurW = contentWidth * 0.22
+  const colDurW = contentWidth * 0.24
   const colMedX = margin
   const colDosX = margin + colMedW
   const colDurX = margin + colMedW + colDosW
+  const tableStartY = y
 
-  // Header row
-  doc.setFont(undefined, 'bold')
-  doc.setFillColor(243, 244, 246)
-  doc.setDrawColor(...GRAY_BORDER)
-  doc.rect(colMedX, y, colMedW, 10, 'FD')
-  doc.rect(colDosX, y, colDosW, 10, 'FD')
-  doc.rect(colDurX, y, colDurW, 10, 'FD')
-  doc.text('Medicine', colMedX + 3, y + 7)
-  doc.text('Dosage', colDosX + 3, y + 7)
-  doc.text('Duration', colDurX + 3, y + 7)
-  y += 12
+  // Table header - Light Gray Background
+  doc.setFillColor(...TABLE_HEADER_BG)
+  doc.setDrawColor(...BORDER_COLOR)
+  doc.setLineWidth(0.5)
+  const headerHeight = 12
+  
+  // Header cells
+  doc.roundedRect(colMedX, y, colMedW, headerHeight, 3, 3)
+  doc.fillStroke()
+  doc.roundedRect(colDosX, y, colDosW, headerHeight, 3, 3)
+  doc.fillStroke()
+  doc.roundedRect(colDurX, y, colDurW, headerHeight, 3, 3)
+  doc.fillStroke()
+  
+  // Header text
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(...TEXT_DARK)
+  doc.text('Medicine', colMedX + 5, y + 8)
+  doc.text('Dosage', colDosX + 5, y + 8)
+  doc.text('Duration', colDurX + 5, y + 8)
+  
+  y += headerHeight
 
-  // Body rows with wrapping and equal heights
-  doc.setFont(undefined, 'normal')
+  // Table body rows with enhanced styling
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(...TEXT_DARK)
+  
   prescription.medicines.forEach((m, idx) => {
-    const medLines = doc.splitTextToSize(`${idx + 1}. ${m.name}`, colMedW - 6)
-    const dosLines = doc.splitTextToSize(`${m.dosage}`, colDosW - 6)
-    const durLines = doc.splitTextToSize(`${m.duration}`, colDurW - 6)
-    const rowHeight = Math.max(medLines.length, dosLines.length, durLines.length) * 6 + 6
+    const medText = `${idx + 1}. ${String(m.name || 'N/A')}`
+    const dosText = String(m.dosage || 'N/A')
+    const durText = String(m.duration || 'N/A')
+    
+    const medLines = doc.splitTextToSize(medText, colMedW - 10)
+    const dosLines = doc.splitTextToSize(dosText, colDosW - 10)
+    const durLines = doc.splitTextToSize(durText, colDurW - 10)
+    
+    const rowHeight = Math.max(medLines.length, dosLines.length, durLines.length) * 5 + 10
 
-    // Cell borders
-    doc.setDrawColor(...GRAY_BORDER)
-    doc.rect(colMedX, y - 2, colMedW, rowHeight, 'S')
-    doc.rect(colDosX, y - 2, colDosW, rowHeight, 'S')
-    doc.rect(colDurX, y - 2, colDurW, rowHeight, 'S')
+    // Alternating row background
+    if (idx % 2 === 0) {
+      doc.setFillColor(255, 255, 255)
+    } else {
+      doc.setFillColor(249, 250, 251)
+    }
+    doc.setDrawColor(...BORDER_COLOR)
+    doc.setLineWidth(0.3)
+    doc.rect(colMedX, y, colMedW, rowHeight, 'FD')
+    doc.rect(colDosX, y, colDosW, rowHeight, 'FD')
+    doc.rect(colDurX, y, colDurW, rowHeight, 'FD')
 
-    // Cell text
-    doc.text(medLines, colMedX + 3, y + 2)
-    doc.text(dosLines, colDosX + 3, y + 2)
-    doc.text(durLines, colDurX + 3, y + 2)
+    // Cell text - clean and readable
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...TEXT_DARK)
+    doc.text(medLines, colMedX + 5, y + 6)
+    doc.text(dosLines, colDosX + 5, y + 6)
+    doc.text(durLines, colDurX + 5, y + 6)
 
     y += rowHeight
   })
-  y += 6
 
-  // Notes box
-  if (prescription.notes) {
-    doc.setFont(undefined, 'bold')
-    doc.text('Notes', margin, y)
-    y += 4
-    doc.setFont(undefined, 'normal')
-    const notesLines = doc.splitTextToSize(prescription.notes, contentWidth)
-    doc.roundedRect(margin, y - 3, contentWidth, notesLines.length * 6 + 8, 2, 2)
-    doc.text(notesLines, margin + 3, y + 4)
-    y += notesLines.length * 6 + 12
+  // Notes section (if present) - Clean Design
+  if (prescription.notes && prescription.notes.trim()) {
+    y += sectionSpacing
+    
+    // Notes heading
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(...TEXT_DARK)
+    doc.text('Notes', margin, y + 6)
+    
+    // Notes text
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...TEXT_DARK)
+    const notesText = String(prescription.notes)
+    const notesLines = doc.splitTextToSize(notesText, contentWidth)
+    doc.text(notesLines, margin, y + 14)
+    y += 14 + notesLines.length * 5 + sectionSpacing
   }
 
-  // Footer: signature and date + disclaimer
-  const footerY = 272
-  doc.setDrawColor(...GRAY_BORDER)
-  doc.line(margin, footerY - 14, margin + 50, footerY - 14)
-  doc.setFont(undefined, 'normal')
-  doc.text('Doctor Signature', margin, footerY - 8)
-  const dateStr = new Date().toLocaleDateString()
-  doc.text(`Date: ${dateStr}`, pageWidth - margin - 40, footerY - 8)
-  doc.setTextColor(107, 114, 128)
+  // Clean Footer
+  const footerY = 280
+  
+  // Simple footer separator
+  doc.setDrawColor(...BORDER_COLOR)
+  doc.setLineWidth(0.5)
+  doc.line(margin, footerY - 20, pageWidth - margin, footerY - 20)
+  
+  // Doctor signature
+  doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
-  doc.text('This is a computer-generated prescription. For any urgent concern, contact the hospital.', pageWidth / 2, footerY, { align: 'center' })
   doc.setTextColor(...TEXT_DARK)
+  doc.line(margin, footerY - 12, margin + 60, footerY - 12)
+  doc.text('Doctor Signature', margin, footerY - 4)
+  
+  // Date
+  const prescriptionDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+  doc.text(`Date: ${prescriptionDate}`, pageWidth - margin - 50, footerY - 4, { align: 'right' })
+  
+  // Footer text
+  doc.setFontSize(8)
+  doc.setTextColor(...TEXT_LIGHT)
+  doc.setFont('helvetica', 'italic')
+  doc.text('Generated by Tekisky Hospital OPD System', pageWidth / 2, footerY + 3, { align: 'center' })
+  
+  // Disclaimer
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(7)
+  doc.setTextColor(140, 140, 140)
+  doc.text('This is a computer-generated prescription. For any urgent concern, contact the hospital.', pageWidth / 2, footerY + 8, { align: 'center' })
 
   // Output
   const pdfBase64 = doc.output('datauristring')
-  const fileName = `prescription_${patient.fullName.replace(/\s/g, '_')}_${dateStr.replace(/\//g, '-')}.pdf`
-  doc.save(fileName)
   return pdfBase64
 }
 

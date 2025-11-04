@@ -17,6 +17,7 @@ const AdminDashboard = () => {
     password: '',
     role: 'doctor',
     specialization: '',
+    qualification: '',
     fees: '',
     mobileNumber: ''
   })
@@ -60,6 +61,13 @@ const AdminDashboard = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    // Validate qualification for doctors
+    if (formData.role === 'doctor' && !formData.qualification?.trim()) {
+      toast.error('Qualification is required for doctors')
+      return
+    }
+    
     try {
       if (editingUser) {
         await api.put(`/admin/users/${editingUser._id}`, formData)
@@ -76,6 +84,7 @@ const AdminDashboard = () => {
         password: '',
         role: 'doctor',
         specialization: '',
+        qualification: '',
         fees: '',
         mobileNumber: ''
       })
@@ -93,6 +102,7 @@ const AdminDashboard = () => {
       password: '',
       role: user.role,
       specialization: user.specialization || '',
+      qualification: user.qualification || '',
       fees: user.fees || '',
       mobileNumber: user.mobileNumber || ''
     })
@@ -151,6 +161,7 @@ const AdminDashboard = () => {
       const email = user.email?.toLowerCase() || ''
       const role = user.role?.toLowerCase() || ''
       const specialization = user.specialization?.toLowerCase() || ''
+      const qualification = user.qualification?.toLowerCase() || ''
       const mobile = user.mobileNumber?.toLowerCase() || ''
 
       // If search term is "doctor", show only doctors
@@ -164,6 +175,7 @@ const AdminDashboard = () => {
         email.includes(term) ||
         role.includes(term) ||
         specialization.includes(term) ||
+        qualification.includes(term) ||
         mobile.includes(term)
       )
     })
@@ -666,7 +678,7 @@ const AdminDashboard = () => {
               <table className="min-w-full">
                 <thead className="bg-slate-50">
                   <tr>
-                    {['Name','Email','Role','Specialization','Fees','Mobile','Actions'].map((header) => (
+                    {['Name','Email','Role','Specialization','Qualification','Fees','Mobile','Actions'].map((header) => (
                       <th key={header} className="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                         {header}
                       </th>
@@ -704,6 +716,9 @@ const AdminDashboard = () => {
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-500">
                         {u.specialization || <span className="text-slate-300">—</span>}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-slate-500">
+                        {u.role === 'doctor' ? (u.qualification || <span className="text-slate-300">—</span>) : <span className="text-slate-300">—</span>}
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-500">
                         {u.role === 'doctor' ? (u.fees ? `₹${u.fees}` : <span className="text-slate-300">—</span>) : <span className="text-slate-300">—</span>}
@@ -761,6 +776,7 @@ const AdminDashboard = () => {
                     </span>
                   </div>
                   <p className="text-sm text-slate-500 mb-1">Specialization: {u.specialization || '—'}</p>
+                  {u.role === 'doctor' && <p className="text-sm text-slate-500 mb-1">Qualification: {u.qualification || '—'}</p>}
                   {u.role === 'doctor' && <p className="text-sm text-slate-500 mb-1">Fees: {u.fees ? `₹${u.fees}` : '—'}</p>}
                   <p className="text-sm text-slate-500 mb-3">Mobile: {u.mobileNumber || '—'}</p>
                   <div className="flex gap-2">
@@ -1006,6 +1022,20 @@ const AdminDashboard = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Qualification (e.g., MBBS, MD, BDS)
+                    </label>
+                    <input
+                      type="text"
+                      name="qualification"
+                      value={formData.qualification}
+                      onChange={handleChange}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm focus:shadow-md transition-shadow"
+                      placeholder="MBBS, MD, BDS, etc."
+                      required={formData.role === 'doctor'}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Consultation Fees (₹)
                     </label>
                     <input
@@ -1054,6 +1084,7 @@ const AdminDashboard = () => {
                       password: '',
                       role: 'doctor',
                       specialization: '',
+                      qualification: '',
                       fees: '',
                       mobileNumber: ''
                     })

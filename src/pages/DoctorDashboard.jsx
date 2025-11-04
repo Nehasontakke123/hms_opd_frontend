@@ -376,7 +376,11 @@ const DoctorDashboard = () => {
       // Generate PDF and get base64 (also downloads locally)
       const pdfBase64 = generatePrescriptionPDF(
         selectedPatient,
-        { fullName: user.fullName, specialization: user.specialization },
+        { 
+          fullName: user.fullName, 
+          specialization: user.specialization,
+          qualification: user.qualification 
+        },
         tempPrescription
       )
 
