@@ -46,6 +46,7 @@ export const AuthProvider = ({ children }) => {
       toast.success('Login successful!')
       return { success: true }
     } catch (error) {
+      console.log(error)
       const errorMessage = error.response?.data?.message || error.message || 'Login failed'
       toast.error(errorMessage)
       return { success: false, error: errorMessage }
@@ -60,11 +61,56 @@ export const AuthProvider = ({ children }) => {
     window.location.replace('/')
   }
 
+  const updateUser = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        // Fallback: try to get user from localStorage
+        const storedUser = localStorage.getItem('user')
+        if (storedUser) {
+          const userData = JSON.parse(storedUser)
+          setUser(userData)
+          return userData
+        }
+        return null
+      }
+
+      // Fetch updated user data from backend
+      const response = await api.get('/auth/me')
+      const updatedUser = response.data.data
+
+      // Update localStorage and state
+      localStorage.setItem('user', JSON.stringify(updatedUser))
+      setUser(updatedUser)
+
+      return updatedUser
+    } catch (error) {
+      console.error('Failed to update user data:', error)
+      // Fallback: try to get user from localStorage
+      const storedUser = localStorage.getItem('user')
+      if (storedUser) {
+        const userData = JSON.parse(storedUser)
+        setUser(userData)
+        return userData
+      }
+      return null
+    }
+  }
+
+  const setUserData = (userData) => {
+    if (userData) {
+      localStorage.setItem('user', JSON.stringify(userData))
+      setUser(userData)
+    }
+  }
+
   const value = {
     user,
     login,
     logout,
     loading,
+    updateUser,
+    setUserData,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

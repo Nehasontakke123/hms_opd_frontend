@@ -6,8 +6,316 @@ import generatePrescriptionPDF from '../utils/generatePrescriptionPDF'
 import PatientLimitModal from '../components/PatientLimitModal'
 import DoctorStatsNotification from '../components/DoctorStatsNotification'
 
+// Mapping of doctor specializations to diagnoses
+const SPECIALIZATION_DIAGNOSES = {
+  'Cardiologist': [
+    'Heart Disease',
+    'High Blood Pressure',
+    'Chest Pain',
+    'Irregular Heartbeat',
+    'Heart Attack Follow-up',
+    'Shortness of Breath',
+    'Coronary Artery Disease',
+    'Arrhythmia',
+    'Heart Failure'
+  ],
+  'Heart Specialist': [
+    'Heart Disease',
+    'High Blood Pressure',
+    'Chest Pain',
+    'Irregular Heartbeat',
+    'Heart Attack Follow-up',
+    'Shortness of Breath',
+    'Coronary Artery Disease',
+    'Arrhythmia',
+    'Heart Failure'
+  ],
+  'Dermatologist': [
+    'Acne',
+    'Eczema',
+    'Psoriasis',
+    'Skin Rash',
+    'Dermatitis',
+    'Allergic Reactions',
+    'Warts',
+    'Melanoma',
+    'Rosacea',
+    'Vitiligo'
+  ],
+  'Neurologist': [
+    'Migraine',
+    'Epilepsy',
+    'Stroke',
+    'Headache',
+    'Seizures',
+    'Parkinson\'s Disease',
+    'Alzheimer\'s Disease',
+    'Multiple Sclerosis',
+    'Neuropathy',
+    'Concussion'
+  ],
+  'General Physician': [
+    'Fever',
+    'Cough & Cold',
+    'Headache',
+    'Body Pain',
+    'Weakness / Fatigue',
+    'Stomach Ache',
+    'Common Cold',
+    'Flu',
+    'Diarrhea',
+    'Vomiting'
+  ],
+  'Gynecologist': [
+    'Irregular Periods',
+    'Pregnancy Checkup',
+    'PCOD / PCOS',
+    'Lower Abdominal Pain',
+    'Menstrual Cramps',
+    'Menopause',
+    'Endometriosis',
+    'Cervical Issues',
+    'Ovarian Cysts'
+  ],
+  'Psychiatrist': [
+    'Depression',
+    'Anxiety',
+    'Stress',
+    'Insomnia',
+    'Bipolar Disorder',
+    'PTSD',
+    'OCD',
+    'Panic Disorder',
+    'Schizophrenia',
+    'ADHD'
+  ],
+  'Orthopedic': [
+    'Fracture',
+    'Joint Pain',
+    'Back Pain',
+    'Arthritis',
+    'Sprain',
+    'Osteoporosis',
+    'Tendonitis',
+    'Bursitis',
+    'Scoliosis'
+  ],
+  'Pediatrician': [
+    'Childhood Fever',
+    'Vaccination',
+    'Growth Issues',
+    'Developmental Delay',
+    'Childhood Infections',
+    'Asthma in Children',
+    'Allergies',
+    'Ear Infection',
+    'Common Cold'
+  ],
+  'Endocrinologist': [
+    'Diabetes',
+    'Thyroid Disorders',
+    'Hormonal Imbalance',
+    'Obesity',
+    'Metabolic Syndrome',
+    'Growth Hormone Issues',
+    'Adrenal Disorders',
+    'Pituitary Disorders'
+  ],
+  'Gastroenterologist': [
+    'Stomach Pain',
+    'Acid Reflux',
+    'IBS',
+    'Ulcer',
+    'Constipation',
+    'Diarrhea',
+    'Liver Disease',
+    'Gallstones',
+    'Crohn\'s Disease'
+  ]
+}
+
+// Helper function to get diagnoses based on doctor specialization
+const getDiagnosesForSpecialization = (specialization) => {
+  if (!specialization) return []
+  
+  // Normalize specialization (case-insensitive, handle variations)
+  const normalized = specialization.trim()
+  
+  // Check exact match first
+  if (SPECIALIZATION_DIAGNOSES[normalized]) {
+    return SPECIALIZATION_DIAGNOSES[normalized]
+  }
+  
+  // Check case-insensitive match
+  const lowerNormalized = normalized.toLowerCase()
+  for (const key in SPECIALIZATION_DIAGNOSES) {
+    if (key.toLowerCase() === lowerNormalized) {
+      return SPECIALIZATION_DIAGNOSES[key]
+    }
+  }
+  
+  // If no match found, return empty array
+  return []
+}
+
+// Mapping of doctor specializations to tests
+const SPECIALIZATION_TESTS = {
+  'Cardiologist': [
+    'ECG',
+    '2D Echo',
+    'Cholesterol Test',
+    'Blood Pressure Monitoring',
+    'Stress Test',
+    'Holter Monitor',
+    'Echocardiogram',
+    'Cardiac Catheterization',
+    'Coronary Angiography'
+  ],
+  'Heart Specialist': [
+    'ECG',
+    '2D Echo',
+    'Cholesterol Test',
+    'Blood Pressure Monitoring',
+    'Stress Test',
+    'Holter Monitor',
+    'Echocardiogram',
+    'Cardiac Catheterization',
+    'Coronary Angiography'
+  ],
+  'Dermatologist': [
+    'Skin Biopsy',
+    'Patch Test',
+    'Dermoscopy',
+    'Wood\'s Lamp Examination',
+    'Fungal Culture',
+    'Allergy Test',
+    'Blood Test',
+    'Skin Scraping'
+  ],
+  'Neurologist': [
+    'EEG',
+    'MRI Brain',
+    'Nerve Conduction Study',
+    'CT Scan Brain',
+    'EMG',
+    'Lumbar Puncture',
+    'Neuropsychological Testing',
+    'PET Scan',
+    'MRA (Magnetic Resonance Angiography)'
+  ],
+  'General Physician': [
+    'Blood Test',
+    'Sugar Test',
+    'Typhoid Test',
+    'CBC (Complete Blood Count)',
+    'Lipid Profile',
+    'Liver Function Test',
+    'Kidney Function Test',
+    'Urine Test',
+    'X-Ray Chest'
+  ],
+  'Gynecologist': [
+    'Pregnancy Test',
+    'Pelvic Ultrasound',
+    'Hormone Test',
+    'Pap Smear',
+    'Mammography',
+    'Transvaginal Ultrasound',
+    'HSG (Hysterosalpingography)',
+    'Laparoscopy',
+    'Endometrial Biopsy'
+  ],
+  'Psychiatrist': [
+    'Mental Health Evaluation',
+    'Sleep Study',
+    'Anxiety & Depression Assessment',
+    'Cognitive Function Test',
+    'Psychological Testing',
+    'Brain Imaging',
+    'Blood Test (Medication Levels)',
+    'Thyroid Function Test'
+  ],
+  'Orthopedic': [
+    'X-Ray',
+    'MRI Bone Scan',
+    'Calcium Level Test',
+    'Bone Density Test',
+    'Arthroscopy',
+    'CT Scan',
+    'Ultrasound Joint',
+    'EMG',
+    'Bone Scan'
+  ],
+  'Orthopedic Surgeon': [
+    'X-Ray',
+    'MRI Bone Scan',
+    'Calcium Level Test',
+    'Bone Density Test',
+    'Arthroscopy',
+    'CT Scan',
+    'Ultrasound Joint',
+    'EMG',
+    'Bone Scan'
+  ],
+  'Pediatrician': [
+    'Blood Test',
+    'Growth Hormone Test',
+    'Vaccination Status Check',
+    'Developmental Assessment',
+    'Hearing Test',
+    'Vision Test',
+    'Chest X-Ray',
+    'Urine Test'
+  ],
+  'Endocrinologist': [
+    'Blood Sugar Test',
+    'Thyroid Function Test',
+    'Hormone Test',
+    'Insulin Level Test',
+    'Cortisol Test',
+    'Growth Hormone Test',
+    'Adrenal Function Test',
+    'Pituitary Function Test'
+  ],
+  'Gastroenterologist': [
+    'Endoscopy',
+    'Colonoscopy',
+    'Ultrasound Abdomen',
+    'CT Scan Abdomen',
+    'Liver Function Test',
+    'Stool Test',
+    'H. Pylori Test',
+    'ERCP',
+    'Capsule Endoscopy'
+  ]
+}
+
+// Helper function to get tests based on doctor specialization
+const getTestsForSpecialization = (specialization) => {
+  if (!specialization) return []
+  
+  // Normalize specialization (case-insensitive, handle variations)
+  const normalized = specialization.trim()
+  
+  // Check exact match first
+  if (SPECIALIZATION_TESTS[normalized]) {
+    return SPECIALIZATION_TESTS[normalized]
+  }
+  
+  // Check case-insensitive match
+  const lowerNormalized = normalized.toLowerCase()
+  for (const key in SPECIALIZATION_TESTS) {
+    if (key.toLowerCase() === lowerNormalized) {
+      return SPECIALIZATION_TESTS[key]
+    }
+  }
+  
+  // If no match found, return empty array
+  return []
+}
+
 const DoctorDashboard = () => {
-  const { user, logout } = useAuth()
+  const { user, logout, updateUser, setUserData } = useAuth()
   const downloadPdf = async (pdfUrl, fileName) => {
     try {
       const response = await fetch(pdfUrl, {
@@ -76,12 +384,18 @@ const DoctorDashboard = () => {
       dosage: '',
       duration: '',
       times: { morning: false, afternoon: false, night: false },
-      dosageNotes: ''
+      dosageNotes: '',
+      dosageInstructions: ''
     }],
-    notes: ''
+    notes: '',
+    selectedTest: ''
   })
   const [medicineSuggestions, setMedicineSuggestions] = useState([[]])
   const suggestionTimers = useRef({})
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [profileImageFile, setProfileImageFile] = useState(null)
+  const [profileImagePreview, setProfileImagePreview] = useState(null)
+  const fileInputRef = useRef(null)
 
   useEffect(() => {
     fetchTodayPatients()
@@ -252,15 +566,23 @@ const DoctorDashboard = () => {
     night: medicine?.times?.night || false
   })
 
-  const formatDosage = (times, notes) => {
+  const formatDosage = (times, notes, instructions) => {
     const selected = []
     if (times.morning) selected.push('Morning')
     if (times.afternoon) selected.push('Afternoon')
     if (times.night) selected.push('Night')
     let result = selected.join(', ')
+    
+    // Add dosage instructions if provided
+    if (instructions && instructions.trim()) {
+      result = result ? `${result} - ${instructions.trim()}` : instructions.trim()
+    }
+    
+    // Add custom notes if provided
     if (notes && notes.trim()) {
       result = result ? `${result} | ${notes.trim()}` : notes.trim()
     }
+    
     return result
   }
 
@@ -310,7 +632,11 @@ const DoctorDashboard = () => {
     }
 
     if (field === 'dosageNotes') {
-      target.dosage = formatDosage(target.times, value)
+      target.dosage = formatDosage(target.times, value, target.dosageInstructions)
+    }
+    
+    if (field === 'dosageInstructions') {
+      target.dosage = formatDosage(target.times, target.dosageNotes, value)
     }
 
     updatedMedicines[index] = target
@@ -336,7 +662,7 @@ const DoctorDashboard = () => {
     const target = { ...updatedMedicines[index] }
     target.times = ensureTimesShape(target)
     target.times[timeKey] = !target.times[timeKey]
-    target.dosage = formatDosage(target.times, target.dosageNotes)
+    target.dosage = formatDosage(target.times, target.dosageNotes, target.dosageInstructions)
     updatedMedicines[index] = target
     setPrescriptionData({ ...prescriptionData, medicines: updatedMedicines })
   }
@@ -351,7 +677,8 @@ const DoctorDashboard = () => {
           dosage: '',
           duration: '',
           times: { morning: false, afternoon: false, night: false },
-          dosageNotes: ''
+          dosageNotes: '',
+          dosageInstructions: ''
         }
       ]
     })
@@ -372,15 +699,17 @@ const DoctorDashboard = () => {
   const handleOpenPrescriptionModal = (patient) => {
     setSelectedPatient(patient)
     setPrescriptionData({
-      diagnosis: '',
+      diagnosis: patient?.disease || '', // Auto-fill diagnosis from patient registration
       medicines: [{
         name: '',
         dosage: '',
         duration: '',
         times: { morning: false, afternoon: false, night: false },
-        dosageNotes: ''
+        dosageNotes: '',
+        dosageInstructions: ''
       }],
-      notes: ''
+      notes: '',
+      selectedTest: ''
     })
     setMedicineSuggestions([[]])
     setShowPrescriptionModal(true)
@@ -439,6 +768,102 @@ const DoctorDashboard = () => {
     }
   }
 
+  const handleProfileImageChange = (e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) { // 2MB limit
+        toast.error('Image size should be less than 2MB')
+        return
+      }
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select a valid image file')
+        return
+      }
+      setProfileImageFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setProfileImagePreview(reader.result)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleUploadProfilePhoto = async () => {
+    if (!profileImageFile) {
+      toast.error('Please select an image file')
+      return
+    }
+
+    try {
+      const formData = new FormData()
+      formData.append('profileImage', profileImageFile)
+
+      // Get token for manual request
+      const token = localStorage.getItem('token')
+      
+      // Use fetch instead of axios for file uploads to properly handle multipart/form-data
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/doctor/${user?.id}/profile-image`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`
+          // Don't set Content-Type - let browser set it with boundary
+        },
+        body: formData
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to upload profile photo')
+      }
+
+      // Update user data in context with the new profile image
+      if (data.data && data.data.profileImage) {
+        // Update localStorage and context immediately with new profile image
+        const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
+        const updatedUser = {
+          ...currentUser,
+          profileImage: data.data.profileImage
+        }
+        
+        // Update context immediately so image shows right away
+        if (setUserData) {
+          setUserData(updatedUser)
+        } else {
+          localStorage.setItem('user', JSON.stringify(updatedUser))
+        }
+        
+        // Fetch complete updated user data from backend to ensure all fields are current
+        if (updateUser) {
+          try {
+            await updateUser()
+          } catch (err) {
+            console.error('Failed to fetch updated user from backend:', err)
+            // User context is already updated with profileImage, so continue
+          }
+        }
+      }
+
+      toast.success('Profile photo updated successfully!')
+      setShowProfileModal(false)
+      setProfileImageFile(null)
+      setProfileImagePreview(null)
+      
+      // Small delay to let toast show, then reload to ensure everything is synced
+      setTimeout(() => {
+        window.location.reload()
+      }, 1500)
+    } catch (error) {
+      console.error('Upload error:', error)
+      toast.error(error.message || 'Failed to upload profile photo')
+    }
+  }
+
+  const openProfileModal = () => {
+    setShowProfileModal(true)
+    setProfileImagePreview(user?.profileImage || null)
+  }
+
   const filteredTodayPatients = filterPatients(patients, searchToday)
   const filteredHistoryPatients = filterPatients(patientHistory, searchHistory)
   const filteredMedicalRecords = filterPatients(medicalRecords, searchMedical)
@@ -449,17 +874,73 @@ const DoctorDashboard = () => {
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <div className="flex items-baseline gap-3">
-                <span className="text-3xl sm:text-4xl font-black tracking-tight text-purple-600">Tekisky</span>
-                <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital</span>
+          {/* Doctor Profile Section */}
+          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl shadow-md p-4 mb-4">
+            <div className="flex items-center gap-4">
+              {/* Profile Photo */}
+              <div className="relative flex-shrink-0">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center shadow-lg border-4 border-white overflow-hidden">
+                  {user?.profileImage ? (
+                    <img 
+                      src={user.profileImage} 
+                      alt={user?.fullName || 'Doctor'} 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-2xl font-bold text-white">
+                      {(user?.fullName || 'D').charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                {/* Upload Button Overlay */}
+                <button
+                  onClick={openProfileModal}
+                  className="absolute bottom-0 right-0 w-7 h-7 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-blue-700 transition-all duration-200 border-2 border-white"
+                  title="Upload Profile Photo"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
               </div>
+              
+              {/* Doctor Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-3 mb-1">
+                  <span className="text-2xl sm:text-3xl font-black tracking-tight text-purple-600">Tekisky</span>
+                  <span className="text-xl sm:text-2xl font-semibold text-slate-800">Hospital</span>
+                </div>
+                {/* Doctor's Name - Highlighted */}
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1 mt-2" style={{ fontSize: '24px', fontWeight: 700 }}>
+                  Dr. {user?.fullName || 'Doctor'}
+                </h2>
+                {/* Education/Qualification */}
+                {user?.qualification && (
+                  <p className="text-sm sm:text-base font-medium text-gray-700 mb-1" style={{ fontSize: '16px', fontWeight: 500 }}>
+                    {user.qualification}
+                  </p>
+                )}
+                {/* Specialization Badge */}
+                {user?.specialization && (
+                  <span className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold shadow-sm mt-1">
+                    <span className="text-base" role="img" aria-label="Specialization">🩺</span>
+                    <span className="capitalize">{user.specialization}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            {/* Left Side: Dashboard Info */}
+            <div>
               <p className="mt-1 inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700 bg-purple-50 rounded-full">
-                Doctor Dashboard • {user?.fullName}
+                Doctor Dashboard
               </p>
               <p className="mt-2 text-xs sm:text-sm text-slate-500">Track patient rounds, craft prescriptions, and review medical records in one place.</p>
             </div>
+            
+            {/* Right Side: Action Buttons */}
             <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
               {doctorStats && (
                 <button
@@ -487,7 +968,8 @@ const DoctorDashboard = () => {
               </button>
             </div>
           </div>
-          {/* Stats Display */}
+          
+          {/* Daily Statistics Section */}
           {doctorStats && (
             <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg">
               <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1050,19 +1532,68 @@ const DoctorDashboard = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Diagnosis *
                 </label>
-                <textarea
-                  value={prescriptionData.diagnosis}
-                  onChange={(e) => setPrescriptionData({ ...prescriptionData, diagnosis: e.target.value })}
-                  rows="3"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    list="diagnosis-options"
+                    value={prescriptionData.diagnosis}
+                    onChange={(e) => setPrescriptionData({ ...prescriptionData, diagnosis: e.target.value })}
+                    placeholder="Select or type diagnosis..."
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none shadow-sm"
+                    required
+                  />
+                  <datalist id="diagnosis-options">
+                    {(() => {
+                      const specialization = user?.specialization || ''
+                      const diagnoses = getDiagnosesForSpecialization(specialization)
+                      
+                      if (diagnoses.length === 0) {
+                        return (
+                          <option value="No specific diagnoses available. Please type your diagnosis." disabled>
+                            No specific diagnoses available. Please type your diagnosis.
+                          </option>
+                        )
+                      }
+                      
+                      return diagnoses.map((diagnosis) => (
+                        <option key={diagnosis} value={diagnosis}>
+                          {diagnosis}
+                        </option>
+                      ))
+                    })()}
+                  </datalist>
+                </div>
+                {user?.specialization && (() => {
+                  const diagnoses = getDiagnosesForSpecialization(user.specialization)
+                  if (diagnoses.length > 0) {
+                    return (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Suggestions for <span className="font-semibold">{user.specialization}</span>. You can also type a custom diagnosis.
+                      </p>
+                    )
+                  }
+                  return (
+                    <p className="mt-1 text-xs text-gray-500">
+                      No specific diagnoses available for <span className="font-semibold">{user.specialization}</span>. Please type your diagnosis.
+                    </p>
+                  )
+                })()}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Prescribed Medicines *
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Prescribed Medicines *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={addMedicineField}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm"
+                  >
+                    <span className="text-base">➕</span>
+                    Add Medicine
+                  </button>
+                </div>
                 {prescriptionData.medicines.map((medicine, index) => (
                   <div key={index} className="mb-4 p-4 border border-gray-200 rounded-xl bg-white shadow-sm">
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -1082,9 +1613,9 @@ const DoctorDashboard = () => {
                                 <button
                                   type="button"
                                   key={suggestion}
-                                onClick={() => {
-                                  handleMedicineChange(index, 'name', suggestion, { skipLookup: true })
-                                }}
+                                  onClick={() => {
+                                    handleMedicineChange(index, 'name', suggestion, { skipLookup: true })
+                                  }}
                                   className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-purple-50"
                                 >
                                   {suggestion}
@@ -1109,13 +1640,13 @@ const DoctorDashboard = () => {
                       <div className="lg:col-span-5">
                         <fieldset className="border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
                           <legend className="text-xs font-semibold text-gray-500 px-1">Dosage Times</legend>
-                          <div className="flex flex-wrap gap-3 text-sm text-gray-700 mb-2">
+                          <div className="flex flex-wrap items-center gap-3 mb-3">
                             {[
                               { key: 'morning', label: 'Morning' },
                               { key: 'afternoon', label: 'Afternoon' },
                               { key: 'night', label: 'Night' }
                             ].map((time) => (
-                              <label key={time.key} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-100 px-3 py-1 rounded-lg hover:border-purple-300">
+                              <label key={time.key} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-100 px-3 py-1 rounded-lg hover:border-purple-300 transition-colors">
                                 <input
                                   type="checkbox"
                                   checked={ensureTimesShape(medicine)[time.key]}
@@ -1125,10 +1656,26 @@ const DoctorDashboard = () => {
                                 <span className="font-medium text-purple-700 text-xs uppercase">{time.label}</span>
                               </label>
                             ))}
+                            
+                            {/* Additional Instructions Dropdown - Right next to dosage times */}
+                            <div className="flex-1 min-w-[200px]">
+                              <select
+                                value={medicine.dosageInstructions || ''}
+                                onChange={(e) => handleMedicineChange(index, 'dosageInstructions', e.target.value)}
+                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-xs bg-white shadow-sm"
+                              >
+                                <option value="">Additional Instructions...</option>
+                                <option value="Take pill after meal 🍛">Take pill after meal 🍛</option>
+                                <option value="Take pill before meal 🥗">Take pill before meal 🥗</option>
+                                <option value="Take pill with water 💧">Take pill with water 💧</option>
+                                <option value="Take pill on empty stomach ☀️">Take pill on empty stomach ☀️</option>
+                              </select>
+                            </div>
                           </div>
+                          {/* Custom Instructions Input (optional) */}
                           <input
                             type="text"
-                            placeholder="Additional instructions (optional)"
+                            placeholder="Custom instructions (optional)"
                             value={medicine.dosageNotes || ''}
                             onChange={(e) => handleMedicineChange(index, 'dosageNotes', e.target.value)}
                             className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm"
@@ -1140,32 +1687,106 @@ const DoctorDashboard = () => {
                       <p className="mt-2 text-xs text-gray-500">Generated dosage: {medicine.dosage}</p>
                     )}
                     {prescriptionData.medicines.length > 1 && (
-                      <button
-                        onClick={() => removeMedicineField(index)}
-                        className="text-red-600 hover:text-red-800 text-sm"
-                      >
-                        Remove
-                      </button>
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => removeMedicineField(index)}
+                          className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center gap-1"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Remove Medicine
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
-                <button
-                  onClick={addMedicineField}
-                  className="text-purple-600 hover:text-purple-800 text-sm font-semibold"
-                >
-                  + Add Medicine
-                </button>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Additional Notes
+                  Additional Notes / Test Required
                 </label>
+                
+                {/* Test Dropdown - Based on Doctor's Specialization */}
+                <div className="mb-3">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="test-options"
+                      value={prescriptionData.selectedTest || ''}
+                      onChange={(e) => {
+                        const selectedTest = e.target.value
+                        const currentNotes = prescriptionData.notes || ''
+                        
+                        // If test is selected, add it to notes if not already present
+                        if (selectedTest) {
+                          const updatedNotes = currentNotes.includes(selectedTest) 
+                            ? currentNotes 
+                            : currentNotes 
+                              ? `${currentNotes}\n${selectedTest}` 
+                              : selectedTest
+                          setPrescriptionData({
+                            ...prescriptionData,
+                            selectedTest,
+                            notes: updatedNotes
+                          })
+                        } else {
+                          setPrescriptionData({
+                            ...prescriptionData,
+                            selectedTest: ''
+                          })
+                        }
+                      }}
+                      placeholder="Select or type test..."
+                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white shadow-sm text-sm font-medium"
+                    />
+                    <datalist id="test-options">
+                      {(() => {
+                        const specialization = user?.specialization || ''
+                        const tests = getTestsForSpecialization(specialization)
+                        
+                        if (tests.length === 0) {
+                          return (
+                            <option value="No specific tests available. Please type your test." disabled>
+                              No specific tests available. Please type your test.
+                            </option>
+                          )
+                        }
+                        
+                        return tests.map((test) => (
+                          <option key={test} value={test}>
+                            {test}
+                          </option>
+                        ))
+                      })()}
+                    </datalist>
+                  </div>
+                  {user?.specialization && (() => {
+                    const tests = getTestsForSpecialization(user.specialization)
+                    if (tests.length > 0) {
+                      return (
+                        <p className="mt-1 text-xs text-gray-500">
+                          Test suggestions for <span className="font-semibold">{user.specialization}</span>. You can also type a custom test.
+                        </p>
+                      )
+                    }
+                    return (
+                      <p className="mt-1 text-xs text-gray-500">
+                        No specific tests available for <span className="font-semibold">{user.specialization}</span>. Please type your test.
+                      </p>
+                    )
+                  })()}
+                </div>
+                
+                {/* Additional Notes Textarea */}
                 <textarea
                   value={prescriptionData.notes}
                   onChange={(e) => setPrescriptionData({ ...prescriptionData, notes: e.target.value })}
                   rows="3"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
+                  placeholder="Add any additional notes or observations..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none resize-none"
                 />
               </div>
             </div>
@@ -1202,6 +1823,79 @@ const DoctorDashboard = () => {
         show={showStatsNotification}
         onClose={() => setShowStatsNotification(false)}
       />
+
+      {/* Profile Photo Upload Modal */}
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
+            <h3 className="text-2xl font-bold mb-4 text-gray-900">Upload Profile Photo</h3>
+            
+            <div className="space-y-4">
+              {/* Preview */}
+              <div className="flex justify-center">
+                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center shadow-lg border-4 border-gray-200 overflow-hidden">
+                  {profileImagePreview ? (
+                    <img 
+                      src={profileImagePreview} 
+                      alt="Preview" 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-4xl font-bold text-white">
+                      {(user?.fullName || 'D').charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              {/* File Input */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Image (Max 2MB)
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfileImageChange}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm font-medium border border-gray-300"
+                >
+                  Choose Image
+                </button>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={handleUploadProfilePhoto}
+                  disabled={!profileImageFile}
+                  className={`flex-1 px-4 py-2 rounded-lg font-semibold transition ${
+                    profileImageFile
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  Upload Photo
+                </button>
+                <button
+                  onClick={() => {
+                    setShowProfileModal(false)
+                    setProfileImageFile(null)
+                    setProfileImagePreview(null)
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

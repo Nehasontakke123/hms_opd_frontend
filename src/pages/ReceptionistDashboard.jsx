@@ -110,6 +110,18 @@ const getDiseasesForSpecialization = (specialization) => {
   return []
 }
 
+// Helper function to format time from 24-hour to 12-hour format (e.g., "09:00" -> "9:00 AM", "13:00" -> "1:00 PM")
+const formatTime12Hour = (time24) => {
+  if (!time24) return ''
+  const [hours, minutes] = time24.split(':')
+  const hour = parseInt(hours, 10)
+  const min = minutes || '00'
+  const period = hour >= 12 ? 'PM' : 'AM'
+  const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
+  // Always show minutes for consistency
+  return `${hour12}:${min} ${period}`
+}
+
 const getDefaultAppointmentDate = () => {
   const date = new Date()
   date.setDate(date.getDate() + 1)
@@ -237,6 +249,16 @@ const ReceptionistDashboard = () => {
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update availability')
     }
+  }
+
+  const handleDoctorCardClick = (doctor) => {
+    // Navigate to registration tab and pre-fill the selected doctor
+    setActiveTab('registration')
+    setFormData((prev) => ({
+      ...prev,
+      doctor: doctor._id,
+      disease: '' // Clear disease when doctor changes
+    }))
   }
 
   const handleChange = (e) => {
@@ -939,12 +961,12 @@ const ReceptionistDashboard = () => {
       </div>
 
       {/* Tab Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="max-w-7xl mx-auto px-4 py-6" style={{ backgroundColor: '#f9fafb' }}>
         {/* Doctors Overview Tab */}
         {activeTab === 'doctors' && (
           <div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">Doctors Overview</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4" style={{ fontFamily: 'Poppins, sans-serif' }}>Doctors Overview</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {doctors.map((doctor, index) => {
                 const stats = doctorStats[doctor._id] || {}
                 const dailyLimit = stats.dailyPatientLimit ?? doctor.dailyPatientLimit ?? 0
@@ -957,140 +979,207 @@ const ReceptionistDashboard = () => {
                 return (
                   <div
                     key={doctor._id}
-                    className={`relative overflow-hidden rounded-2xl border shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${
-                      isAvailable 
-                        ? 'bg-gradient-to-br from-white to-green-50/30 border-green-200 shadow-green-100/50' 
-                        : 'bg-gray-50 border-amber-200'
-                    }`}
+                    onClick={() => handleDoctorCardClick(doctor)}
+                    className="relative overflow-hidden bg-white rounded-xl border border-gray-200 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer mx-auto shadow-md"
+                    style={{
+                      width: '280px',
+                      maxWidth: '100%',
+                      fontFamily: 'Poppins, sans-serif',
+                      fontSize: '14px'
+                    }}
                   >
-                    <div className={`absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b shadow-lg ${
-                      isAvailable ? 'from-green-400 to-emerald-600 shadow-green-500/50' : 'from-amber-400 to-orange-500'
-                    }`} aria-hidden="true"></div>
 
-                    <div className="p-5">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-start gap-3">
-                          <div className={`w-10 h-10 rounded-full font-bold flex items-center justify-center shadow-sm ${
-                            isAvailable 
-                              ? 'bg-gradient-to-br from-green-100 to-emerald-100 text-green-700 border-2 border-green-300' 
-                              : 'bg-amber-100 text-amber-700'
-                          }`}>
-                            {String(index + 1).padStart(2, '0')}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h3 className="text-lg font-semibold text-gray-900 leading-tight">{doctor.fullName}</h3>
-                              {isAvailable && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold uppercase tracking-wide border border-green-300">
-                                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                                  Available
-                                </span>
-                              )}
-                              {!isAvailable && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-semibold uppercase tracking-wide">
-                                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                                  Not Available
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-sm text-gray-600 capitalize">{doctor.specialization || 'General Physician'}</p>
-                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                                Fees ₹{doctor.fees ?? '—'}
-                              </span>
-                              {doctor.experience && (
-                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 text-blue-600 font-medium">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
-                                  {doctor.experience} yrs exp.
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                    <div className="p-4">
+                      {/* Doctor Name */}
+                      <div className="mb-3">
+                        <h3 className="text-lg font-bold text-gray-900 leading-tight mb-2" style={{ fontSize: '18px', fontWeight: 700 }}>
+                          {doctor.fullName}
+                        </h3>
+                        
+                        {/* Specialization */}
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="text-base flex-shrink-0" role="img" aria-label="Specialization">🩺</span>
+                          <p className="text-sm font-semibold capitalize" style={{ fontSize: '14px', fontWeight: 600, color: '#3b82f6' }}>
+                            {doctor.specialization || 'General Physician'}
+                          </p>
                         </div>
+                        
+                        {/* Education/Qualification */}
+                        {doctor.qualification && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm flex-shrink-0" role="img" aria-label="Education">🎓</span>
+                            <p className="text-xs text-gray-600 italic" style={{ fontSize: '12px', fontStyle: 'italic' }}>
+                              {doctor.qualification}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Divider */}
+                      <div className="border-t border-gray-200 my-3"></div>
 
-                        <div className="flex flex-col gap-2">
-                          <button
-                            onClick={() => handleToggleAvailability(doctor)}
-                            className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-bold rounded-full transition-all border ${
-                              isAvailable
-                                ? 'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-300 hover:border-amber-400 shadow-sm'
-                                : 'text-white bg-green-600 hover:bg-green-700 border-green-700 hover:border-green-800 shadow-md'
-                            }`}
-                          >
-                            {isAvailable ? '⛔ Mark Unavailable' : '✓ Mark Available'}
-                          </button>
-                          <button
-                            onClick={() => handleSetLimitClick(doctor)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition border border-blue-300"
-                          >
-                            Set Limit
-                          </button>
+
+                      {/* Visiting Time Section */}
+                      <div className={`mb-3 transition-opacity duration-300 ${!isAvailable ? 'opacity-60' : 'opacity-100'}`}>
+                        <div className="space-y-1.5">
+                          {/* Morning Slot */}
+                          {(() => {
+                            const morningStart = doctor.visitingHours?.morning?.start || '09:00'
+                            const morningEnd = doctor.visitingHours?.morning?.end || '12:00'
+                            return (
+                              <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-amber-50/50 border border-amber-100">
+                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                  <span className="text-sm flex-shrink-0" role="img" aria-label="Morning">☀️</span>
+                                  <span className="text-xs font-medium text-gray-700" style={{ fontSize: '13px', fontWeight: 500 }}>
+                                    Morning
+                                  </span>
+                                </div>
+                                <span className="text-xs font-mono text-gray-600 flex-shrink-0" style={{ fontSize: '12px' }}>
+                                  {formatTime12Hour(morningStart)} – {formatTime12Hour(morningEnd)}
+                                </span>
+                              </div>
+                            )
+                          })()}
+                          
+                          {/* Afternoon Slot */}
+                          {(() => {
+                            const afternoonStart = doctor.visitingHours?.afternoon?.start || '13:00'
+                            const afternoonEnd = doctor.visitingHours?.afternoon?.end || '16:00'
+                            return (
+                              <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-orange-50/50 border border-orange-100">
+                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                  <span className="text-sm flex-shrink-0" role="img" aria-label="Afternoon">🌤️</span>
+                                  <span className="text-xs font-medium text-gray-700" style={{ fontSize: '13px', fontWeight: 500 }}>
+                                    Afternoon
+                                  </span>
+                                </div>
+                                <span className="text-xs font-mono text-gray-600 flex-shrink-0" style={{ fontSize: '12px' }}>
+                                  {formatTime12Hour(afternoonStart)} – {formatTime12Hour(afternoonEnd)}
+                                </span>
+                              </div>
+                            )
+                          })()}
+                          
+                          {/* Evening Slot */}
+                          {(() => {
+                            const eveningStart = doctor.visitingHours?.evening?.start || '18:00'
+                            const eveningEnd = doctor.visitingHours?.evening?.end || '21:00'
+                            return (
+                              <div className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-blue-50/50 border border-blue-100">
+                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                  <span className="text-sm flex-shrink-0" role="img" aria-label="Evening">🌙</span>
+                                  <span className="text-xs font-medium text-gray-700" style={{ fontSize: '13px', fontWeight: 500 }}>
+                                    Evening
+                                  </span>
+                                </div>
+                                <span className="text-xs font-mono text-gray-600 flex-shrink-0" style={{ fontSize: '12px' }}>
+                                  {formatTime12Hour(eveningStart)} – {formatTime12Hour(eveningEnd)}
+                                </span>
+                              </div>
+                            )
+                          })()}
                         </div>
                       </div>
+                      
+                      {/* Divider */}
+                      <div className="border-t border-gray-200 my-3"></div>
 
-                      <div className="mt-5 grid grid-cols-3 gap-3 text-sm">
-                        <div className="rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
-                          <p className="text-xs uppercase tracking-wide text-gray-500">Daily Limit</p>
-                          <p className="mt-1 text-lg font-semibold text-gray-900">{dailyLimit}</p>
+                      {/* Daily Stats - Inline Row */}
+                      <div className="flex items-center justify-between gap-2 mb-3 px-2 py-2 bg-gray-50 rounded-lg">
+                        <div className="flex-1 text-center">
+                          <p className="text-[10px] text-gray-500 font-medium mb-0.5" style={{ fontSize: '10px' }}>Daily Limit</p>
+                          <p className="text-base font-bold text-gray-900" style={{ fontSize: '16px', fontWeight: 700 }}>{dailyLimit}</p>
                         </div>
-                        <div className="rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
-                          <p className="text-xs uppercase tracking-wide text-gray-500">Today</p>
-                          <p className="mt-1 text-lg font-semibold text-gray-900">{todayCount}</p>
+                        <div className="w-px h-8 bg-gray-200"></div>
+                        <div className="flex-1 text-center">
+                          <p className="text-[10px] text-gray-500 font-medium mb-0.5" style={{ fontSize: '10px' }}>Today</p>
+                          <p className="text-base font-bold text-gray-900" style={{ fontSize: '16px', fontWeight: 700 }}>{todayCount}</p>
                         </div>
-                        <div className={`rounded-xl px-3 py-2 border ${limitReached ? 'bg-red-50 border-red-100' : 'bg-emerald-50 border-emerald-100'}`}>
-                          <p className={`text-xs uppercase tracking-wide ${limitReached ? 'text-red-500' : 'text-emerald-600'}`}>Remaining</p>
-                          <p className={`mt-1 text-lg font-semibold ${limitReached ? 'text-red-600' : 'text-emerald-600'}`}>{remainingSlots}</p>
+                        <div className="w-px h-8 bg-gray-200"></div>
+                        <div className="flex-1 text-center">
+                          <p className={`text-[10px] font-medium mb-0.5 ${
+                            limitReached ? 'text-red-600' : 'text-green-600'
+                          }`} style={{ fontSize: '10px' }}>Remaining</p>
+                          <p className={`text-base font-bold ${
+                            limitReached ? 'text-red-600' : 'text-green-600'
+                          }`} style={{ fontSize: '16px', fontWeight: 700 }}>{remainingSlots}</p>
                         </div>
                       </div>
+                      
+                      {/* Divider */}
+                      <div className="border-t border-gray-200 my-3"></div>
+                      
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 mb-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleToggleAvailability(doctor)
+                          }}
+                          className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                            isAvailable
+                              ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                              : 'bg-green-600 text-white hover:bg-green-700 border border-green-600'
+                          }`}
+                        >
+                          {isAvailable ? (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              <span>Mark Unavailable</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                              <span>Mark Available</span>
+                            </>
+                          )}
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleSetLimitClick(doctor)
+                          }}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-all duration-200"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                          </svg>
+                          <span>Set Limit</span>
+                        </button>
+                      </div>
+                      
+                      {/* Divider */}
+                      <div className="border-t border-gray-200 my-3"></div>
 
-                      {limitReached && (
-                        <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
-                          <span className="w-2 h-2 rounded-full bg-red-400"></span>
-                          Daily limit reached — consider increasing the limit or redirecting patients.
-                        </div>
-                      )}
+                      {/* Availability Status Bar */}
+                      <div 
+                        className={`w-full rounded-lg px-3 py-2.5 flex items-center gap-2 transition-all duration-300 ${
+                          isAvailable 
+                            ? 'bg-green-50 border border-green-200' 
+                            : 'bg-orange-50 border border-orange-200'
+                        }`}
+                      >
+                        {isAvailable ? (
+                          <>
+                            <div className="flex-shrink-0 w-2 h-2 rounded-full bg-green-500"></div>
+                            <span className="text-sm text-green-700 font-medium flex-1" style={{ fontSize: '13px', fontWeight: 500 }}>
+                              Doctor is available and accepting patients.
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex-shrink-0 w-2 h-2 rounded-full bg-orange-500"></div>
+                            <span className="text-sm text-orange-700 font-medium flex-1" style={{ fontSize: '13px', fontWeight: 500 }}>
+                              Doctor is not available.
+                            </span>
+                          </>
+                        )}
+                      </div>
 
-                      {isAvailable && remainingSlots > 0 && (
-                        <div className="mt-4 rounded-xl border-2 border-green-500 bg-gradient-to-br from-green-50 via-emerald-50 to-green-100 px-4 py-3 shadow-md">
-                          <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0">
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-sm">
-                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                              </div>
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-sm font-bold text-green-900">Doctor is available and accepting patients</p>
-                              <p className="text-xs text-green-800 mt-0.5">This card is highlighted to indicate active availability.</p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {!isAvailable && (
-                        <div className="mt-4 rounded-xl border-2 border-amber-400 bg-gradient-to-br from-amber-50 to-orange-50 px-4 py-3 shadow-sm">
-                          <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0">
-                              <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center">
-                                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                              </div>
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-sm font-bold text-amber-900 mb-1">Doctor Not Available</p>
-                              {unavailableReason && (
-                                <p className="text-xs text-amber-800">{unavailableReason}</p>
-                              )}
-                              {!unavailableReason && (
-                                <p className="text-xs text-amber-800">This doctor has marked themselves as unavailable. Patients cannot be registered with this doctor.</p>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 )
