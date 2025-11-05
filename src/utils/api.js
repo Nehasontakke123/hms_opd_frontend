@@ -9,12 +9,14 @@ import toast from 'react-hot-toast'
 //   },
 // })
 
+const isLocalhost = window.location.hostname === "localhost";
+
+
 const api = axios.create({
   // Prefer environment variable; then local; then deployed backend
-  baseURL:
-    import.meta.env.VITE_API_BASE_URL ||
-    "http://localhost:7000/api" ||
-    "https://hms-opd-backend.vercel.app/api",
+  baseURL : isLocalhost
+    ? "http://localhost:7000/api"
+    : "https://hms-opd-backend.vercel.app/api",
   headers: {
     "Content-Type": "application/json",
   },
