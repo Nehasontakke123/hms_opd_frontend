@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import generatePrescriptionPDF from '../utils/generatePrescriptionPDF'
 import PatientLimitModal from '../components/PatientLimitModal'
 import DoctorStatsNotification from '../components/DoctorStatsNotification'
+import MedicalHistoryModal from '../components/MedicalHistoryModal'
 
 // Mapping of doctor specializations to diagnoses
 const SPECIALIZATION_DIAGNOSES = {
@@ -396,6 +397,10 @@ const DoctorDashboard = () => {
   const [profileImageFile, setProfileImageFile] = useState(null)
   const [profileImagePreview, setProfileImagePreview] = useState(null)
   const fileInputRef = useRef(null)
+  const [showMedicalHistoryModal, setShowMedicalHistoryModal] = useState(false)
+  const [medicalHistoryPatientId, setMedicalHistoryPatientId] = useState(null)
+  const [medicalHistoryPatientName, setMedicalHistoryPatientName] = useState(null)
+  const [medicalHistoryPatientMobile, setMedicalHistoryPatientMobile] = useState(null)
 
   useEffect(() => {
     fetchTodayPatients()
@@ -1205,6 +1210,17 @@ const DoctorDashboard = () => {
                                         Mark as Paid
                                       </button>
                                     )}
+                                    <button
+                                      onClick={() => {
+                                        setMedicalHistoryPatientId(patient._id)
+                                        setMedicalHistoryPatientName(patient.fullName)
+                                        setMedicalHistoryPatientMobile(patient.mobileNumber)
+                                        setShowMedicalHistoryModal(true)
+                                      }}
+                                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+                                    >
+                                      View History
+                                    </button>
                                     {patient.status !== 'completed' && (
                                       <button
                                         onClick={() => handleOpenPrescriptionModal(patient)}
@@ -1349,6 +1365,17 @@ const DoctorDashboard = () => {
                                   Mark as Paid
                                 </button>
                               )}
+                              <button
+                                onClick={() => {
+                                  setMedicalHistoryPatientId(patient._id)
+                                  setMedicalHistoryPatientName(patient.fullName)
+                                  setMedicalHistoryPatientMobile(patient.mobileNumber)
+                                  setShowMedicalHistoryModal(true)
+                                }}
+                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs font-medium w-full"
+                              >
+                                View History
+                              </button>
                               {patient.prescription ? (
                                 <span className="inline-flex items-center gap-1 text-green-600 font-semibold text-xs">
                                   <span className="w-2 h-2 rounded-full bg-green-500"></span>
@@ -1896,6 +1923,20 @@ const DoctorDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Medical History Modal */}
+      <MedicalHistoryModal
+        isOpen={showMedicalHistoryModal}
+        onClose={() => {
+          setShowMedicalHistoryModal(false)
+          setMedicalHistoryPatientId(null)
+          setMedicalHistoryPatientName(null)
+          setMedicalHistoryPatientMobile(null)
+        }}
+        patientId={medicalHistoryPatientId}
+        patientName={medicalHistoryPatientName}
+        patientMobile={medicalHistoryPatientMobile}
+      />
     </div>
   )
 }

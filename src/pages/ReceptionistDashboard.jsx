@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import PatientLimitModal from '../components/PatientLimitModal'
+import MedicalHistoryModal from '../components/MedicalHistoryModal'
 
 const getDefaultVisitDate = () => {
   const now = new Date()
@@ -190,6 +191,10 @@ const ReceptionistDashboard = () => {
   const [appointmentSuccessData, setAppointmentSuccessData] = useState(null)
   const [cancelledAppointmentInfo, setCancelledAppointmentInfo] = useState(null)
   const [showCancelSuccess, setShowCancelSuccess] = useState(false)
+  const [showMedicalHistoryModal, setShowMedicalHistoryModal] = useState(false)
+  const [medicalHistoryPatientId, setMedicalHistoryPatientId] = useState(null)
+  const [medicalHistoryPatientName, setMedicalHistoryPatientName] = useState(null)
+  const [medicalHistoryPatientMobile, setMedicalHistoryPatientMobile] = useState(null)
 
   useEffect(() => {
     fetchDoctors()
@@ -1441,29 +1446,26 @@ const ReceptionistDashboard = () => {
 
             {/* Patients Register Section - Unified with Toggle Tabs */}
             <div id="patients-register-section" className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
-              {/* Section Header with Toggle Tabs */}
-              <div className={`px-6 py-4 border-b transition-colors duration-300 ${
+              {/* Section Header with Professional Layout */}
+              <div className={`px-6 py-5 border-b transition-colors duration-300 ${
                 patientsRegisterView === 'today'
                   ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200'
                   : patientsRegisterView === 'recheck'
                   ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200'
                   : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'
               }`}>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div>
-                    <h4 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                      <span className={
-                        patientsRegisterView === 'today' ? 'text-green-600' 
-                        : patientsRegisterView === 'recheck' ? 'text-purple-600'
-                        : 'text-blue-600'
-                      }>
-                        {patientsRegisterView === 'today' ? '🟢' 
-                        : patientsRegisterView === 'recheck' ? '🩵'
-                        : '🔵'}
-                      </span>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                  {/* Left Section - Title and Description */}
+                  <div className="lg:col-span-3">
+                    <h4 className="text-xl font-bold text-slate-800 flex items-center gap-2 mb-1">
+                      <span className={`w-3 h-3 rounded-full ${
+                        patientsRegisterView === 'today' ? 'bg-green-500' 
+                        : patientsRegisterView === 'recheck' ? 'bg-purple-500'
+                        : 'bg-blue-500'
+                      }`}></span>
                       Patients Register
                     </h4>
-                    <p className="text-sm text-slate-600 mt-1">
+                    <p className="text-sm text-slate-600">
                       {patientsRegisterView === 'today' 
                         ? 'View and manage today\'s new patient registrations' 
                         : patientsRegisterView === 'recheck'
@@ -1471,99 +1473,126 @@ const ReceptionistDashboard = () => {
                         : 'Browse complete historical patient records'}
                     </p>
                   </div>
-                  {/* Search Bar and Toggle Tabs */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+
+                  {/* Middle Section - Action Button and Search */}
+                  <div className="lg:col-span-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    {/* View Medical History Button */}
+                    <button
+                      onClick={() => {
+                        setMedicalHistoryPatientId(null)
+                        setMedicalHistoryPatientName(null)
+                        setMedicalHistoryPatientMobile(null)
+                        setShowMedicalHistoryModal(true)
+                      }}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md whitespace-nowrap"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      View Medical History
+                    </button>
+                    
                     {/* Search Bar */}
-                    <div className="relative flex-1 sm:flex-initial sm:w-80">
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                        </div>
-                        <input
-                          type="text"
-                          value={patientsRegisterSearch}
-                          onChange={(e) => setPatientsRegisterSearch(e.target.value)}
-                          placeholder="Search by Patient Name, Token, or Mobile..."
-                          className={`block w-full pl-10 pr-10 py-2.5 border rounded-xl text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
-                            patientsRegisterView === 'today'
-                              ? 'border-green-300 focus:ring-green-500 focus:border-green-500 bg-white/90'
-                              : patientsRegisterView === 'recheck'
-                              ? 'border-purple-300 focus:ring-purple-500 focus:border-purple-500 bg-white/90'
-                              : 'border-blue-300 focus:ring-blue-500 focus:border-blue-500 bg-white/90'
-                          } ${patientsRegisterSearch ? 'shadow-sm' : ''}`}
-                        />
-                        {patientsRegisterSearch && (
-                          <button
-                            onClick={() => setPatientsRegisterSearch('')}
-                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
-                            aria-label="Clear search"
-                          >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        )}
+                    <div className="relative flex-1">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
                       </div>
-                    </div>
-                    {/* Toggle Tabs */}
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <button
-                        onClick={() => setPatientsRegisterView('today')}
-                        className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 shadow-sm ${
+                      <input
+                        type="text"
+                        value={patientsRegisterSearch}
+                        onChange={(e) => setPatientsRegisterSearch(e.target.value)}
+                        placeholder="Search by Patient Name, Token, or Mobile..."
+                        className={`block w-full pl-10 pr-10 py-2.5 border rounded-lg text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
                           patientsRegisterView === 'today'
-                            ? 'bg-green-600 text-white shadow-md hover:bg-green-700'
-                            : 'bg-white text-green-700 border-2 border-green-300 hover:bg-green-50'
-                        }`}
-                      >
-                        <span>🟢</span>
-                        <span>Patients Today</span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                          patientsRegisterView === 'today'
-                            ? 'bg-white/20 text-white'
-                            : 'bg-green-100 text-green-700'
-                        }`}>
-                          {patientsRegisterSearchDebounced ? filteredTodayPatients.length : todayPatientsCount}
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => setPatientsRegisterView('recheck')}
-                        className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 shadow-sm ${
-                          patientsRegisterView === 'recheck'
-                            ? 'bg-purple-600 text-white shadow-md hover:bg-purple-700'
-                            : 'bg-white text-purple-700 border-2 border-purple-300 hover:bg-purple-50'
-                        }`}
-                      >
-                        <span>🩵</span>
-                        <span>Recheck-up Patients</span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                          patientsRegisterView === 'recheck'
-                            ? 'bg-white/20 text-white'
-                            : 'bg-purple-100 text-purple-700'
-                        }`}>
-                          {patientsRegisterSearchDebounced ? filteredTodayPatients.length : recheckPatientsCount}
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => setPatientsRegisterView('history')}
-                        className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 shadow-sm ${
-                          patientsRegisterView === 'history'
-                            ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700'
-                            : 'bg-white text-blue-700 border-2 border-blue-300 hover:bg-blue-50'
-                        }`}
-                      >
-                        <span>🔵</span>
-                        <span>Patient History</span>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                          patientsRegisterView === 'history'
-                            ? 'bg-white/20 text-white'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}>
-                          {patientsRegisterSearchDebounced ? filteredPatientHistory.length : historyPatientsCount}
-                        </span>
-                      </button>
+                            ? 'border-green-300 focus:ring-green-500 focus:border-green-500 bg-white'
+                            : patientsRegisterView === 'recheck'
+                            ? 'border-purple-300 focus:ring-purple-500 focus:border-purple-500 bg-white'
+                            : 'border-blue-300 focus:ring-blue-500 focus:border-blue-500 bg-white'
+                        } ${patientsRegisterSearch ? 'shadow-sm' : ''}`}
+                      />
+                      {patientsRegisterSearch && (
+                        <button
+                          onClick={() => setPatientsRegisterSearch('')}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                          aria-label="Clear search"
+                        >
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
+                  </div>
+
+                  {/* Right Section - Statistics Pills (Stacked Vertically) */}
+                  <div className="lg:col-span-3 flex flex-col gap-2">
+                    {/* Patients Today Pill */}
+                    <button
+                      onClick={() => setPatientsRegisterView('today')}
+                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 shadow-sm ${
+                        patientsRegisterView === 'today'
+                          ? 'bg-green-600 text-white shadow-md hover:bg-green-700'
+                          : 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${
+                        patientsRegisterView === 'today' ? 'bg-white' : 'bg-green-500'
+                      }`}></span>
+                      <span className="flex-1 text-left">Patients Today</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                        patientsRegisterView === 'today'
+                          ? 'bg-white/20 text-white'
+                          : 'bg-white text-green-700'
+                      }`}>
+                        {patientsRegisterSearchDebounced ? filteredTodayPatients.length : todayPatientsCount}
+                      </span>
+                    </button>
+
+                    {/* Recheck-up Patients Pill */}
+                    <button
+                      onClick={() => setPatientsRegisterView('recheck')}
+                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 shadow-sm ${
+                        patientsRegisterView === 'recheck'
+                          ? 'bg-purple-600 text-white shadow-md hover:bg-purple-700'
+                          : 'bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-300'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${
+                        patientsRegisterView === 'recheck' ? 'bg-white' : 'bg-purple-500'
+                      }`}></span>
+                      <span className="flex-1 text-left">Recheck-up Patients</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                        patientsRegisterView === 'recheck'
+                          ? 'bg-white/20 text-white'
+                          : 'bg-white text-purple-700'
+                      }`}>
+                        {patientsRegisterSearchDebounced ? filteredTodayPatients.filter(p => p.isRecheck).length : recheckPatientsCount}
+                      </span>
+                    </button>
+
+                    {/* Patient History Pill */}
+                    <button
+                      onClick={() => setPatientsRegisterView('history')}
+                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 shadow-sm ${
+                        patientsRegisterView === 'history'
+                          ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700'
+                          : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${
+                        patientsRegisterView === 'history' ? 'bg-white' : 'bg-blue-500'
+                      }`}></span>
+                      <span className="flex-1 text-left">Patient History</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                        patientsRegisterView === 'history'
+                          ? 'bg-white/20 text-white'
+                          : 'bg-white text-blue-700'
+                      }`}>
+                        {patientsRegisterSearchDebounced ? filteredPatientHistory.length : historyPatientsCount}
+                      </span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1577,13 +1606,13 @@ const ReceptionistDashboard = () => {
                       <p className="mt-4 text-slate-500">Loading patients...</p>
                     </div>
                   ) : filteredTodayPatients.length === 0 ? (
-                    <div className="text-center py-12 px-6">
-                      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
-                        <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-3-3H5a3 3 0 00-3 3v2h5m6 0v-5a2 2 0 012-2h2a2 2 0 012 2v5m-6 0H9" />
+                    <div className="text-center py-16 px-6">
+                      <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-100 mb-6">
+                        <svg className="w-10 h-10 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-3-3H5a3 3 0 00-3 3v2h5m6 0v-5a2 2 0 012-2h2a2 2 0 012 2v5m-6 0H9" />
                         </svg>
                       </div>
-                      <p className="text-lg font-semibold text-slate-700 mb-2">
+                      <p className="text-lg font-bold text-slate-700 mb-2">
                         {patientsRegisterSearchDebounced 
                           ? 'No patients found matching your search' 
                           : patientsRegisterView === 'recheck'
@@ -1705,22 +1734,41 @@ const ReceptionistDashboard = () => {
                                 </span>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
-                                {!patient.isCancelled && patient.status !== 'cancelled' && (
+                                <div className="flex flex-col gap-2">
                                   <button
                                     type="button"
                                     onClick={(e) => {
                                       e.preventDefault()
                                       e.stopPropagation()
-                                      handleCancelClick(patient)
+                                      setMedicalHistoryPatientId(patient._id)
+                                      setMedicalHistoryPatientName(patient.fullName)
+                                      setMedicalHistoryPatientMobile(patient.mobileNumber)
+                                      setShowMedicalHistoryModal(true)
                                     }}
-                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-colors"
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 transition-colors"
                                   >
                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                     </svg>
-                                    Cancel
+                                    View History
                                   </button>
-                                )}
+                                  {!patient.isCancelled && patient.status !== 'cancelled' && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        handleCancelClick(patient)
+                                      }}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-colors"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                      Cancel
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           )
@@ -1935,17 +1983,33 @@ const ReceptionistDashboard = () => {
                                     </span>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap">
-                                    {!patient.isCancelled && patient.status !== 'cancelled' && (
+                                    <div className="flex flex-col gap-2">
                                       <button
-                                        onClick={() => handleCancelClick(patient)}
-                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-colors"
+                                        onClick={() => {
+                                          setMedicalHistoryPatientId(patient._id)
+                                          setMedicalHistoryPatientName(patient.fullName)
+                                          setMedicalHistoryPatientMobile(patient.mobileNumber)
+                                          setShowMedicalHistoryModal(true)
+                                        }}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 transition-colors"
                                       >
                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                         </svg>
-                                        Cancel
+                                        View History
                                       </button>
-                                    )}
+                                      {!patient.isCancelled && patient.status !== 'cancelled' && (
+                                        <button
+                                          onClick={() => handleCancelClick(patient)}
+                                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 transition-colors"
+                                        >
+                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                          </svg>
+                                          Cancel
+                                        </button>
+                                      )}
+                                    </div>
                                   </td>
                                 </tr>
                               )
@@ -2928,6 +2992,20 @@ const ReceptionistDashboard = () => {
           onUpdate={fetchDoctors}
         />
       )}
+
+      {/* Medical History Modal */}
+      <MedicalHistoryModal
+        isOpen={showMedicalHistoryModal}
+        onClose={() => {
+          setShowMedicalHistoryModal(false)
+          setMedicalHistoryPatientId(null)
+          setMedicalHistoryPatientName(null)
+          setMedicalHistoryPatientMobile(null)
+        }}
+        patientId={medicalHistoryPatientId}
+        patientName={medicalHistoryPatientName}
+        patientMobile={medicalHistoryPatientMobile}
+      />
     </div>
   )
 }
