@@ -392,6 +392,7 @@ const DoctorDashboard = () => {
     selectedTest: ''
   })
   const [medicineSuggestions, setMedicineSuggestions] = useState([[]])
+  const [loadingSuggestions, setLoadingSuggestions] = useState({})
   const suggestionTimers = useRef({})
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [profileImageFile, setProfileImageFile] = useState(null)
@@ -600,30 +601,53 @@ const DoctorDashboard = () => {
   }
 
   const fetchMedicineSuggestions = async (query, index) => {
-    if (!query || query.length < 2) {
+    if (!query || query.trim().length < 2) {
       updateMedicineSuggestions(index, [])
+      setLoadingSuggestions(prev => ({ ...prev, [index]: false }))
       return
     }
 
     try {
-      const response = await fetch(
-        `https://clinicaltables.nlm.nih.gov/api/rxterms/v3/search?terms=${encodeURIComponent(query)}&ef=STRENGTHS_AND_FORMS`
-      )
-      if (!response.ok) throw new Error('Network error')
+      setLoadingSuggestions(prev => ({ ...prev, [index]: true }))
+      // Fetch medicines from MongoDB collection
+      const response = await api.get(`/inventory/medicines/search/suggestions`, {
+        params: { query: query.trim(), limit: 20 }
+      })
 
-      const data = await response.json()
-      const terms = Array.isArray(data?.[1]) ? data[1] : []
-      const strengths = Array.isArray(data?.[2]?.STRENGTHS_AND_FORMS)
-        ? data[2].STRENGTHS_AND_FORMS.map((item) => item?.join(' ').trim())
-        : []
-
-      const combined = [...terms, ...strengths].filter(Boolean)
-      const unique = Array.from(new Set(combined))
-      const list = unique.slice(0, 10)
-      updateMedicineSuggestions(index, list)
+      if (response.data && response.data.success && response.data.data) {
+        const suggestions = response.data.data.map(med => {
+          let displayName = med.name || ''
+          // Add generic name if different from name
+          if (med.genericName && med.genericName !== med.name) {
+            displayName += ` (${med.genericName})`
+          }
+          // Add brand name if available and different
+          if (med.brandName && med.brandName !== med.name && med.brandName !== med.genericName) {
+            displayName += ` [${med.brandName}]`
+          }
+          // Add strength if available
+          if (med.strength) {
+            displayName += ` - ${med.strength}`
+          }
+          // Add form if available
+          if (med.form) {
+            displayName += ` (${med.form})`
+          }
+          return displayName
+        })
+        updateMedicineSuggestions(index, suggestions)
+      } else {
+        updateMedicineSuggestions(index, [])
+      }
     } catch (error) {
-      console.error('Failed to fetch medicine suggestions', error)
+      console.error('Error fetching medicine suggestions:', error)
       updateMedicineSuggestions(index, [])
+      // Only show error toast for actual errors, not empty results
+      if (error.response?.status !== 200) {
+        toast.error('Failed to fetch medicine suggestions')
+      }
+    } finally {
+      setLoadingSuggestions(prev => ({ ...prev, [index]: false }))
     }
   }
 
@@ -698,6 +722,22 @@ const DoctorDashboard = () => {
         medicines: updatedMedicines
       })
       setMedicineSuggestions((prev) => prev.filter((_, i) => i !== index))
+      // Clean up loading state for removed field
+      setLoadingSuggestions((prev) => {
+        const updated = { ...prev }
+        delete updated[index]
+        // Reindex remaining loading states
+        const reindexed = {}
+        Object.keys(updated).forEach(key => {
+          const keyNum = parseInt(key)
+          if (keyNum > index) {
+            reindexed[keyNum - 1] = updated[key]
+          } else if (keyNum < index) {
+            reindexed[keyNum] = updated[key]
+          }
+        })
+        return reindexed
+      })
     }
   }
 
@@ -717,6 +757,7 @@ const DoctorDashboard = () => {
       selectedTest: ''
     })
     setMedicineSuggestions([[]])
+    setLoadingSuggestions({})
     setShowPrescriptionModal(true)
   }
 
@@ -1634,7 +1675,15 @@ const DoctorDashboard = () => {
                             onChange={(e) => handleMedicineChange(index, 'name', e.target.value)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
                           />
-                          {medicineSuggestions[index] && medicineSuggestions[index].length > 0 && (
+                          {loadingSuggestions[index] && (
+                            <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+                              <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
+                                <span>Searching medicines...</span>
+                              </div>
+                            </div>
+                          )}
+                          {!loadingSuggestions[index] && medicineSuggestions[index] && medicineSuggestions[index].length > 0 && (
                             <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                               {medicineSuggestions[index].map((suggestion) => (
                                 <button
@@ -1643,7 +1692,7 @@ const DoctorDashboard = () => {
                                   onClick={() => {
                                     handleMedicineChange(index, 'name', suggestion, { skipLookup: true })
                                   }}
-                                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-purple-50"
+                                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-purple-50 border-b border-gray-100 last:border-b-0"
                                 >
                                   {suggestion}
                                 </button>

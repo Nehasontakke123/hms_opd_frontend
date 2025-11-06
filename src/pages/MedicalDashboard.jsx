@@ -6,9 +6,19 @@ import generatePrescriptionPDF from '../utils/generatePrescriptionPDF'
 
 const MedicalDashboard = () => {
   const { user, logout } = useAuth()
+  const [activeTab, setActiveTab] = useState('prescriptions') // 'prescriptions' or 'medicines'
   const [patients, setPatients] = useState([])
+  const [medicines, setMedicines] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadingMedicines, setLoadingMedicines] = useState(false)
   const [query, setQuery] = useState('')
+  const [medicineQuery, setMedicineQuery] = useState('')
+  const [stats, setStats] = useState({ totalPrescriptions: 0, todayPrescriptions: 0 })
+  const [medicineStats, setMedicineStats] = useState({ total: 0, lowStock: 0, expiringSoon: 0, expired: 0 })
+  const [medicinePage, setMedicinePage] = useState(1)
+  const [medicinePagination, setMedicinePagination] = useState({ page: 1, limit: 50, total: 0, pages: 1 })
+  const [sortBy, setSortBy] = useState('name')
+  const [sortOrder, setSortOrder] = useState('asc')
 
   const downloadPdf = async (pdfUrl, fileName) => {
     try {
@@ -106,44 +116,14 @@ const MedicalDashboard = () => {
         return
       }
 
-      // First try to get the stored PDF URL
       const pdfUrl = patient.prescription.pdfPath ? getPDFUrl(patient.prescription.pdfPath) : null
       
       if (pdfUrl) {
-        // Use the stored PDF
-        viewPdf(pdfUrl)
+        // Download PDF instead of viewing
+        const fileName = `prescription_${patient.fullName.replace(/\s/g, '_')}_${patient.tokenNumber}`
+        downloadPdf(pdfUrl, fileName)
       } else {
-        // Generate PDF on the fly if no stored PDF exists
-        try {
-          const doctorInfo = patient.doctor || {}
-          const pdfBase64 = generatePrescriptionPDF(patient, doctorInfo, patient.prescription)
-          
-          // Convert base64 to blob and open in new tab
-          const base64Data = pdfBase64.split(',')[1]
-          const byteCharacters = atob(base64Data)
-          const byteNumbers = new Array(byteCharacters.length)
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i)
-          }
-          const byteArray = new Uint8Array(byteNumbers)
-          const blob = new Blob([byteArray], { type: 'application/pdf' })
-          
-          const url = window.URL.createObjectURL(blob)
-          
-          // Open in new tab with proper PDF viewer
-          const newWindow = window.open(url, '_blank')
-          
-          if (!newWindow) {
-            toast.error('Please allow popups to view PDF')
-            return
-          }
-          
-          // Clean up after a longer delay to ensure PDF loads
-          setTimeout(() => window.URL.revokeObjectURL(url), 5000)
-        } catch (err) {
-          console.error('PDF generation failed:', err)
-          toast.error('Failed to generate PDF. Please try again.')
-        }
+        toast.error('PDF not available for this prescription')
       }
     } catch (e) {
       console.error('View failed:', e)
@@ -154,19 +134,105 @@ const MedicalDashboard = () => {
   const fetchPatients = async () => {
     try {
       setLoading(true)
-      const res = await api.get('/patient')
-      const withRx = (res.data.data || []).filter(p => p.prescription)
-      setPatients(withRx)
+      const res = await api.get('/medical-records/prescriptions')
+      setPatients(res.data.data || [])
     } catch (e) {
-      toast.error('Failed to load patients')
+      toast.error('Failed to load prescriptions')
     } finally {
       setLoading(false)
     }
   }
 
+  const fetchStats = async () => {
+    try {
+      const res = await api.get('/medical-records/stats')
+      return res.data.data
+    } catch (e) {
+      console.error('Failed to load stats:', e)
+      return { totalPrescriptions: 0, todayPrescriptions: 0 }
+    }
+  }
+
+  const fetchMedicines = async (page = 1, search = '', sortField = 'name', sortDir = 'asc') => {
+    try {
+      setLoadingMedicines(true)
+      const params = {
+        page,
+        limit: 50,
+        sortBy: sortField,
+        sortOrder: sortDir,
+        ...(search && { search })
+      }
+      const res = await api.get('/inventory/medicines', { params })
+      if (res.data.success) {
+        setMedicines(res.data.data || [])
+        setMedicineStats(res.data.stats || { total: 0, lowStock: 0, expiringSoon: 0, expired: 0 })
+        setMedicinePagination(res.data.pagination || { page: 1, limit: 50, total: 0, pages: 1 })
+      } else {
+        throw new Error(res.data.message || 'Failed to load medicines')
+      }
+    } catch (e) {
+      console.error('Error fetching medicines:', e)
+      toast.error(e.response?.data?.message || 'Failed to load medicines. Please try again.')
+      setMedicines([])
+      setMedicineStats({ total: 0, lowStock: 0, expiringSoon: 0, expired: 0 })
+    } finally {
+      setLoadingMedicines(false)
+    }
+  }
+
   useEffect(() => {
-    fetchPatients()
+    const loadData = async () => {
+      await fetchPatients()
+      const statsData = await fetchStats()
+      setStats(statsData)
+    }
+    loadData()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === 'medicines') {
+      fetchMedicines(medicinePage, medicineQuery, sortBy, sortOrder)
+    }
+  }, [activeTab, medicinePage, medicineQuery, sortBy, sortOrder])
+
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      // Toggle sort order if clicking the same field
+      const newOrder = sortOrder === 'asc' ? 'desc' : 'asc'
+      setSortOrder(newOrder)
+    } else {
+      // Set new sort field with ascending order
+      setSortBy(field)
+      setSortOrder('asc')
+    }
+    setMedicinePage(1) // Reset to first page when sorting
+  }
+
+  const getSortIcon = (field) => {
+    if (sortBy !== field) {
+      return (
+        <span className="text-gray-400 ml-1">
+          <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+          </svg>
+        </span>
+      )
+    }
+    return sortOrder === 'asc' ? (
+      <span className="text-purple-600 ml-1">
+        <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+        </svg>
+      </span>
+    ) : (
+      <span className="text-purple-600 ml-1">
+        <svg className="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </span>
+    )
+  }
 
   const getPDFUrl = (pdfPath) => {
     if (!pdfPath) return null
@@ -263,38 +329,81 @@ const MedicalDashboard = () => {
             </div>
             <button onClick={logout} className="px-4 py-2 rounded-md bg-gray-900 text-white hover:bg-gray-800">Logout</button>
           </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              onClick={() => setActiveTab('prescriptions')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === 'prescriptions'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Prescriptions
+            </button>
+            <button
+              onClick={() => setActiveTab('medicines')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                activeTab === 'medicines'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Medicines
+            </button>
+          </div>
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-3 rounded-xl bg-purple-50 border border-purple-100">
-              <p className="text-xs text-purple-600">Total Prescriptions</p>
-              <p className="text-xl font-bold text-purple-700">{patients.length}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-green-50 border border-green-100">
-              <p className="text-xs text-green-600">Today</p>
-              <p className="text-xl font-bold text-green-700">{patients.filter(p => new Date(p.prescription?.createdAt || p.createdAt).toDateString() === new Date().toDateString()).length}</p>
-            </div>
-            <div className="p-3 rounded-xl bg-blue-50 border border-blue-100">
-              <p className="text-xs text-blue-600">Logged in</p>
-              <p className="text-sm font-semibold text-blue-700 truncate">{user?.fullName || 'Medical Staff'}</p>
-            </div>
+            {activeTab === 'prescriptions' ? (
+              <>
+                <div className="p-3 rounded-xl bg-purple-50 border border-purple-100">
+                  <p className="text-xs text-purple-600">Total Prescriptions</p>
+                  <p className="text-xl font-bold text-purple-700">{stats.totalPrescriptions}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-green-50 border border-green-100">
+                  <p className="text-xs text-green-600">Today</p>
+                  <p className="text-xl font-bold text-green-700">{stats.todayPrescriptions}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-blue-50 border border-blue-100">
+                  <p className="text-xs text-blue-600">Logged in</p>
+                  <p className="text-sm font-semibold text-blue-700 truncate">{user?.fullName || 'Medical Staff'}</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="p-3 rounded-xl bg-purple-50 border border-purple-100">
+                  <p className="text-xs text-purple-600">Total Medicines</p>
+                  <p className="text-xl font-bold text-purple-700">{medicineStats.total}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-orange-50 border border-orange-100">
+                  <p className="text-xs text-orange-600">Low Stock</p>
+                  <p className="text-xl font-bold text-orange-700">{medicineStats.lowStock}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-red-50 border border-red-100">
+                  <p className="text-xs text-red-600">Expiring Soon</p>
+                  <p className="text-xl font-bold text-red-700">{medicineStats.expiringSoon}</p>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto p-4">
-        {loading ? (
-          <div className="bg-white rounded-xl p-8 text-center text-gray-600 shadow">Loading...</div>
-        ) : (
+        {activeTab === 'prescriptions' ? (
           <>
-            <div className="mb-4">
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by patient name or mobile..."
-                className="w-full sm:w-96 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 outline-none bg-white"
-              />
-            </div>
-            <div className="space-y-4">
+            {loading ? (
+              <div className="bg-white rounded-xl p-8 text-center text-gray-600 shadow">Loading...</div>
+            ) : (
+              <>
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search by patient name or mobile..."
+                    className="w-full sm:w-96 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                  />
+                </div>
+                <div className="space-y-4">
               {patients
                 .filter((p) => {
                   const q = query.trim().toLowerCase()
@@ -393,10 +502,183 @@ const MedicalDashboard = () => {
                   )
                 })}
 
-              {patients.length === 0 && (
-                <div className="bg-white p-10 rounded-xl text-center text-gray-600 border">No prescriptions available</div>
-              )}
+                  {patients.length === 0 && (
+                    <div className="bg-white p-10 rounded-xl text-center text-gray-600 border">No prescriptions available</div>
+                  )}
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="mb-4">
+              <input
+                type="text"
+                value={medicineQuery}
+                onChange={(e) => {
+                  setMedicineQuery(e.target.value)
+                  setMedicinePage(1)
+                }}
+                placeholder="Search medicines by name, generic name, or brand..."
+                className="w-full sm:w-96 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+              />
             </div>
+            {loadingMedicines ? (
+              <div className="bg-white rounded-xl p-8 text-center shadow">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-4"></div>
+                <p className="text-gray-600">Loading medicines...</p>
+              </div>
+            ) : (
+              <>
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  {medicines.length > 0 ? (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left text-gray-700">
+                          <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                            <tr>
+                              <th 
+                                className="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none"
+                                onClick={() => handleSort('name')}
+                              >
+                                <div className="flex items-center">
+                                  Name
+                                  {getSortIcon('name')}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none"
+                                onClick={() => handleSort('genericName')}
+                              >
+                                <div className="flex items-center">
+                                  Generic Name
+                                  {getSortIcon('genericName')}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none"
+                                onClick={() => handleSort('manufacturer')}
+                              >
+                                <div className="flex items-center">
+                                  Manufacturer
+                                  {getSortIcon('manufacturer')}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none"
+                                onClick={() => handleSort('form')}
+                              >
+                                <div className="flex items-center">
+                                  Form
+                                  {getSortIcon('form')}
+                                </div>
+                              </th>
+                              <th className="px-4 py-3">Strength</th>
+                              <th 
+                                className="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none"
+                                onClick={() => handleSort('price')}
+                              >
+                                <div className="flex items-center">
+                                  Price (₹)
+                                  {getSortIcon('price')}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none"
+                                onClick={() => handleSort('stockQuantity')}
+                              >
+                                <div className="flex items-center">
+                                  Stock
+                                  {getSortIcon('stockQuantity')}
+                                </div>
+                              </th>
+                              <th 
+                                className="px-4 py-3 cursor-pointer hover:bg-gray-100 select-none"
+                                onClick={() => handleSort('category')}
+                              >
+                                <div className="flex items-center">
+                                  Category
+                                  {getSortIcon('category')}
+                                </div>
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {medicines.map((med) => (
+                              <tr key={med._id} className="border-t border-gray-100 hover:bg-gray-50">
+                                <td className="px-4 py-3 font-medium text-gray-900">{med.name || '—'}</td>
+                                <td className="px-4 py-3 text-gray-700">{med.genericName || '—'}</td>
+                                <td className="px-4 py-3 text-gray-700">{med.manufacturer || '—'}</td>
+                                <td className="px-4 py-3">
+                                  <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-700">
+                                    {med.form || '—'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-gray-700">{med.strength || '—'}</td>
+                                <td className="px-4 py-3 text-gray-700 font-medium">
+                                  {med.price ? `₹${med.price.toFixed(2)}` : '—'}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+                                    med.stockQuantity <= med.minStockLevel
+                                      ? 'bg-red-100 text-red-700'
+                                      : med.stockQuantity <= med.minStockLevel * 2
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : 'bg-green-100 text-green-700'
+                                  }`}>
+                                    {med.stockQuantity || 0}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-gray-700">{med.category || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {medicinePagination.pages > 1 && (
+                        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
+                          <div className="text-sm text-gray-700">
+                            Showing {((medicinePagination.page - 1) * medicinePagination.limit) + 1} to{' '}
+                            {Math.min(medicinePagination.page * medicinePagination.limit, medicinePagination.total)} of{' '}
+                            {medicinePagination.total} medicines
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setMedicinePage(p => Math.max(1, p - 1))}
+                              disabled={medicinePage === 1}
+                              className="px-3 py-1 rounded-md border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                            >
+                              Previous
+                            </button>
+                            <button
+                              onClick={() => setMedicinePage(p => Math.min(medicinePagination.pages, p + 1))}
+                              disabled={medicinePage === medicinePagination.pages}
+                              className="px-3 py-1 rounded-md border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="p-10 text-center">
+                      <div className="text-gray-400 mb-2">
+                        <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                      </div>
+                      <p className="text-gray-600 font-medium">No medicines found</p>
+                      {medicineQuery && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          Try adjusting your search: "{medicineQuery}"
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </>
         )}
       </main>

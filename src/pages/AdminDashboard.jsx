@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth()
-  const [activeTab, setActiveTab] = useState('users') // 'users' or 'patients'
+  const [activeTab, setActiveTab] = useState('users') // 'users', 'patients', or 'import-export'
   const [users, setUsers] = useState([])
   const [patients, setPatients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -26,6 +26,10 @@ const AdminDashboard = () => {
   const [patientSearch, setPatientSearch] = useState('')
   const [patientDate, setPatientDate] = useState('')
   const [selectedMetric, setSelectedMetric] = useState(null) // 'total', 'doctors', 'receptionists', 'patients'
+  const [importLoading, setImportLoading] = useState(false)
+  const [importUrl, setImportUrl] = useState('')
+  const [importJsonData, setImportJsonData] = useState('')
+  const [importFile, setImportFile] = useState(null)
 
   useEffect(() => {
     fetchUsers()
@@ -603,6 +607,16 @@ const AdminDashboard = () => {
             >
               All Patients
             </button>
+            <button
+              onClick={() => setActiveTab('import-export')}
+              className={`flex-1 py-4 px-6 text-sm font-semibold transition ${
+                activeTab === 'import-export'
+                  ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-500'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Import/Export Medicines
+            </button>
           </nav>
         </div>
 
@@ -934,6 +948,239 @@ const AdminDashboard = () => {
                 </div>
               ))
             )}
+          </div>
+        )}
+
+        {/* Import/Export Tab Content */}
+        {activeTab === 'import-export' && (
+          <div className="space-y-8 mt-8">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-800 mb-2">Medicine Data Import/Export</h2>
+              <p className="text-sm text-slate-500">Import medicines from Indian Medicine Dataset (JSON) or Excel files. Export current medicine database.</p>
+            </div>
+
+            {/* Import Section */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+              <h3 className="text-xl font-semibold text-slate-800 mb-4">Import Medicines</h3>
+              
+              {/* Import from URL */}
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <h4 className="font-semibold text-blue-900 mb-3">Import from URL (Indian Medicine Dataset)</h4>
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={importUrl}
+                    onChange={(e) => setImportUrl(e.target.value)}
+                    placeholder="https://raw.githubusercontent.com/junioralive/Indian-Medicine-Dataset/main/DATA/indian_medicine_data.json"
+                    className="flex-1 px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!importUrl) {
+                        toast.error('Please enter a URL')
+                        return
+                      }
+                      try {
+                        setImportLoading(true)
+                        const response = await api.post('/admin/import-export/sync', { url: importUrl })
+                        toast.success(response.data.message || 'Data synchronized successfully')
+                        setImportUrl('')
+                      } catch (error) {
+                        toast.error(error.response?.data?.message || 'Failed to sync data')
+                      } finally {
+                        setImportLoading(false)
+                      }
+                    }}
+                    disabled={importLoading}
+                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
+                  >
+                    {importLoading ? 'Syncing...' : 'Sync from URL'}
+                  </button>
+                </div>
+                <p className="text-xs text-blue-700 mt-2">
+                  💡 Use the Indian Medicine Dataset JSON URL to automatically sync medicine data
+                </p>
+              </div>
+
+              {/* Import from JSON */}
+              <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <h4 className="font-semibold text-green-900 mb-3">Import from JSON</h4>
+                <textarea
+                  value={importJsonData}
+                  onChange={(e) => setImportJsonData(e.target.value)}
+                  placeholder='Paste JSON array of medicines: [{"name": "Medicine Name", "genericName": "...", ...}]'
+                  rows="6"
+                  className="w-full px-4 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none font-mono text-sm"
+                />
+                <button
+                  onClick={async () => {
+                    try {
+                      const medicines = JSON.parse(importJsonData)
+                      if (!Array.isArray(medicines)) {
+                        toast.error('Invalid JSON format. Expected an array.')
+                        return
+                      }
+                      setImportLoading(true)
+                      const response = await api.post('/admin/import-export/import/json', {
+                        medicines,
+                        overwrite: false
+                      })
+                      toast.success(response.data.message || 'Import completed successfully')
+                      setImportJsonData('')
+                    } catch (error) {
+                      if (error instanceof SyntaxError) {
+                        toast.error('Invalid JSON format')
+                      } else {
+                        toast.error(error.response?.data?.message || 'Failed to import')
+                      }
+                    } finally {
+                      setImportLoading(false)
+                    }
+                  }}
+                  disabled={importLoading || !importJsonData.trim()}
+                  className="mt-3 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-50"
+                >
+                  {importLoading ? 'Importing...' : 'Import JSON'}
+                </button>
+              </div>
+
+              {/* Import from Excel */}
+              <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                <h4 className="font-semibold text-purple-900 mb-3">Import from Excel File</h4>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      // Validate file type
+                      const fileName = file.name.toLowerCase()
+                      const fileExtension = fileName.substring(fileName.lastIndexOf('.'))
+                      
+                      if (fileExtension === '.json') {
+                        toast.error('You selected a JSON file. Please use the "Import from JSON" section above, or convert your file to Excel format (.xlsx or .xls)')
+                        e.target.value = '' // Clear the input
+                        setImportFile(null)
+                        return
+                      }
+                      
+                      if (!['.xlsx', '.xls'].includes(fileExtension)) {
+                        toast.error('Please select an Excel file (.xlsx or .xls)')
+                        e.target.value = '' // Clear the input
+                        setImportFile(null)
+                        return
+                      }
+                      
+                      setImportFile(file)
+                    }
+                  }}
+                  className="mb-3"
+                />
+                {importFile && (
+                  <p className="text-sm text-purple-700 mb-2">
+                    Selected: {importFile.name}
+                  </p>
+                )}
+                <button
+                  onClick={async () => {
+                    if (!importFile) {
+                      toast.error('Please select a file')
+                      return
+                    }
+                    
+                    // Double-check file type before upload
+                    const fileName = importFile.name.toLowerCase()
+                    const fileExtension = fileName.substring(fileName.lastIndexOf('.'))
+                    
+                    if (fileExtension === '.json') {
+                      toast.error('JSON files cannot be imported via Excel import. Please use the "Import from JSON" section.')
+                      return
+                    }
+                    
+                    if (!['.xlsx', '.xls'].includes(fileExtension)) {
+                      toast.error('Invalid file type. Please select an Excel file (.xlsx or .xls)')
+                      return
+                    }
+                    
+                    try {
+                      setImportLoading(true)
+                      const formData = new FormData()
+                      formData.append('file', importFile)
+                      const response = await api.post('/admin/import-export/import/excel', formData, {
+                        headers: {
+                          'Content-Type': 'multipart/form-data'
+                        }
+                      })
+                      toast.success(response.data.message || 'Import completed successfully')
+                      setImportFile(null)
+                      // Reset file input
+                      const fileInput = document.querySelector('input[type="file"][accept=".xlsx,.xls"]')
+                      if (fileInput) fileInput.value = ''
+                    } catch (error) {
+                      toast.error(error.response?.data?.message || 'Failed to import')
+                    } finally {
+                      setImportLoading(false)
+                    }
+                  }}
+                  disabled={importLoading || !importFile}
+                  className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium disabled:opacity-50"
+                >
+                  {importLoading ? 'Importing...' : 'Import Excel'}
+                </button>
+              </div>
+            </div>
+
+            {/* Export Section */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+              <h3 className="text-xl font-semibold text-slate-800 mb-4">Export Medicines</h3>
+              <div className="flex gap-4">
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await api.get('/admin/import-export/export/json')
+                      const blob = new Blob([JSON.stringify(response.data.data || response.data, null, 2)], { type: 'application/json' })
+                      const url = window.URL.createObjectURL(blob)
+                      const link = document.createElement('a')
+                      link.href = url
+                      link.download = `medicines_export_${new Date().toISOString().split('T')[0]}.json`
+                      document.body.appendChild(link)
+                      link.click()
+                      document.body.removeChild(link)
+                      window.URL.revokeObjectURL(url)
+                      toast.success('Export completed successfully')
+                    } catch (error) {
+                      toast.error('Failed to export')
+                    }
+                  }}
+                  className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
+                >
+                  📥 Export as JSON
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await api.get('/admin/import-export/export/excel', {
+                        responseType: 'blob'
+                      })
+                      const url = window.URL.createObjectURL(new Blob([response.data]))
+                      const link = document.createElement('a')
+                      link.href = url
+                      link.download = `medicines_export_${new Date().toISOString().split('T')[0]}.xlsx`
+                      document.body.appendChild(link)
+                      link.click()
+                      document.body.removeChild(link)
+                      window.URL.revokeObjectURL(url)
+                      toast.success('Export completed successfully')
+                    } catch (error) {
+                      toast.error('Failed to export')
+                    }
+                  }}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  📊 Export as Excel
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
