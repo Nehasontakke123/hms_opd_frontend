@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import PatientLimitModal from '../components/PatientLimitModal'
 import MedicalHistoryModal from '../components/MedicalHistoryModal'
+import { QRCodeSVG } from 'qrcode.react'
 
 const getDefaultVisitDate = () => {
   const now = new Date()
@@ -30,6 +31,7 @@ const getInitialFormData = () => ({
   visitDate: getDefaultVisitDate(),
   visitTime: getDefaultVisitTime(),
   isRecheck: false,
+  paymentMethod: 'online', // 'online' or 'cash'
   feeStatus: 'pending',
   behaviorRating: null
 })
@@ -172,6 +174,10 @@ const ReceptionistDashboard = () => {
   const [showTokenModal, setShowTokenModal] = useState(false)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [showEditAppointmentModal, setShowEditAppointmentModal] = useState(false)
+  const [showQRModal, setShowQRModal] = useState(false)
+  const [qrCodeData, setQrCodeData] = useState(null)
+  const [qrPaymentStatus, setQrPaymentStatus] = useState('pending')
+  const qrPollIntervalRef = useRef(null)
   const [selectedAppointment, setSelectedAppointment] = useState(null)
   const [editingAppointmentForm, setEditingAppointmentForm] = useState({
     patientName: '',
@@ -281,6 +287,20 @@ const ReceptionistDashboard = () => {
         doctor: value,
         disease: '' // Clear disease when doctor changes
       }))
+    } else if (name === 'isRecheck') {
+      // When Recheck-Up is checked, automatically set fee status to indicate no fee required
+      setFormData((prev) => ({
+        ...prev,
+        isRecheck: checked,
+        feeStatus: checked ? 'not_required' : prev.feeStatus === 'not_required' ? 'pending' : prev.feeStatus
+      }))
+    } else if (name === 'paymentMethod') {
+      // When payment method changes, update feeStatus accordingly
+      setFormData((prev) => ({
+        ...prev,
+        paymentMethod: value,
+        feeStatus: value === 'cash' ? 'paid' : 'pending'
+      }))
     } else {
       setFormData((prev) => ({
         ...prev,
@@ -289,43 +309,306 @@ const ReceptionistDashboard = () => {
     }
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    
-    // Payment validation: Normal patients (non-recheck) must have fees paid before confirming
-    if (!formData.isRecheck && formData.feeStatus !== 'paid') {
-      toast.error('Normal patients must complete payment before confirming the appointment. Please select "Fees Paid" in the Fee Status field.', {
-        duration: 5000,
-        icon: '⚠️'
-      })
-      return
-    }
-    
+  const createQRCode = async () => {
     try {
+      // Validate form before creating QR code
+      if (!formData.fullName || !formData.mobileNumber || !formData.address || !formData.age || !formData.disease || !formData.doctor) {
+        toast.error('Please fill all required fields before generating QR code')
+        return
+      }
+
       // Find the selected doctor to get the fees
       const selectedDoctor = doctors.find(d => d._id === formData.doctor)
       const fees = selectedDoctor?.fees || 0
+
+      if (fees <= 0) {
+        toast.error('No fees to pay. Please proceed with registration.')
+        return
+      }
+
+      // Create Razorpay QR code
+      const qrResponse = await api.post('/payment/create-qr', {
+        amount: fees,
+        currency: 'INR',
+        receipt: `receipt_${Date.now()}_${formData.mobileNumber}`,
+        description: `Consultation Fee - Dr. ${selectedDoctor?.fullName || 'Doctor'}`
+      })
+
+      if (!qrResponse.data.success) {
+        throw new Error('Failed to create QR code')
+      }
+
+      setQrCodeData(qrResponse.data.data)
+      setQrPaymentStatus('pending')
+      setShowQRModal(true)
       
+      // Start polling for payment status
+      startQRPolling(qrResponse.data.data.qrId, fees)
+      
+      toast.success('QR code generated! Patient can scan to pay.')
+    } catch (error) {
+      console.error('QR code creation error:', error)
+      toast.error(error.response?.data?.message || 'Failed to create QR code')
+    }
+  }
+
+  const startQRPolling = (qrId, fees) => {
+    // Clear any existing interval
+    if (qrPollIntervalRef.current) {
+      clearInterval(qrPollIntervalRef.current)
+    }
+
+    // Poll every 3 seconds for payment status
+    qrPollIntervalRef.current = setInterval(async () => {
+      try {
+        const statusResponse = await api.get(`/payment/qr-status/${qrId}`)
+        
+        if (statusResponse.data.success) {
+          const { status, payments } = statusResponse.data.data
+          
+          // Check if payment is completed
+          if (status === 'paid' || (payments && payments.length > 0 && payments[0].status === 'captured')) {
+            // Stop polling
+            if (qrPollIntervalRef.current) {
+              clearInterval(qrPollIntervalRef.current)
+              qrPollIntervalRef.current = null
+            }
+            
+            setQrPaymentStatus('paid')
+            toast.success('Payment received! Registering patient...')
+            
+            // Register patient after payment
+            await registerPatientAfterPayment(fees)
+            
+            // Close QR modal
+            setTimeout(() => {
+              setShowQRModal(false)
+              setQrCodeData(null)
+              setQrPaymentStatus('pending')
+            }, 2000)
+          }
+        }
+      } catch (error) {
+        console.error('Error checking QR status:', error)
+      }
+    }, 3000) // Poll every 3 seconds
+  }
+
+  const stopQRPolling = () => {
+    if (qrPollIntervalRef.current) {
+      clearInterval(qrPollIntervalRef.current)
+      qrPollIntervalRef.current = null
+    }
+  }
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      stopQRPolling()
+    }
+  }, [])
+
+  const handlePayment = async () => {
+    try {
+      // Validate form before payment
+      if (!formData.fullName || !formData.mobileNumber || !formData.address || !formData.age || !formData.disease || !formData.doctor) {
+        toast.error('Please fill all required fields before proceeding to payment')
+        return
+      }
+
+      // Find the selected doctor to get the fees
+      const selectedDoctor = doctors.find(d => d._id === formData.doctor)
+      const fees = selectedDoctor?.fees || 0
+
+      if (fees <= 0) {
+        toast.error('No fees to pay. Please proceed with registration.')
+        return
+      }
+
+      // Create Razorpay order
+      const orderResponse = await api.post('/payment/create-order', {
+        amount: fees,
+        currency: 'INR',
+        receipt: `receipt_${Date.now()}_${formData.mobileNumber}`
+      })
+
+      if (!orderResponse.data.success) {
+        throw new Error('Failed to create payment order')
+      }
+
+      const { orderId, key } = orderResponse.data.data
+
+      // Razorpay options
+      const options = {
+        key: key,
+        amount: fees * 100, // Amount in paise
+        currency: 'INR',
+        name: 'Tekisky Hospital',
+        description: `Consultation Fee - Dr. ${selectedDoctor?.fullName || 'Doctor'}`,
+        order_id: orderId,
+        handler: async function (response) {
+          try {
+            // Verify payment
+            const verifyResponse = await api.post('/payment/verify', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature
+            })
+
+            if (verifyResponse.data.success) {
+              // Payment verified, register patient with paid status
+              await registerPatientAfterPayment(fees)
+              toast.success('Payment successful! Patient registered.')
+            } else {
+              toast.error('Payment verification failed')
+            }
+          } catch (error) {
+            console.error('Payment verification error:', error)
+            toast.error('Payment verification failed. Please contact support.')
+          }
+        },
+        prefill: {
+          name: formData.fullName,
+          contact: formData.mobileNumber,
+          email: ''
+        },
+        theme: {
+          color: '#7c3aed' // Purple theme
+        },
+        modal: {
+          ondismiss: function() {
+            toast.error('Payment cancelled')
+          }
+        }
+      }
+
+      // Check if Razorpay is loaded
+      if (!window.Razorpay) {
+        toast.error('Payment gateway is not loaded. Please refresh the page and try again.')
+        return
+      }
+
+      // Open Razorpay checkout
+      const razorpay = new window.Razorpay(options)
+      razorpay.on('payment.failed', function (response) {
+        console.error('Payment failed:', response.error)
+        toast.error(`Payment failed: ${response.error.description || 'Unknown error'}`)
+      })
+      razorpay.open()
+    } catch (error) {
+      console.error('Payment error:', error)
+      toast.error(error.response?.data?.message || 'Failed to initiate payment')
+    }
+  }
+
+  const registerPatientAfterPayment = async (fees) => {
+    try {
       const response = await api.post('/patient/register', {
         ...formData,
-        fees,
+        fees: fees,
         isRecheck: formData.isRecheck || false,
-        feeStatus: formData.feeStatus || 'pending'
+        feeStatus: 'paid',
+        paymentMethod: 'online',
+        paymentDate: new Date().toISOString(),
+        paymentAmount: fees
       })
+      
       setGeneratedToken(response.data.data)
       setShowTokenModal(true)
       
       // Reset form
       setFormData(getInitialFormData())
       
-      toast.success('Patient registered successfully!')
-      
       // Refresh patient lists
       fetchTodayPatients()
       fetchPatientHistory()
       fetchDoctors()
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Registration failed')
+      console.error('Registration error:', error)
+      toast.error(error.response?.data?.message || 'Registration failed after payment')
+    }
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    
+    // For recheck-up visits, register directly without payment
+    if (formData.isRecheck) {
+      try {
+        const response = await api.post('/patient/register', {
+          ...formData,
+          fees: 0,
+          isRecheck: true,
+          feeStatus: 'not_required'
+        })
+        setGeneratedToken(response.data.data)
+        setShowTokenModal(true)
+        setFormData(getInitialFormData())
+        toast.success('Patient registered successfully!')
+        fetchTodayPatients()
+        fetchPatientHistory()
+        fetchDoctors()
+      } catch (error) {
+        toast.error(error.response?.data?.message || 'Registration failed')
+      }
+      return
+    }
+
+    // For cash payment, register directly with paid status
+    if (formData.paymentMethod === 'cash') {
+      try {
+        const selectedDoctor = doctors.find(d => d._id === formData.doctor)
+        const fees = selectedDoctor?.fees || 0
+        
+        const response = await api.post('/patient/register', {
+          ...formData,
+          fees: fees,
+          isRecheck: false,
+          feeStatus: 'paid',
+          paymentMethod: 'cash',
+          paymentDate: new Date().toISOString(),
+          paymentAmount: fees
+        })
+        setGeneratedToken(response.data.data)
+        setShowTokenModal(true)
+        setFormData(getInitialFormData())
+        toast.success('Patient registered successfully! Cash payment received.')
+        fetchTodayPatients()
+        fetchPatientHistory()
+        fetchDoctors()
+      } catch (error) {
+        toast.error(error.response?.data?.message || 'Registration failed')
+      }
+      return
+    }
+
+    // For online payment, check if payment is already completed
+    if (formData.paymentMethod === 'online' && formData.feeStatus === 'paid') {
+      // Register directly if already marked as paid (from QR code or card payment)
+      try {
+        const selectedDoctor = doctors.find(d => d._id === formData.doctor)
+        const fees = selectedDoctor?.fees || 0
+        
+        const response = await api.post('/patient/register', {
+          ...formData,
+          fees: fees,
+          isRecheck: false,
+          feeStatus: 'paid',
+          paymentMethod: 'online'
+        })
+        setGeneratedToken(response.data.data)
+        setShowTokenModal(true)
+        setFormData(getInitialFormData())
+        toast.success('Patient registered successfully!')
+        fetchTodayPatients()
+        fetchPatientHistory()
+        fetchDoctors()
+      } catch (error) {
+        toast.error(error.response?.data?.message || 'Registration failed')
+      }
+    } else {
+      // For pending online payments, show error - user should use QR code or Card/UPI buttons
+      toast.error('Please complete payment using QR code or Card/UPI option')
     }
   }
 
@@ -1418,22 +1701,108 @@ const ReceptionistDashboard = () => {
                 </label>
               </div>
 
-              {/* Fee Status Dropdown */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Fee Status *
-                </label>
-                <select
-                  name="feeStatus"
-                  value={formData.feeStatus}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                  required
-                >
-                  <option value="pending">Pending</option>
-                  <option value="paid">Fees Paid</option>
-                </select>
-              </div>
+              {/* Payment Method - Hidden for Recheck-Up visits */}
+              {!formData.isRecheck ? (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Method *
+                  </label>
+                  <div className="space-y-3">
+                    <select
+                      name="paymentMethod"
+                      value={formData.paymentMethod}
+                      onChange={handleChange}
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none font-medium bg-white"
+                      required
+                    >
+                      <option value="online">💳 Online Payment (Razorpay)</option>
+                      <option value="cash">💵 Cash Payment (Offline)</option>
+                    </select>
+                    
+                    {formData.doctor && (
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-gray-700">Consultation Fee:</span>
+                          <span className="text-2xl font-bold text-blue-700">
+                            ₹{doctors.find(d => d._id === formData.doctor)?.fees || 0}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Online Payment Options */}
+                    {formData.paymentMethod === 'online' && formData.doctor && (
+                      <div className="space-y-3 p-4 bg-white border-2 border-blue-200 rounded-lg">
+                        <p className="text-sm font-semibold text-gray-700 mb-3 text-center">
+                          Choose Payment Option:
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={createQRCode}
+                            className="px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                          >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                            </svg>
+                            <span>Scan QR Code</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handlePayment}
+                            className="px-4 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg font-semibold hover:from-purple-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                          >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                            </svg>
+                            <span>Card / UPI</span>
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-500 text-center mt-2">
+                          💡 QR Code: Instant payment via UPI apps | Card/UPI: Online payment gateway
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Cash Payment Option */}
+                    {formData.paymentMethod === 'cash' && formData.doctor && (
+                      <div className="space-y-3 p-4 bg-white border-2 border-green-200 rounded-lg">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                            <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-gray-700">Cash Payment Received</p>
+                            <p className="text-xs text-gray-500">Patient will pay cash at the counter</p>
+                          </div>
+                        </div>
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-700">Amount to Collect:</span>
+                            <span className="text-xl font-bold text-green-700">
+                              ₹{doctors.find(d => d._id === formData.doctor)?.fees || 0}
+                            </span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 text-center mt-2">
+                          💡 Click "Register Patient" after receiving cash payment
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Fee Status
+                  </label>
+                  <div className="w-full px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-green-700 font-medium">
+                    ✓ No Fees Required (Recheck-Up Visit)
+                  </div>
+                </div>
+              )}
 
               {/* Behavior Rating */}
               <div className="md:col-span-2">
@@ -1480,9 +1849,30 @@ const ReceptionistDashboard = () => {
 
             <button
               type="submit"
-              className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition"
+              className="w-full bg-gradient-to-r from-green-600 to-green-700 text-white py-4 rounded-lg font-bold text-lg hover:from-green-700 hover:to-green-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
             >
-              Register Patient
+              {!formData.isRecheck && formData.paymentMethod === 'online' && formData.feeStatus === 'pending' ? (
+                <>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                  </svg>
+                  Complete Payment First
+                </>
+              ) : formData.paymentMethod === 'cash' ? (
+                <>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  Register Patient (Cash Payment)
+                </>
+              ) : (
+                <>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Register Patient
+                </>
+              )}
             </button>
           </form>
         </div>
@@ -1711,13 +2101,19 @@ const ReceptionistDashboard = () => {
                                 </div>
                                 <p className="text-xs text-slate-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
                                 <div className="flex items-center gap-2 mt-1">
-                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                                    patient.feeStatus === 'paid'
-                                      ? 'bg-green-100 text-green-700 border border-green-200'
-                                      : 'bg-orange-100 text-orange-700 border border-orange-200'
-                                  }`}>
-                                    {patient.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
-                                  </span>
+                                  {patient.isRecheck || patient.feeStatus === 'not_required' ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
+                                      No Fees Required
+                                    </span>
+                                  ) : (
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      patient.feeStatus === 'paid'
+                                        ? 'bg-green-100 text-green-700 border border-green-200'
+                                        : 'bg-orange-100 text-orange-700 border border-orange-200'
+                                    }`}>
+                                      {patient.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
+                                    </span>
+                                  )}
                                 </div>
                               </td>
                               <td className="px-6 py-4">
@@ -1960,13 +2356,19 @@ const ReceptionistDashboard = () => {
                                     </div>
                                     <p className="text-xs text-slate-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
                                     <div className="flex items-center gap-2 mt-1">
-                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                                        patient.feeStatus === 'paid'
-                                          ? 'bg-green-100 text-green-700 border border-green-200'
-                                          : 'bg-orange-100 text-orange-700 border border-orange-200'
-                                      }`}>
-                                        {patient.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
-                                      </span>
+                                      {patient.isRecheck || patient.feeStatus === 'not_required' ? (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
+                                          No Fees Required
+                                        </span>
+                                      ) : (
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                                          patient.feeStatus === 'paid'
+                                            ? 'bg-green-100 text-green-700 border border-green-200'
+                                            : 'bg-orange-100 text-orange-700 border border-orange-200'
+                                        }`}>
+                                          {patient.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
+                                        </span>
+                                      )}
                                     </div>
                                   </td>
                                   <td className="px-6 py-4 border-r border-slate-200">
@@ -2677,6 +3079,82 @@ const ReceptionistDashboard = () => {
           </div>
         )}
       </div>
+
+      {/* QR Code Payment Modal */}
+      {showQRModal && qrCodeData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-8 text-center shadow-xl">
+            <div className="mb-6">
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">Scan QR Code to Pay</h3>
+              <p className="text-gray-600">Patient can scan this QR code with any UPI app</p>
+            </div>
+
+            <div className="bg-white rounded-lg p-6 mb-6 border-2 border-gray-200 flex items-center justify-center">
+              {qrCodeData.qrImageUrl ? (
+                <img 
+                  src={qrCodeData.qrImageUrl} 
+                  alt="Payment QR Code" 
+                  className="w-64 h-64 mx-auto"
+                />
+              ) : qrCodeData.qrShortUrl ? (
+                <QRCodeSVG 
+                  value={qrCodeData.qrShortUrl} 
+                  size={256}
+                  level="H"
+                  includeMargin={true}
+                />
+              ) : (
+                <div className="text-gray-500">Loading QR code...</div>
+              )}
+            </div>
+
+            <div className="bg-blue-50 rounded-lg p-4 mb-6">
+              <p className="text-sm text-gray-600 mb-1">Amount to Pay</p>
+              <p className="text-3xl font-bold text-blue-600">₹{qrCodeData.amount}</p>
+            </div>
+
+            <div className="mb-6">
+              {qrPaymentStatus === 'pending' && (
+                <div className="flex items-center justify-center gap-2 text-yellow-600">
+                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <p className="text-sm font-medium">Waiting for payment...</p>
+                </div>
+              )}
+              {qrPaymentStatus === 'paid' && (
+                <div className="flex items-center justify-center gap-2 text-green-600">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <p className="text-sm font-medium">Payment received! Registering patient...</p>
+                </div>
+              )}
+            </div>
+
+            <div className="text-xs text-gray-500 mb-4">
+              <p>Instructions:</p>
+              <p>1. Open any UPI app (PhonePe, Google Pay, Paytm, etc.)</p>
+              <p>2. Scan this QR code</p>
+              <p>3. Confirm payment</p>
+            </div>
+
+            <button
+              onClick={() => {
+                stopQRPolling()
+                setShowQRModal(false)
+                setQrCodeData(null)
+                setQrPaymentStatus('pending')
+              }}
+              className="w-full bg-gray-300 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition"
+              disabled={qrPaymentStatus === 'paid'}
+            >
+              {qrPaymentStatus === 'paid' ? 'Payment Completed' : 'Close'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showTokenModal && generatedToken && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

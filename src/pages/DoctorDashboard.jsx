@@ -1033,18 +1033,6 @@ const DoctorDashboard = () => {
             
             {/* Right Side: Action Buttons */}
             <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
-              {doctorStats && (
-                <button
-                  onClick={handleToggleAvailability}
-                  className={`px-4 sm:px-5 py-2.5 rounded-lg transition-all text-sm whitespace-nowrap font-bold border shadow-md ${
-                    doctorStats.isAvailable
-                      ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-300 hover:border-amber-400'
-                      : 'bg-green-600 text-white hover:bg-green-700 border-green-700 hover:border-green-800'
-                  }`}
-                >
-                  {doctorStats.isAvailable ? '⛔ Mark Unavailable' : '✓ Mark Available'}
-                </button>
-              )}
               <button
                 onClick={() => setShowLimitModal(true)}
                 className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm whitespace-nowrap"
@@ -1088,44 +1076,6 @@ const DoctorDashboard = () => {
         </div>
       </header>
 
-      {/* Availability Banner */}
-      {doctorStats && (
-        <div className="max-w-7xl mx-auto px-4 pt-6">
-          {doctorStats.isAvailable ? (
-            <div className="mb-6 p-4 border-2 border-green-500 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-green-900 mb-1">Doctor is available and accepting patients</h3>
-                  <p className="text-sm text-green-700">This status is highlighted to indicate active availability.</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="mb-6 p-4 border-2 border-amber-500 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl shadow-sm">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-amber-900 mb-1">Doctor is currently not available</h3>
-                  <p className="text-sm text-amber-700">Please check back later or contact reception for assistance.</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Limit Reached Banner */}
       {doctorStats && doctorStats.isLimitReached && (
@@ -1230,7 +1180,7 @@ const DoctorDashboard = () => {
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                           {filteredTodayPatients.map((patient) => {
-                            const hasPendingFees = !patient.isRecheck && patient.feeStatus === 'pending'
+                            const hasPendingFees = !patient.isRecheck && patient.feeStatus !== 'not_required' && patient.feeStatus === 'pending'
                             return (
                               <tr 
                                 key={patient._id} 
@@ -1247,7 +1197,7 @@ const DoctorDashboard = () => {
                                   <div className="text-sm font-medium text-gray-900">{patient.fullName}</div>
                                   <div className="text-sm text-gray-500">{patient.age} years • {patient.mobileNumber}</div>
                                   <div className="flex items-center gap-2 mt-1">
-                                    {patient.isRecheck ? (
+                                    {patient.isRecheck || patient.feeStatus === 'not_required' ? (
                                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
                                         No Fees Required
                                       </span>
@@ -1427,7 +1377,7 @@ const DoctorDashboard = () => {
                               </div>
                               <p className="text-xs text-gray-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
                               <div className="flex items-center gap-2 mt-1">
-                                {patient.isRecheck ? (
+                                {patient.isRecheck || patient.feeStatus === 'not_required' ? (
                                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
                                     No Fees Required
                                   </span>
@@ -1586,7 +1536,7 @@ const DoctorDashboard = () => {
                           {patient.age} years • {patient.mobileNumber} • {patient.disease}
                         </p>
                         <div className="flex items-center gap-2 mt-2">
-                          {patient.isRecheck ? (
+                          {patient.isRecheck || patient.feeStatus === 'not_required' ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
                               No Fees Required
                             </span>
