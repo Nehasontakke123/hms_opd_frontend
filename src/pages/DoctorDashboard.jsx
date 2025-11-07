@@ -345,21 +345,66 @@ const DoctorDashboard = () => {
   const viewPdf = async (pdfUrl) => {
     try {
       const response = await fetch(pdfUrl, {
-        credentials: pdfUrl.startsWith('http') ? 'omit' : 'include'
+        credentials: pdfUrl.startsWith('http') ? 'omit' : 'include',
+        headers: {
+          'Accept': 'application/pdf'
+        }
       })
 
       if (!response.ok) {
         throw new Error('Failed to fetch PDF')
       }
 
+      // Get the blob and ensure it has the correct MIME type
       const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      window.open(url, '_blank')
-      // Clean up after a delay to allow the window to load
-      setTimeout(() => window.URL.revokeObjectURL(url), 1000)
+      
+      // Check Content-Type header first
+      const contentType = response.headers.get('content-type') || ''
+      
+      // If blob doesn't have PDF MIME type, create new blob with correct type
+      let pdfBlob = blob
+      if (!blob.type.includes('pdf') && !contentType.includes('pdf')) {
+        // Check first few bytes to verify it's actually a PDF
+        const arrayBuffer = await blob.arrayBuffer()
+        const uint8Array = new Uint8Array(arrayBuffer)
+        const isPdf = uint8Array[0] === 0x25 && uint8Array[1] === 0x50 && uint8Array[2] === 0x44 && uint8Array[3] === 0x46
+        
+        if (!isPdf) {
+          // Check if it's HTML error page
+          const text = new TextDecoder().decode(uint8Array.slice(0, 100))
+          if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+            toast.error('PDF not found. Please try downloading instead.')
+            return
+          }
+        }
+        
+        // Create new blob with explicit PDF MIME type
+        pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' })
+      } else if (!blob.type.includes('pdf')) {
+        // If content-type header says PDF but blob doesn't, fix it
+        const arrayBuffer = await blob.arrayBuffer()
+        pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' })
+      }
+      
+      const url = window.URL.createObjectURL(pdfBlob)
+      
+      // Open in new tab with proper PDF viewer
+      const newWindow = window.open('', '_blank')
+      
+      if (!newWindow) {
+        toast.error('Please allow popups to view PDF')
+        window.URL.revokeObjectURL(url)
+        return
+      }
+      
+      // Set the location to the blob URL
+      newWindow.location.href = url
+      
+      // Clean up after a longer delay to ensure PDF loads
+      setTimeout(() => window.URL.revokeObjectURL(url), 10000)
     } catch (error) {
       console.error('PDF view failed:', error)
-      toast.error('Failed to view PDF')
+      toast.error('Failed to view PDF. Please try downloading instead.')
     }
   }
 
@@ -1216,6 +1261,28 @@ const DoctorDashboard = () => {
                                       </span>
                                     )}
                                   </div>
+                                  {patient.behaviorRating && (
+                                    <div className="flex items-center gap-1 mt-1">
+                                      <span className="text-xs text-gray-600">Behavior:</span>
+                                      <div className="flex items-center">
+                                        {[1, 2, 3, 4, 5].map((star) => (
+                                          <span
+                                            key={star}
+                                            className={`text-sm ${
+                                              star <= patient.behaviorRating
+                                                ? 'text-yellow-400'
+                                                : 'text-gray-300'
+                                            }`}
+                                          >
+                                            ★
+                                          </span>
+                                        ))}
+                                      </div>
+                                      <span className="text-xs text-gray-500 ml-1">
+                                        ({patient.behaviorRating}/5)
+                                      </span>
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="px-6 py-4">
                                   <div className="text-sm text-gray-900">{patient.disease}</div>
@@ -1374,6 +1441,28 @@ const DoctorDashboard = () => {
                                   </span>
                                 )}
                               </div>
+                              {patient.behaviorRating && (
+                                <div className="flex items-center gap-1 mt-1">
+                                  <span className="text-xs text-gray-600">Behavior:</span>
+                                  <div className="flex items-center">
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                      <span
+                                        key={star}
+                                        className={`text-sm ${
+                                          star <= patient.behaviorRating
+                                            ? 'text-yellow-400'
+                                            : 'text-gray-300'
+                                        }`}
+                                      >
+                                        ★
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <span className="text-xs text-gray-500 ml-1">
+                                    ({patient.behaviorRating}/5)
+                                  </span>
+                                </div>
+                              )}
                             </td>
                           <td className="px-6 py-4">
                             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium">

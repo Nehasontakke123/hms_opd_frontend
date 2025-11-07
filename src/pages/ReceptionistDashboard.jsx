@@ -30,7 +30,8 @@ const getInitialFormData = () => ({
   visitDate: getDefaultVisitDate(),
   visitTime: getDefaultVisitTime(),
   isRecheck: false,
-  feeStatus: 'pending'
+  feeStatus: 'pending',
+  behaviorRating: null
 })
 
 // Mapping of doctor specializations to diseases/health issues
@@ -1432,6 +1433,48 @@ const ReceptionistDashboard = () => {
                   <option value="pending">Pending</option>
                   <option value="paid">Fees Paid</option>
                 </select>
+              </div>
+
+              {/* Behavior Rating */}
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Patient Behavior Rating
+                  <span className="text-xs text-gray-500 ml-2">(Rate patient's behavior during registration)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setFormData((prev) => ({ ...prev, behaviorRating: star }))}
+                      className={`text-3xl transition-all ${
+                        formData.behaviorRating >= star
+                          ? 'text-yellow-400'
+                          : 'text-gray-300 hover:text-yellow-300'
+                      }`}
+                      title={`${star} star${star > 1 ? 's' : ''}`}
+                    >
+                      ★
+                    </button>
+                  ))}
+                  {formData.behaviorRating && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData((prev) => ({ ...prev, behaviorRating: null }))}
+                      className="ml-2 text-sm text-gray-500 hover:text-gray-700 underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {formData.behaviorRating === 1 && 'Very argumentative or non-cooperative'}
+                  {formData.behaviorRating === 2 && 'Somewhat argumentative or difficult'}
+                  {formData.behaviorRating === 3 && 'Neutral behavior'}
+                  {formData.behaviorRating === 4 && 'Polite and cooperative'}
+                  {formData.behaviorRating === 5 && 'Very polite and highly cooperative'}
+                  {!formData.behaviorRating && 'Select stars to rate patient behavior (optional)'}
+                </p>
               </div>
             </div>
 

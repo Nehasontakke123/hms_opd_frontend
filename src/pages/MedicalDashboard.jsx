@@ -119,9 +119,8 @@ const MedicalDashboard = () => {
       const pdfUrl = patient.prescription.pdfPath ? getPDFUrl(patient.prescription.pdfPath) : null
       
       if (pdfUrl) {
-        // Download PDF instead of viewing
-        const fileName = `prescription_${patient.fullName.replace(/\s/g, '_')}_${patient.tokenNumber}`
-        downloadPdf(pdfUrl, fileName)
+        // Open PDF in new browser tab for viewing
+        await viewPdf(pdfUrl)
       } else {
         toast.error('PDF not available for this prescription')
       }

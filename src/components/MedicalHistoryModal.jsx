@@ -109,36 +109,68 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
     }
 
     try {
-      // Fetch the PDF as a blob to ensure proper download
+      // Fetch the PDF as a blob to ensure proper viewing
       const response = await fetch(pdfUrl, {
-        method: 'GET',
+        credentials: pdfUrl.startsWith('http') ? 'omit' : 'include',
         headers: {
-          'Content-Type': 'application/pdf',
-        },
+          'Accept': 'application/pdf'
+        }
       })
 
       if (!response.ok) {
         throw new Error('Failed to fetch PDF')
       }
 
+      // Get the blob and ensure it has the correct MIME type
       const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
       
-      // Create a temporary link element to trigger download
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `prescription_${patientName?.replace(/\s+/g, '_') || 'Patient'}_${new Date(visitDate).toISOString().split('T')[0]}.pdf`
-      document.body.appendChild(link)
-      link.click()
+      // Check Content-Type header first
+      const contentType = response.headers.get('content-type') || ''
       
-      // Clean up
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
+      // If blob doesn't have PDF MIME type, create new blob with correct type
+      let pdfBlob = blob
+      if (!blob.type.includes('pdf') && !contentType.includes('pdf')) {
+        // Check first few bytes to verify it's actually a PDF
+        const arrayBuffer = await blob.arrayBuffer()
+        const uint8Array = new Uint8Array(arrayBuffer)
+        const isPdf = uint8Array[0] === 0x25 && uint8Array[1] === 0x50 && uint8Array[2] === 0x44 && uint8Array[3] === 0x46
+        
+        if (!isPdf) {
+          // Check if it's HTML error page
+          const text = new TextDecoder().decode(uint8Array.slice(0, 100))
+          if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+            toast.error('PDF not found. Please try again.')
+            return
+          }
+        }
+        
+        // Create new blob with explicit PDF MIME type
+        pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' })
+      } else if (!blob.type.includes('pdf')) {
+        // If content-type header says PDF but blob doesn't, fix it
+        const arrayBuffer = await blob.arrayBuffer()
+        pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' })
+      }
       
-      toast.success('Prescription PDF downloaded successfully')
+      const url = window.URL.createObjectURL(pdfBlob)
+      
+      // Open in new tab with proper PDF viewer
+      const newWindow = window.open('', '_blank')
+      
+      if (!newWindow) {
+        toast.error('Please allow popups to view PDF')
+        window.URL.revokeObjectURL(url)
+        return
+      }
+      
+      // Set the location to the blob URL
+      newWindow.location.href = url
+      
+      // Clean up after a longer delay to ensure PDF loads
+      setTimeout(() => window.URL.revokeObjectURL(url), 10000)
     } catch (error) {
-      console.error('Error downloading PDF:', error)
-      toast.error('Failed to download PDF. Please try again.')
+      console.error('Error viewing PDF:', error)
+      toast.error('Failed to view PDF. Please try again.')
     }
   }
 

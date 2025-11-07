@@ -142,11 +142,40 @@ const generatePrescriptionPDF = (patient, doctor, prescription) => {
   doc.setFont('helvetica', 'bold')
   doc.text('Diagnosis', margin + 12, y + 7)
   
+  // Helper function to clean text by removing emojis and problematic characters
+  const cleanText = (text) => {
+    if (!text) return text
+    let cleaned = String(text)
+    
+    // Remove all emoji ranges comprehensively
+    cleaned = cleaned
+      // Remove all emoji ranges
+      .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Miscellaneous Symbols and Pictographs
+      .replace(/[\u{1F600}-\u{1F64F}]/gu, '') // Emoticons
+      .replace(/[\u{1F680}-\u{1F6FF}]/gu, '') // Transport and Map Symbols
+      .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '') // Flags
+      .replace(/[\u{1F900}-\u{1F9FF}]/gu, '') // Supplemental Symbols and Pictographs
+      .replace(/[\u{2600}-\u{26FF}]/gu, '') // Miscellaneous Symbols
+      .replace(/[\u{2700}-\u{27BF}]/gu, '') // Dingbats
+      .replace(/[\u{FE00}-\u{FE0F}]/gu, '') // Variation Selectors
+      .replace(/[\u{200B}-\u{200D}]/gu, '') // Zero-width spaces and joiners
+      .replace(/[\u{2060}-\u{206F}]/gu, '') // Word joiners
+      .replace(/[\u{FEFF}]/gu, '') // Zero-width no-break space
+      // Remove any remaining non-ASCII characters (keep only ASCII printable)
+      .replace(/[^\x20-\x7E]/g, '')
+      // Remove any corrupted character sequences
+      .replace(/[Ø<B[\]]/g, '')
+      .replace(/[^\x20-\x7E]/g, '') // Final pass to ensure only ASCII
+      .trim()
+    
+    return cleaned
+  }
+
   // Diagnosis text
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(...TEXT_DARK)
-  const diagnosisText = String(prescription.diagnosis || 'N/A')
+  const diagnosisText = cleanText(String(prescription.diagnosis || 'N/A'))
   const diagnosisLines = doc.splitTextToSize(diagnosisText, contentWidth - 12)
   doc.text(diagnosisLines, margin, y + 16)
   
@@ -198,9 +227,9 @@ const generatePrescriptionPDF = (patient, doctor, prescription) => {
   doc.setTextColor(...TEXT_DARK)
   
   prescription.medicines.forEach((m, idx) => {
-    const medText = `${idx + 1}. ${String(m.name || 'N/A')}`
-    const dosText = String(m.dosage || 'N/A')
-    const durText = String(m.duration || 'N/A')
+    const medText = `${idx + 1}. ${cleanText(String(m.name || 'N/A'))}`
+    const dosText = cleanText(String(m.dosage || 'N/A'))
+    const durText = cleanText(String(m.duration || 'N/A'))
     
     const medLines = doc.splitTextToSize(medText, colMedW - 10)
     const dosLines = doc.splitTextToSize(dosText, colDosW - 10)
@@ -245,7 +274,7 @@ const generatePrescriptionPDF = (patient, doctor, prescription) => {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
     doc.setTextColor(...TEXT_DARK)
-    const notesText = String(prescription.notes)
+    const notesText = cleanText(String(prescription.notes))
     const notesLines = doc.splitTextToSize(notesText, contentWidth)
     doc.text(notesLines, margin, y + 14)
     y += 14 + notesLines.length * 5 + sectionSpacing
