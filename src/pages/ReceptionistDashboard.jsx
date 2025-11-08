@@ -4,7 +4,7 @@ import api from '../utils/api'
 import toast from 'react-hot-toast'
 import PatientLimitModal from '../components/PatientLimitModal'
 import MedicalHistoryModal from '../components/MedicalHistoryModal'
-import { QRCodeSVG } from 'qrcode.react'
+import CreatableSelect from 'react-select/creatable'
 
 const getDefaultVisitDate = () => {
   const now = new Date()
@@ -21,6 +21,19 @@ const getDefaultVisitTime = () => {
   return `${hours}:${minutes}`
 }
 
+const REQUIRED_FIELDS = [
+  { name: 'fullName', label: 'Full Name' },
+  { name: 'mobileNumber', label: 'Mobile Number' },
+  { name: 'address', label: 'Address' },
+  { name: 'age', label: 'Age' },
+  { name: 'doctor', label: 'Select Doctor' },
+  { name: 'visitDate', label: 'Visit Date' },
+  { name: 'visitTime', label: 'Visit Time' },
+  { name: 'disease', label: 'Disease/Health Issue' },
+  { name: 'bloodPressure', label: 'Blood Pressure' },
+  { name: 'sugarLevel', label: 'Sugar Level' }
+]
+
 const getInitialFormData = () => ({
   fullName: '',
   mobileNumber: '',
@@ -33,7 +46,9 @@ const getInitialFormData = () => ({
   isRecheck: false,
   paymentMethod: 'online', // 'online' or 'cash'
   feeStatus: 'pending',
-  behaviorRating: null
+  behaviorRating: null,
+  bloodPressure: '',
+  sugarLevel: ''
 })
 
 // Mapping of doctor specializations to diseases/health issues
@@ -178,6 +193,7 @@ const ReceptionistDashboard = () => {
   const [qrCodeData, setQrCodeData] = useState(null)
   const [qrPaymentStatus, setQrPaymentStatus] = useState('pending')
   const qrPollIntervalRef = useRef(null)
+  const inputRefs = useRef({})
   const [selectedAppointment, setSelectedAppointment] = useState(null)
   const [editingAppointmentForm, setEditingAppointmentForm] = useState({
     patientName: '',
@@ -193,6 +209,7 @@ const ReceptionistDashboard = () => {
   const [selectedDoctorForLimit, setSelectedDoctorForLimit] = useState(null)
   const [generatedToken, setGeneratedToken] = useState(null)
   const [formData, setFormData] = useState(getInitialFormData)
+  const [formErrors, setFormErrors] = useState({})
   const [appointmentForm, setAppointmentForm] = useState(getInitialAppointmentForm)
   const [showAppointmentSuccess, setShowAppointmentSuccess] = useState(false)
   const [appointmentSuccessData, setAppointmentSuccessData] = useState(null)
@@ -202,6 +219,114 @@ const ReceptionistDashboard = () => {
   const [medicalHistoryPatientId, setMedicalHistoryPatientId] = useState(null)
   const [medicalHistoryPatientName, setMedicalHistoryPatientName] = useState(null)
   const [medicalHistoryPatientMobile, setMedicalHistoryPatientMobile] = useState(null)
+
+  const selectedDoctor = useMemo(
+    () => doctors.find((doc) => doc._id === formData.doctor),
+    [doctors, formData.doctor]
+  )
+  const consultationFee = selectedDoctor?.fees || 0
+  const selectedDoctorStats = useMemo(() => {
+    if (!selectedDoctor) return null
+    return doctorStats[selectedDoctor._id] || null
+  }, [doctorStats, selectedDoctor])
+  const isOnlinePayment = !formData.isRecheck && formData.paymentMethod === 'online'
+  const availableDiseases = useMemo(() => {
+    if (!selectedDoctor) return []
+    const specialization = selectedDoctor?.specialization || ''
+    return getDiseasesForSpecialization(specialization)
+  }, [selectedDoctor])
+  const diseaseOptions = useMemo(
+    () => availableDiseases.map((disease) => ({ value: disease, label: disease })),
+    [availableDiseases]
+  )
+  const selectedDiseaseOption = useMemo(
+    () => (formData.disease ? { value: formData.disease, label: formData.disease } : null),
+    [formData.disease]
+  )
+  const diseasePlaceholder = useMemo(() => {
+    if (selectedDoctor?.specialization) {
+      return `Search or type a health issue for ${selectedDoctor.specialization}`
+    }
+    return 'Search or type any health concern'
+  }, [selectedDoctor])
+  const diseaseHelperText = useMemo(() => {
+    if (selectedDoctor?.specialization) {
+      return `Suggestions are tailored for ${selectedDoctor.specialization}, but you can type any health concern.`
+    }
+    return 'Suggestions appear after selecting a doctor, but you can type any health concern.'
+  }, [selectedDoctor])
+  const diseaseSelectStyles = useMemo(
+    () => ({
+      control: (provided, state) => ({
+        ...provided,
+        borderRadius: 8,
+        borderColor: formErrors.disease ? '#ef4444' : state.isFocused ? '#00B894' : '#d1d5db',
+        boxShadow: state.isFocused
+          ? formErrors.disease
+            ? '0 0 0 4px rgba(239,68,68,0.12)'
+            : '0 0 0 4px rgba(0,184,148,0.12)'
+          : 'none',
+        '&:hover': {
+          borderColor: formErrors.disease ? '#ef4444' : '#00A36C'
+        },
+        minHeight: 48,
+        paddingLeft: 2,
+        paddingRight: 2,
+        fontFamily: '"Inter", sans-serif',
+        fontWeight: 500,
+        color: '#1f2937',
+        transition: 'all 0.2s ease',
+        backgroundColor: 'white'
+      }),
+      valueContainer: (provided) => ({
+        ...provided,
+        padding: '4px 8px'
+      }),
+      input: (provided) => ({
+        ...provided,
+        margin: 0,
+        padding: 0,
+        color: '#1f2937'
+      }),
+      placeholder: (provided) => ({
+        ...provided,
+        color: '#94a3b8',
+        fontFamily: '"Inter", sans-serif',
+        fontWeight: 500
+      }),
+      singleValue: (provided) => ({
+        ...provided,
+        color: '#1f2937',
+        fontFamily: '"Inter", sans-serif',
+        fontWeight: 500
+      }),
+      option: (provided, state) => ({
+        ...provided,
+        fontFamily: '"Inter", sans-serif',
+        fontWeight: 500,
+        color: state.isFocused ? '#03543f' : '#1f2937',
+        backgroundColor: state.isFocused ? 'rgba(0,184,148,0.12)' : 'white',
+        transition: 'all 0.2s ease'
+      }),
+      menu: (provided) => ({
+        ...provided,
+        borderRadius: 12,
+        overflow: 'hidden',
+        boxShadow: '0 18px 35px -20px rgba(15,118,110,0.35)'
+      }),
+      noOptionsMessage: (provided) => ({
+        ...provided,
+        fontFamily: '"Inter", sans-serif',
+        fontWeight: 500
+      })
+    }),
+    [formErrors.disease]
+  )
+  const demoQrUrl = useMemo(() => {
+    const amount = consultationFee || 0
+    const qrData = encodeURIComponent(`Hospital Demo Payment ₹${amount}`)
+    return `https://api.qrserver.com/v1/create-qr-code/?data=${qrData}&size=200x200`
+  }, [consultationFee])
 
   useEffect(() => {
     fetchDoctors()
@@ -271,22 +396,79 @@ const ReceptionistDashboard = () => {
       doctor: doctor._id,
       disease: '' // Clear disease when doctor changes
     }))
+    clearFieldError('doctor')
+    clearFieldError('disease')
   }
+
+  const [focusedField, setFocusedField] = useState(null)
+
+  const clearFieldError = (field) => {
+    setFormErrors((prev) => {
+      if (!prev[field]) return prev
+      const { [field]: _removed, ...rest } = prev
+      return rest
+    })
+  }
+
+  const focusOnField = (field) => {
+    const node = inputRefs.current[field]
+    if (!node) return
+    if (typeof node.focus === 'function') {
+      node.focus()
+    }
+    const scrollTarget =
+      (node && node.controlRef) ||
+      (node && node.inputRef && node.inputRef.current) ||
+      node
+    if (scrollTarget && typeof scrollTarget.scrollIntoView === 'function') {
+      scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
+
+  const getFieldClasses = (field) => {
+    const baseClasses =
+      'w-full px-4 py-3 text-sm font-medium font-["Inter",sans-serif] rounded-lg border bg-white text-slate-700 transition-all duration-200 outline-none'
+    const normalClasses =
+      'border-slate-200 hover:border-emerald-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 focus:ring-offset-0 focus:shadow-[0_0_0_4px_rgba(0,184,148,0.12)]'
+    const errorClasses =
+      'border-red-500 focus:border-red-500 focus:ring-2 focus:ring-red-100 focus:ring-offset-0 focus:shadow-[0_0_0_4px_rgba(239,68,68,0.12)]'
+    const disabledClasses = 'disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed'
+    return `${baseClasses} ${formErrors[field] ? errorClasses : normalClasses} ${disabledClasses}`
+  }
+
+  const getLabelClasses = (field) => {
+    if (formErrors[field]) {
+      return 'text-sm font-semibold text-red-600 transition-colors duration-200'
+    }
+    return `text-sm font-semibold transition-colors duration-200 ${
+      focusedField === field ? 'text-emerald-600' : 'text-slate-700'
+    }`
+  }
+
+  const handleFieldFocus = (field) => setFocusedField(field)
+  const handleFieldBlur = () => setFocusedField(null)
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target
+    clearFieldError(name)
     
     // If doctor is changed, clear disease and reset to new doctor's diseases
+    if (name === 'mobileNumber') {
+      const digitsOnly = value.replace(/\D/g, '').slice(0, 10)
+      setFormData((prev) => ({
+        ...prev,
+        mobileNumber: digitsOnly
+      }))
+      return
+    }
+
     if (name === 'doctor') {
-      const selectedDoctor = doctors.find(d => d._id === value)
-      const specialization = selectedDoctor?.specialization || ''
-      const diseases = getDiseasesForSpecialization(specialization)
-      
       setFormData((prev) => ({
         ...prev,
         doctor: value,
         disease: '' // Clear disease when doctor changes
       }))
+      clearFieldError('disease')
     } else if (name === 'isRecheck') {
       // When Recheck-Up is checked, automatically set fee status to indicate no fee required
       setFormData((prev) => ({
@@ -309,47 +491,92 @@ const ReceptionistDashboard = () => {
     }
   }
 
-  const createQRCode = async () => {
-    try {
-      // Validate form before creating QR code
-      if (!formData.fullName || !formData.mobileNumber || !formData.address || !formData.age || !formData.disease || !formData.doctor) {
-        toast.error('Please fill all required fields before generating QR code')
-        return
+  const handleDiseaseChange = (option) => {
+    const newValue = option?.value || ''
+    setFormData((prev) => ({
+      ...prev,
+      disease: newValue
+    }))
+    clearFieldError('disease')
+  }
+
+  const handleDiseaseCreate = (inputValue) => {
+    const newValue = inputValue.trim()
+    if (!newValue) return
+    setFormData((prev) => ({
+      ...prev,
+      disease: newValue
+    }))
+    clearFieldError('disease')
+  }
+
+  const validateForm = ({ showToast = false, focus = true } = {}) => {
+    const errors = {}
+
+    REQUIRED_FIELDS.forEach(({ name, label }) => {
+      const value = formData[name]
+      if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+        errors[name] = `${label} is required`
       }
+    })
 
-      // Find the selected doctor to get the fees
-      const selectedDoctor = doctors.find(d => d._id === formData.doctor)
-      const fees = selectedDoctor?.fees || 0
-
-      if (fees <= 0) {
-        toast.error('No fees to pay. Please proceed with registration.')
-        return
+    if (!errors.mobileNumber && formData.mobileNumber.trim()) {
+      const digitsOnly = formData.mobileNumber.trim()
+      if (!/^\d{10}$/.test(digitsOnly)) {
+        errors.mobileNumber = 'Enter a valid 10-digit mobile number'
       }
-
-      // Create Razorpay QR code
-      const qrResponse = await api.post('/payment/create-qr', {
-        amount: fees,
-        currency: 'INR',
-        receipt: `receipt_${Date.now()}_${formData.mobileNumber}`,
-        description: `Consultation Fee - Dr. ${selectedDoctor?.fullName || 'Doctor'}`
-      })
-
-      if (!qrResponse.data.success) {
-        throw new Error('Failed to create QR code')
-      }
-
-      setQrCodeData(qrResponse.data.data)
-      setQrPaymentStatus('pending')
-      setShowQRModal(true)
-      
-      // Start polling for payment status
-      startQRPolling(qrResponse.data.data.qrId, fees)
-      
-      toast.success('QR code generated! Patient can scan to pay.')
-    } catch (error) {
-      console.error('QR code creation error:', error)
-      toast.error(error.response?.data?.message || 'Failed to create QR code')
     }
+
+    if (!errors.bloodPressure && formData.bloodPressure.trim()) {
+      const bpPattern = /^\d{2,3}(\/\d{2,3})?$/
+      if (!bpPattern.test(formData.bloodPressure.trim())) {
+        errors.bloodPressure = 'Enter BP as systolic/diastolic (e.g. 120/80)'
+      }
+    }
+
+    if (!errors.sugarLevel && formData.sugarLevel !== '') {
+      const sugarValue = Number(formData.sugarLevel)
+      if (!Number.isFinite(sugarValue) || sugarValue <= 0) {
+        errors.sugarLevel = 'Enter a valid sugar level in mg/dL'
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors)
+      if (focus) {
+        const firstErrorField =
+          REQUIRED_FIELDS.map((field) => field.name).find((fieldName) => errors[fieldName]) ||
+          Object.keys(errors)[0]
+        if (firstErrorField) {
+          focusOnField(firstErrorField)
+        }
+      }
+      if (showToast) {
+        toast.error('Please fix the highlighted fields before continuing.')
+      }
+      return false
+    }
+
+    setFormErrors({})
+    return true
+  }
+
+  const createQRCode = () => {
+    if (!validateForm({ showToast: true })) {
+      return
+    }
+
+    if (consultationFee <= 0) {
+      toast.error('No fees to pay. Please proceed with registration.')
+      return
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      feeStatus: 'paid',
+      paymentMethod: 'online'
+    }))
+    toast.success('Demo QR payment marked as received. You can register the patient now.')
   }
 
   const startQRPolling = (qrId, fees) => {
@@ -409,102 +636,33 @@ const ReceptionistDashboard = () => {
   }, [])
 
   const handlePayment = async () => {
-    try {
-      // Validate form before payment
-      if (!formData.fullName || !formData.mobileNumber || !formData.address || !formData.age || !formData.disease || !formData.doctor) {
-        toast.error('Please fill all required fields before proceeding to payment')
-        return
-      }
-
-      // Find the selected doctor to get the fees
-      const selectedDoctor = doctors.find(d => d._id === formData.doctor)
-      const fees = selectedDoctor?.fees || 0
-
-      if (fees <= 0) {
-        toast.error('No fees to pay. Please proceed with registration.')
-        return
-      }
-
-      // Create Razorpay order
-      const orderResponse = await api.post('/payment/create-order', {
-        amount: fees,
-        currency: 'INR',
-        receipt: `receipt_${Date.now()}_${formData.mobileNumber}`
-      })
-
-      if (!orderResponse.data.success) {
-        throw new Error('Failed to create payment order')
-      }
-
-      const { orderId, key } = orderResponse.data.data
-
-      // Razorpay options
-      const options = {
-        key: key,
-        amount: fees * 100, // Amount in paise
-        currency: 'INR',
-        name: 'Tekisky Hospital',
-        description: `Consultation Fee - Dr. ${selectedDoctor?.fullName || 'Doctor'}`,
-        order_id: orderId,
-        handler: async function (response) {
-          try {
-            // Verify payment
-            const verifyResponse = await api.post('/payment/verify', {
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature
-            })
-
-            if (verifyResponse.data.success) {
-              // Payment verified, register patient with paid status
-              await registerPatientAfterPayment(fees)
-              toast.success('Payment successful! Patient registered.')
-            } else {
-              toast.error('Payment verification failed')
-            }
-          } catch (error) {
-            console.error('Payment verification error:', error)
-            toast.error('Payment verification failed. Please contact support.')
-          }
-        },
-        prefill: {
-          name: formData.fullName,
-          contact: formData.mobileNumber,
-          email: ''
-        },
-        theme: {
-          color: '#7c3aed' // Purple theme
-        },
-        modal: {
-          ondismiss: function() {
-            toast.error('Payment cancelled')
-          }
-        }
-      }
-
-      // Check if Razorpay is loaded
-      if (!window.Razorpay) {
-        toast.error('Payment gateway is not loaded. Please refresh the page and try again.')
-        return
-      }
-
-      // Open Razorpay checkout
-      const razorpay = new window.Razorpay(options)
-      razorpay.on('payment.failed', function (response) {
-        console.error('Payment failed:', response.error)
-        toast.error(`Payment failed: ${response.error.description || 'Unknown error'}`)
-      })
-      razorpay.open()
-    } catch (error) {
-      console.error('Payment error:', error)
-      toast.error(error.response?.data?.message || 'Failed to initiate payment')
+    if (!validateForm({ showToast: true })) {
+      return
     }
+
+    if (consultationFee <= 0) {
+      toast.error('No fees to pay. Please proceed with registration.')
+      return
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      feeStatus: 'paid',
+      paymentMethod: 'online'
+    }))
+    toast.success('Demo Card/UPI payment recorded. You can complete the registration.')
   }
 
   const registerPatientAfterPayment = async (fees) => {
     try {
-      const response = await api.post('/patient/register', {
+      const payloadBase = {
         ...formData,
+        bloodPressure: formData.bloodPressure.trim(),
+        sugarLevel: Number(formData.sugarLevel)
+      }
+
+      const response = await api.post('/patient/register', {
+        ...payloadBase,
         fees: fees,
         isRecheck: formData.isRecheck || false,
         feeStatus: 'paid',
@@ -531,12 +689,22 @@ const ReceptionistDashboard = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
+    if (!validateForm({ showToast: true })) {
+      return
+    }
+
+    const payloadBase = {
+      ...formData,
+      bloodPressure: formData.bloodPressure.trim(),
+      sugarLevel: Number(formData.sugarLevel)
+    }
     
     // For recheck-up visits, register directly without payment
     if (formData.isRecheck) {
       try {
         const response = await api.post('/patient/register', {
-          ...formData,
+          ...payloadBase,
           fees: 0,
           isRecheck: true,
           feeStatus: 'not_required'
@@ -557,11 +725,10 @@ const ReceptionistDashboard = () => {
     // For cash payment, register directly with paid status
     if (formData.paymentMethod === 'cash') {
       try {
-        const selectedDoctor = doctors.find(d => d._id === formData.doctor)
-        const fees = selectedDoctor?.fees || 0
+        const fees = consultationFee
         
         const response = await api.post('/patient/register', {
-          ...formData,
+          ...payloadBase,
           fees: fees,
           isRecheck: false,
           feeStatus: 'paid',
@@ -586,11 +753,10 @@ const ReceptionistDashboard = () => {
     if (formData.paymentMethod === 'online' && formData.feeStatus === 'paid') {
       // Register directly if already marked as paid (from QR code or card payment)
       try {
-        const selectedDoctor = doctors.find(d => d._id === formData.doctor)
-        const fees = selectedDoctor?.fees || 0
+        const fees = consultationFee
         
         const response = await api.post('/patient/register', {
-          ...formData,
+          ...payloadBase,
           fees: fees,
           isRecheck: false,
           feeStatus: 'paid',
@@ -1484,76 +1650,107 @@ const ReceptionistDashboard = () => {
             <div className="bg-white rounded-lg shadow p-4 sm:p-8">
               <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-6">Register New Patient</h2>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-10">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Full Name *
+              <div className="space-y-2">
+                <label className={getLabelClasses('fullName')}>
+                  Full Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   name="fullName"
+                  placeholder="Enter full name"
+                  autoComplete="name"
+                  ref={(el) => (inputRefs.current.fullName = el)}
                   value={formData.fullName}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                  required
+                  onFocus={() => handleFieldFocus('fullName')}
+                  onBlur={handleFieldBlur}
+                  className={getFieldClasses('fullName')}
                 />
+                {formErrors.fullName && (
+                  <p className="text-xs text-red-600">{formErrors.fullName}</p>
+                )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Mobile Number *
+              <div className="space-y-2">
+                <label className={getLabelClasses('mobileNumber')}>
+                  Mobile Number <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="tel"
                   name="mobileNumber"
+                  placeholder="10-digit mobile number"
+                  autoComplete="tel"
+                  ref={(el) => (inputRefs.current.mobileNumber = el)}
                   value={formData.mobileNumber}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                  required
+                  onFocus={() => handleFieldFocus('mobileNumber')}
+                  onBlur={handleFieldBlur}
+                  className={getFieldClasses('mobileNumber')}
+                  inputMode="numeric"
+                  maxLength={10}
                 />
+                {formErrors.mobileNumber && (
+                  <p className="text-xs text-red-600">{formErrors.mobileNumber}</p>
+                )}
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Address *
+              <div className="md:col-span-2 space-y-2">
+                <label className={getLabelClasses('address')}>
+                  Address <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   name="address"
+                  placeholder="House number, street, city"
+                  autoComplete="street-address"
+                  ref={(el) => (inputRefs.current.address = el)}
                   value={formData.address}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                  required
+                  onFocus={() => handleFieldFocus('address')}
+                  onBlur={handleFieldBlur}
+                  className={getFieldClasses('address')}
                 />
+                {formErrors.address && (
+                  <p className="text-xs text-red-600">{formErrors.address}</p>
+                )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Age *
+              <div className="space-y-2">
+                <label className={getLabelClasses('age')}>
+                  Age <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="number"
                   name="age"
+                  placeholder="e.g. 42"
+                  ref={(el) => (inputRefs.current.age = el)}
                   value={formData.age}
                   onChange={handleChange}
                   min="0"
                   max="150"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                  required
+                  onFocus={() => handleFieldFocus('age')}
+                  onBlur={handleFieldBlur}
+                  className={getFieldClasses('age')}
                 />
+                {formErrors.age && (
+                  <p className="text-xs text-red-600">{formErrors.age}</p>
+                )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Doctor *
+              <div className="space-y-2">
+                <label className={getLabelClasses('doctor')}>
+                  Select Doctor <span className="text-red-500">*</span>
                 </label>
                 <select
                   name="doctor"
+                  ref={(el) => (inputRefs.current.doctor = el)}
                   value={formData.doctor}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                  required
+                  onFocus={() => handleFieldFocus('doctor')}
+                  onBlur={handleFieldBlur}
+                  className={`${getFieldClasses('doctor')} appearance-none pr-10`}
                 >
                   <option value="">Select a doctor</option>
                   {doctors.map((doctor) => {
@@ -1563,8 +1760,8 @@ const ReceptionistDashboard = () => {
                     const isAvailable = stats?.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
                     const isDisabled = isLimitReached || !isAvailable
                     return (
-                      <option 
-                        key={doctor._id} 
+                      <option
+                        key={doctor._id}
                         value={doctor._id}
                         disabled={isDisabled}
                       >
@@ -1573,242 +1770,262 @@ const ReceptionistDashboard = () => {
                     )
                   })}
                 </select>
-                {formData.doctor && (
-                  <div className="mt-2 p-3 bg-blue-50 rounded-lg space-y-1">
-                    <p className="text-sm text-gray-700">
-                      <span className="font-semibold">Consultation Fee:</span>{' '}
-                      <span className="text-blue-600 font-bold">
-                        ₹{doctors.find(d => d._id === formData.doctor)?.fees || 'Not set'}
-                      </span>
-                    </p>
-                    {doctorStats[formData.doctor] && (
-                      <p className="text-sm text-gray-700">
-                        <span className="font-semibold">Patients Today:</span>{' '}
-                        <span className="font-bold">
-                          {doctorStats[formData.doctor].todayPatientCount} / {doctorStats[formData.doctor].dailyPatientLimit}
+                {formErrors.doctor && (
+                  <p className="text-xs text-red-600">{formErrors.doctor}</p>
+                )}
+                {selectedDoctor && (
+                  <div className="mt-3 rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 space-y-2 text-sm text-slate-700">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Consultation Fee</span>
+                      <span className="text-lg font-bold text-blue-700">₹{consultationFee || 'Not set'}</span>
+                    </div>
+                    {selectedDoctorStats && (
+                      <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm">
+                        <span className="font-semibold text-slate-600">Today:</span>
+                        <span className="font-semibold">
+                          {selectedDoctorStats.todayPatientCount} / {selectedDoctorStats.dailyPatientLimit}
                         </span>
-                        {' '}
-                        <span className={doctorStats[formData.doctor].remainingSlots > 0 ? 'text-green-600' : 'text-red-600'}>
-                          ({doctorStats[formData.doctor].remainingSlots} remaining)
+                        <span className={selectedDoctorStats.remainingSlots > 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
+                          ({selectedDoctorStats.remainingSlots} remaining)
                         </span>
-                      </p>
+                      </div>
                     )}
                   </div>
                 )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Visit Date *
+              <div className="space-y-2">
+                <label className={getLabelClasses('visitDate')}>
+                  Visit Date <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
                   name="visitDate"
+                  ref={(el) => (inputRefs.current.visitDate = el)}
                   value={formData.visitDate}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                  required
+                  onFocus={() => handleFieldFocus('visitDate')}
+                  onBlur={handleFieldBlur}
+                  className={getFieldClasses('visitDate')}
                 />
+                {formErrors.visitDate && (
+                  <p className="text-xs text-red-600">{formErrors.visitDate}</p>
+                )}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Visit Time *
+              <div className="space-y-2">
+                <label className={getLabelClasses('visitTime')}>
+                  Visit Time <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="time"
                   name="visitTime"
+                  ref={(el) => (inputRefs.current.visitTime = el)}
                   value={formData.visitTime}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none"
-                  required
+                  onFocus={() => handleFieldFocus('visitTime')}
+                  onBlur={handleFieldBlur}
+                  className={getFieldClasses('visitTime')}
                 />
+                {formErrors.visitTime && (
+                  <p className="text-xs text-red-600">{formErrors.visitTime}</p>
+                )}
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Disease/Health Issue *
+              <div className="md:col-span-2 space-y-2">
+                <label className={getLabelClasses('disease')}>
+                  Disease / Health Issue <span className="text-red-500">*</span>
                 </label>
-                <select
-                  name="disease"
-                  value={formData.disease}
-                  onChange={handleChange}
-                  disabled={!formData.doctor}
-                  className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none ${
-                    !formData.doctor ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''
-                  }`}
-                  required
-                >
-                  {!formData.doctor ? (
-                    <option value="">Please select a doctor first</option>
-                  ) : (() => {
-                    const selectedDoctor = doctors.find(d => d._id === formData.doctor)
-                    const specialization = selectedDoctor?.specialization || ''
-                    const diseases = getDiseasesForSpecialization(specialization)
-                    
-                    if (diseases.length === 0) {
-                      return (
-                        <option value="">
-                          No diseases available for {specialization || 'this doctor'}
-                        </option>
-                      )
-                    }
-                    
-                    return (
-                      <>
-                        <option value="">Select a disease/health issue</option>
-                        {diseases.map((disease) => (
-                          <option key={disease} value={disease}>
-                            {disease}
-                          </option>
-                        ))}
-                      </>
-                    )
-                  })()}
-                </select>
-                {formData.doctor && (() => {
-                  const selectedDoctor = doctors.find(d => d._id === formData.doctor)
-                  const specialization = selectedDoctor?.specialization || ''
-                  const diseases = getDiseasesForSpecialization(specialization)
-                  
-                  if (diseases.length > 0) {
-                    return (
-                      <p className="mt-1 text-xs text-gray-500">
-                        Select a health issue for {specialization}
-                      </p>
-                    )
-                  }
-                  return null
-                })()}
+                <CreatableSelect
+                  instanceId="disease-select"
+                  classNamePrefix="disease-select"
+                  styles={diseaseSelectStyles}
+                  ref={(ref) => {
+                    inputRefs.current.disease = ref
+                  }}
+                  value={selectedDiseaseOption}
+                  options={diseaseOptions}
+                  placeholder={diseasePlaceholder}
+                  onFocus={() => handleFieldFocus('disease')}
+                  onBlur={handleFieldBlur}
+                  onChange={handleDiseaseChange}
+                  onCreateOption={handleDiseaseCreate}
+                  isClearable
+                />
+                {formErrors.disease && (
+                  <p className="text-xs text-red-600">{formErrors.disease}</p>
+                )}
+                <p className="text-xs text-slate-500">{diseaseHelperText}</p>
               </div>
 
-              {/* Recheck-Up Checkbox */}
+              <div className="space-y-2">
+                <label className={getLabelClasses('bloodPressure')}>
+                  Blood Pressure (BP) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  name="bloodPressure"
+                  placeholder="e.g. 120/80"
+                  ref={(el) => (inputRefs.current.bloodPressure = el)}
+                  value={formData.bloodPressure}
+                  onChange={handleChange}
+                  onFocus={() => handleFieldFocus('bloodPressure')}
+                  onBlur={handleFieldBlur}
+                  className={getFieldClasses('bloodPressure')}
+                />
+                {formErrors.bloodPressure && (
+                  <p className="text-xs text-red-600">{formErrors.bloodPressure}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <label className={getLabelClasses('sugarLevel')}>
+                  Sugar Level (mg/dL) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  name="sugarLevel"
+                  placeholder="e.g. 95"
+                  ref={(el) => (inputRefs.current.sugarLevel = el)}
+                  value={formData.sugarLevel}
+                  onChange={handleChange}
+                  min="1"
+                  step="0.1"
+                  onFocus={() => handleFieldFocus('sugarLevel')}
+                  onBlur={handleFieldBlur}
+                  className={getFieldClasses('sugarLevel')}
+                />
+                {formErrors.sugarLevel && (
+                  <p className="text-xs text-red-600">{formErrors.sugarLevel}</p>
+                )}
+              </div>
+
               <div className="md:col-span-2">
-                <label className="flex items-center gap-3 cursor-pointer">
+                <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition hover:border-slate-300 cursor-pointer">
                   <input
                     type="checkbox"
                     name="isRecheck"
                     checked={formData.isRecheck}
                     onChange={handleChange}
-                    className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-2 focus:ring-green-500"
+                    className="mt-1 h-5 w-5 rounded border-slate-300 text-green-600 focus:ring-green-400"
                   />
-                  <span className="text-sm font-medium text-gray-700">
-                    Recheck-Up
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    (Check if this is a follow-up visit)
+                  <span>
+                    <span className="block text-sm font-semibold text-slate-700">Recheck-Up</span>
+                    <span className="block text-xs text-slate-500">Check if this is a follow-up visit for the same patient.</span>
                   </span>
                 </label>
               </div>
 
-              {/* Payment Method - Hidden for Recheck-Up visits */}
               {!formData.isRecheck ? (
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Payment Method *
+                <div className="md:col-span-2 space-y-4">
+                  <label className={getLabelClasses('paymentMethod')}>
+                    Payment Method <span className="text-red-500">*</span>
                   </label>
-                  <div className="space-y-3">
-                    <select
-                      name="paymentMethod"
-                      value={formData.paymentMethod}
-                      onChange={handleChange}
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none font-medium bg-white"
-                      required
-                    >
-                      <option value="online">💳 Online Payment (Razorpay)</option>
-                      <option value="cash">💵 Cash Payment (Offline)</option>
-                    </select>
-                    
-                    {formData.doctor && (
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-semibold text-gray-700">Consultation Fee:</span>
-                          <span className="text-2xl font-bold text-blue-700">
-                            ₹{doctors.find(d => d._id === formData.doctor)?.fees || 0}
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                  <div className="flex flex-col lg:flex-row gap-6 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 lg:p-6 shadow-sm">
+                    <div className="flex-1 space-y-4">
+                      <select
+                        name="paymentMethod"
+                        value={formData.paymentMethod}
+                        onChange={handleChange}
+                        onFocus={() => handleFieldFocus('paymentMethod')}
+                        onBlur={handleFieldBlur}
+                        className={`${getFieldClasses('paymentMethod')} font-medium appearance-none pr-10`}
+                      >
+                        <option value="online">💳 Online Payment (Razorpay)</option>
+                        <option value="cash">💵 Cash Payment (Offline)</option>
+                      </select>
 
-                    {/* Online Payment Options */}
-                    {formData.paymentMethod === 'online' && formData.doctor && (
-                      <div className="space-y-3 p-4 bg-white border-2 border-blue-200 rounded-lg">
-                        <p className="text-sm font-semibold text-gray-700 mb-3 text-center">
-                          Choose Payment Option:
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <button
-                            type="button"
-                            onClick={createQRCode}
-                            className="px-4 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
-                          >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-                            </svg>
-                            <span>Scan QR Code</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handlePayment}
-                            className="px-4 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg font-semibold hover:from-purple-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
-                          >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                            </svg>
-                            <span>Card / UPI</span>
-                          </button>
-                        </div>
-                        <p className="text-xs text-gray-500 text-center mt-2">
-                          💡 QR Code: Instant payment via UPI apps | Card/UPI: Online payment gateway
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Cash Payment Option */}
-                    {formData.paymentMethod === 'cash' && formData.doctor && (
-                      <div className="space-y-3 p-4 bg-white border-2 border-green-200 rounded-lg">
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                            <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                            </svg>
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-semibold text-gray-700">Cash Payment Received</p>
-                            <p className="text-xs text-gray-500">Patient will pay cash at the counter</p>
-                          </div>
-                        </div>
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      {selectedDoctor && (
+                        <div className="rounded-xl border border-blue-100 bg-white p-4 shadow-sm">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-700">Amount to Collect:</span>
-                            <span className="text-xl font-bold text-green-700">
-                              ₹{doctors.find(d => d._id === formData.doctor)?.fees || 0}
-                            </span>
+                            <span className="text-sm font-medium text-slate-600">Consultation Fee</span>
+                            <span className="text-2xl font-bold text-blue-600">₹{consultationFee}</span>
                           </div>
                         </div>
-                        <p className="text-xs text-gray-500 text-center mt-2">
-                          💡 Click "Register Patient" after receiving cash payment
-                        </p>
-                      </div>
-                    )}
+                      )}
+
+                      {isOnlinePayment && selectedDoctor && (
+                        <div className="flex flex-col lg:flex-row items-center gap-6 rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm">
+                          <div className="flex-1 space-y-4">
+                            <p className="text-sm font-semibold text-slate-700">Choose Payment Option</p>
+                            <button
+                              type="button"
+                              onClick={createQRCode}
+                              className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-green-500 to-green-600 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                            >
+                              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h4v4H3V3zm14 0h4v4h-4V3zM3 17h4v4H3v-4zm14 0h4v4h-4v-4zM7 7h6v6H7V7zm8 8h2v2h-2v-2z" />
+                              </svg>
+                              Scan QR Code
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handlePayment}
+                              className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-purple-500 to-purple-600 px-4 py-3 text-sm font-semibold text-white shadow-md transition hover:from-purple-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                            >
+                              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                              </svg>
+                              Card / UPI
+                            </button>
+                            <p className="text-xs text-slate-500">
+                              💡 QR Code: Instant payment via UPI apps | Card/UPI: Online payment gateway
+                            </p>
+                          </div>
+
+                          <div className="flex w-full max-w-[260px] flex-col items-center rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 text-center shadow-inner">
+                            <p className="text-sm font-semibold text-slate-700">Scan to Pay (Demo QR)</p>
+                            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                              <img
+                                src={demoQrUrl}
+                                alt={`Demo payment QR for ₹${consultationFee}`}
+                                className="h-44 w-44 rounded-lg object-contain"
+                                loading="lazy"
+                              />
+                            </div>
+                            <p className="mt-3 text-xs text-slate-400 italic">*For client presentation purpose only</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-600">Amount: ₹{consultationFee}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {formData.paymentMethod === 'cash' && selectedDoctor && (
+                        <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50/70 p-4 shadow-sm">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                              </svg>
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-slate-700">Collect Cash at Counter</p>
+                              <p className="text-xs text-slate-500">Confirm payment before completing registration.</p>
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-emerald-200 bg-white/70 p-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-slate-600">Amount to Collect</span>
+                              <span className="text-xl font-bold text-emerald-700">₹{consultationFee}</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-500 text-center">
+                            💡 Click "Register Patient" after receiving cash payment.
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ) : (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Fee Status
-                  </label>
-                  <div className="w-full px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-green-700 font-medium">
-                    ✓ No Fees Required (Recheck-Up Visit)
-                  </div>
+                <div className="md:col-span-2 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-sm font-semibold text-emerald-700">
+                  ✓ No Consultation Fee Required (Recheck-Up Visit)
                 </div>
               )}
 
-              {/* Behavior Rating */}
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              <div className="md:col-span-2 space-y-2">
+                <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                   Patient Behavior Rating
-                  <span className="text-xs text-gray-500 ml-2">(Rate patient's behavior during registration)</span>
+                  <span className="text-xs font-normal text-slate-500">(optional)</span>
                 </label>
                 <div className="flex items-center gap-2">
                   {[1, 2, 3, 4, 5].map((star) => (
@@ -1816,10 +2033,10 @@ const ReceptionistDashboard = () => {
                       key={star}
                       type="button"
                       onClick={() => setFormData((prev) => ({ ...prev, behaviorRating: star }))}
-                      className={`text-3xl transition-all ${
+                      className={`text-3xl transition ${
                         formData.behaviorRating >= star
-                          ? 'text-yellow-400'
-                          : 'text-gray-300 hover:text-yellow-300'
+                          ? 'text-yellow-400 drop-shadow'
+                          : 'text-slate-300 hover:text-yellow-300'
                       }`}
                       title={`${star} star${star > 1 ? 's' : ''}`}
                     >
@@ -1830,44 +2047,44 @@ const ReceptionistDashboard = () => {
                     <button
                       type="button"
                       onClick={() => setFormData((prev) => ({ ...prev, behaviorRating: null }))}
-                      className="ml-2 text-sm text-gray-500 hover:text-gray-700 underline"
+                      className="ml-2 text-xs font-medium text-slate-500 underline hover:text-slate-700"
                     >
                       Clear
                     </button>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  {formData.behaviorRating === 1 && 'Very argumentative or non-cooperative'}
-                  {formData.behaviorRating === 2 && 'Somewhat argumentative or difficult'}
-                  {formData.behaviorRating === 3 && 'Neutral behavior'}
-                  {formData.behaviorRating === 4 && 'Polite and cooperative'}
-                  {formData.behaviorRating === 5 && 'Very polite and highly cooperative'}
-                  {!formData.behaviorRating && 'Select stars to rate patient behavior (optional)'}
+                <p className="text-xs text-slate-500">
+                  {formData.behaviorRating === 1 && 'Very argumentative or non-cooperative.'}
+                  {formData.behaviorRating === 2 && 'Somewhat argumentative or difficult.'}
+                  {formData.behaviorRating === 3 && 'Neutral behavior observed.'}
+                  {formData.behaviorRating === 4 && 'Polite and cooperative behavior.'}
+                  {formData.behaviorRating === 5 && 'Exceptionally polite and cooperative.'}
+                  {!formData.behaviorRating && 'Select stars to rate the patient experience.'}
                 </p>
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-green-600 to-green-700 text-white py-4 rounded-lg font-bold text-lg hover:from-green-700 hover:to-green-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+              className="group relative flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-green-500 to-green-600 px-4 py-4 text-lg font-semibold text-white shadow-xl transition duration-200 hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
             >
               {!formData.isRecheck && formData.paymentMethod === 'online' && formData.feeStatus === 'pending' ? (
                 <>
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                   </svg>
                   Complete Payment First
                 </>
               ) : formData.paymentMethod === 'cash' ? (
                 <>
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                   Register Patient (Cash Payment)
                 </>
               ) : (
                 <>
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                   Register Patient
