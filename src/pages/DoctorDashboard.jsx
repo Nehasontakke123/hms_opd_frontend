@@ -315,6 +315,73 @@ const getTestsForSpecialization = (specialization) => {
   return []
 }
 
+const INVENTORY_LIBRARY = {
+  injections: [
+    {
+      name: 'Vitamin B12 Injection',
+      code: 'INJ-B12',
+      dosage: '1 ml IM',
+      usage: 'Vitamin deficiency, fatigue management'
+    },
+    {
+      name: 'Ceftriaxone Injection',
+      code: 'INJ-CEF',
+      dosage: '1 g IV/IM',
+      usage: 'Broad-spectrum antibiotic coverage'
+    },
+    {
+      name: 'Dexamethasone Injection',
+      code: 'INJ-DEX',
+      dosage: '4 mg IV/IM',
+      usage: 'Anti-inflammatory, allergy management'
+    },
+    {
+      name: 'Insulin Regular Injection',
+      code: 'INJ-INS',
+      dosage: 'As per sliding scale',
+      usage: 'Blood sugar stabilization'
+    },
+    {
+      name: 'Ondansetron Injection',
+      code: 'INJ-OND',
+      dosage: '4 mg IV/IM',
+      usage: 'Anti-emetic for nausea/vomiting'
+    }
+  ],
+  surgical: [
+    {
+      name: 'Sterile Gauze Pads',
+      code: 'SUR-GAU',
+      dosage: '4x4 inch, pack of 10',
+      usage: 'Wound dressing and absorption'
+    },
+    {
+      name: 'Disposable Syringe',
+      code: 'SUR-SYR',
+      dosage: '5 ml, sterile',
+      usage: 'Medication administration'
+    },
+    {
+      name: 'IV Cannula',
+      code: 'SUR-IVC',
+      dosage: '18G / 20G',
+      usage: 'Intravenous access setup'
+    },
+    {
+      name: 'Surgical Gloves',
+      code: 'SUR-GLV',
+      dosage: 'Latex-free, pair',
+      usage: 'Sterile procedure preparation'
+    },
+    {
+      name: 'Suture Kit',
+      code: 'SUR-SUT',
+      dosage: '3-0 Nylon with needle',
+      usage: 'Minor wound closure'
+    }
+  ]
+}
+
 const DoctorDashboard = () => {
   const { user, logout, updateUser, setUserData } = useAuth()
   const downloadPdf = async (pdfUrl, fileName) => {
@@ -423,6 +490,11 @@ const DoctorDashboard = () => {
   const [searchToday, setSearchToday] = useState('')
   const [searchHistory, setSearchHistory] = useState('')
   const [searchMedical, setSearchMedical] = useState('')
+  const [showInventoryPanel, setShowInventoryPanel] = useState(false)
+  const [inventoryTab, setInventoryTab] = useState('injections')
+  const [inventorySearch, setInventorySearch] = useState('')
+  const [selectedInventoryItems, setSelectedInventoryItems] = useState([])
+  const [showInventorySummary, setShowInventorySummary] = useState(true)
   const PAGE_SIZE_TODAY = 5
   const PAGE_SIZE_HISTORY = 6
   const [todayPage, setTodayPage] = useState(1)
@@ -598,6 +670,52 @@ const DoctorDashboard = () => {
       const issueMatch = patient.disease?.toLowerCase().includes(q)
       return nameMatch || mobileMatch || tokenMatch || issueMatch
     })
+  }
+
+  const filteredInventoryItems = useMemo(() => {
+    const catalog = INVENTORY_LIBRARY[inventoryTab] || []
+    if (!inventorySearch.trim()) return catalog
+    const q = inventorySearch.toLowerCase()
+    return catalog.filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) ||
+        item.code.toLowerCase().includes(q) ||
+        item.usage.toLowerCase().includes(q)
+    )
+  }, [inventoryTab, inventorySearch])
+
+  const toggleInventoryItem = (item) => {
+    setSelectedInventoryItems((prev) => {
+      const exists = prev.some((selected) => selected.code === item.code)
+      if (exists) {
+        return prev.filter((selected) => selected.code !== item.code)
+      }
+      return [...prev, item]
+    })
+  }
+
+  const appendInventorySelectionToNotes = () => {
+    if (selectedInventoryItems.length === 0) {
+      toast.error('Select at least one item to add to notes')
+      return
+    }
+
+    const summary = selectedInventoryItems
+      .map((item) => `${item.name} (${item.code})`)
+      .join(', ')
+
+    setPrescriptionData((prev) => {
+      const existing = prev.notes?.trim()
+      const addition = `Items required: ${summary}`
+      return {
+        ...prev,
+        notes: existing ? `${existing}\n${addition}` : addition
+      }
+    })
+
+    setShowInventorySummary(true)
+
+    toast.success('Selected items added to notes')
   }
 
   const handleDownloadPrescription = (patient) => {
@@ -823,7 +941,21 @@ const DoctorDashboard = () => {
     })
     setMedicineSuggestions([[]])
     setLoadingSuggestions({})
+    setShowInventoryPanel(false)
+    setInventoryTab('injections')
+    setInventorySearch('')
+    setSelectedInventoryItems([])
+    setShowInventorySummary(true)
     setShowPrescriptionModal(true)
+  }
+
+  const handleClosePrescriptionModal = () => {
+    setShowPrescriptionModal(false)
+    setShowInventoryPanel(false)
+    setInventoryTab('injections')
+    setInventorySearch('')
+    setSelectedInventoryItems([])
+    setShowInventorySummary(true)
   }
 
   const handleSubmitPrescription = async () => {
@@ -844,7 +976,13 @@ const DoctorDashboard = () => {
         diagnosis: prescriptionData.diagnosis,
         medicines: validMedicines,
         notes: prescriptionData.notes || '',
-        createdAt: new Date()
+        createdAt: new Date(),
+        inventoryItems: selectedInventoryItems.map((item) => ({
+          name: item.name,
+          code: item.code,
+          usage: item.usage,
+          dosage: item.dosage
+        }))
       }
 
       // Generate PDF and get base64 (also downloads locally)
@@ -863,11 +1001,17 @@ const DoctorDashboard = () => {
         diagnosis: prescriptionData.diagnosis,
         medicines: validMedicines,
         notes: prescriptionData.notes,
+        inventoryItems: selectedInventoryItems.map((item) => ({
+          name: item.name,
+          code: item.code,
+          usage: item.usage,
+          dosage: item.dosage
+        })),
         pdfData: pdfBase64 // Send PDF as base64
       })
 
       toast.success(response.data.message || 'Prescription saved, PDF generated and stored in medical section!')
-      setShowPrescriptionModal(false)
+      handleClosePrescriptionModal()
       fetchTodayPatients()
       // Always refresh medical records so the badge count is updated
       fetchMedicalRecords()
@@ -1024,6 +1168,62 @@ const DoctorDashboard = () => {
   useEffect(() => {
     setHistoryPage(1)
   }, [filteredHistoryPatients.length])
+
+  const inventorySelectionSummary = selectedInventoryItems.length > 0 ? (
+    <div className="mb-6 rounded-2xl border border-purple-100 bg-gradient-to-br from-purple-50 via-white to-purple-50/80 shadow-sm">
+      <button
+        type="button"
+        onClick={() => setShowInventorySummary((prev) => !prev)}
+        className="flex w-full items-center justify-between px-5 py-4 text-left"
+      >
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-purple-100 text-purple-600 shadow-inner">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v8m4-4H8m12 0a8 8 0 11-16 0 8 8 0 0116 0z" />
+            </svg>
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-purple-900">Added Injections &amp; Surgical Items</p>
+            <p className="text-xs text-purple-500">{selectedInventoryItems.length} item{selectedInventoryItems.length > 1 ? 's' : ''} included below.</p>
+          </div>
+        </div>
+        <span className={`transition-transform duration-200 ${showInventorySummary ? 'rotate-0' : '-rotate-90'}`}>
+          <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </span>
+      </button>
+      {showInventorySummary && (
+        <div className="border-t border-purple-100 px-5 py-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            {selectedInventoryItems.map((item) => (
+              <div
+                key={item.code}
+                className="group relative overflow-hidden rounded-xl border border-purple-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-purple-400 via-purple-500 to-purple-600 opacity-80" />
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 group-hover:text-purple-600 transition">{item.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">{item.usage}</p>
+                  </div>
+                  <span className="ml-3 inline-flex items-center rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-purple-600">
+                    {item.code}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-center gap-2 text-xs text-purple-600">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
+                  </svg>
+                  <span>Recommended dose: <span className="font-semibold">{item.dosage}</span></span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  ) : null
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1890,6 +2090,21 @@ const DoctorDashboard = () => {
                         </div>
                       )}
                     </div>
+
+                    {prescriptionData.medicines.length > 1 && (
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => removeMedicineField(index)}
+                          className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center gap-1"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                          Remove Medicine
+                        </button>
+                      </div>
+                    )}
                   </div>
                   ))
                 )}
@@ -1961,135 +2176,296 @@ const DoctorDashboard = () => {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Prescribed Medicines *
-                  </label>
-                  <button
-                    type="button"
-                    onClick={addMedicineField}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm"
-                  >
-                    <span className="text-base">➕</span>
-                    Add Medicine
-                  </button>
-                </div>
-                {prescriptionData.medicines.map((medicine, index) => (
-                  <div key={index} className="mb-4 p-4 border border-gray-200 rounded-xl bg-white shadow-sm">
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                      <div className="lg:col-span-4">
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">Medicine</label>
+                <div className={`flex flex-col ${showInventoryPanel ? 'lg:flex-row lg:items-start lg:gap-6' : ''}`}>
+                  <div className="flex-1">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Prescribed Medicines *
+                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowInventoryPanel((prev) => !prev)}
+                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-semibold transition shadow-sm ${
+                            showInventoryPanel
+                              ? 'border-purple-300 bg-purple-100 text-purple-700'
+                              : 'border-purple-200 bg-white text-purple-600 hover:bg-purple-50'
+                          }`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h10M4 17h7" />
+                          </svg>
+                          {showInventoryPanel ? 'Hide' : 'View'} Injections & Surgical Items
+                          {selectedInventoryItems.length > 0 && (
+                            <span className="ml-1 inline-flex items-center justify-center rounded-full bg-purple-600 text-white text-[11px] px-2 py-0.5">
+                              {selectedInventoryItems.length}
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={addMedicineField}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm"
+                        >
+                          <span className="text-base">➕</span>
+                          Add Medicine
+                        </button>
+                      </div>
+                    </div>
+
+                    {prescriptionData.medicines.map((medicine, index) => (
+                      <div key={index} className="mb-4 p-4 border border-gray-200 rounded-xl bg-white shadow-sm">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                          <div className="lg:col-span-4">
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Medicine</label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                placeholder="Start typing to search..."
+                                value={medicine.name}
+                                onChange={(e) => handleMedicineChange(index, 'name', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
+                              />
+                              {loadingSuggestions[index] && (
+                                <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+                                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
+                                    <span>Searching medicines...</span>
+                                  </div>
+                                </div>
+                              )}
+                              {!loadingSuggestions[index] && medicineSuggestions[index] && medicineSuggestions[index].length > 0 && (
+                                <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                  {medicineSuggestions[index].map((suggestion) => (
+                                    <button
+                                      type="button"
+                                      key={suggestion}
+                                      onClick={() => {
+                                        handleMedicineChange(index, 'name', suggestion, { skipLookup: true })
+                                      }}
+                                      className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-purple-50 border-b border-gray-100 last:border-b-0"
+                                    >
+                                      {suggestion}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="lg:col-span-3">
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Duration</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 5 days"
+                              value={medicine.duration}
+                              onChange={(e) => handleMedicineChange(index, 'duration', e.target.value)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
+                            />
+                          </div>
+
+                          <div className="lg:col-span-5">
+                            <fieldset className="border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
+                              <legend className="text-xs font-semibold text-gray-500 px-1">Dosage Times</legend>
+                              <div className="flex flex-wrap items-center gap-3 mb-3">
+                                {[
+                                  { key: 'morning', label: 'Morning' },
+                                  { key: 'afternoon', label: 'Afternoon' },
+                                  { key: 'night', label: 'Night' }
+                                ].map((time) => (
+                                  <label key={time.key} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-100 px-3 py-1 rounded-lg hover:border-purple-300 transition-colors">
+                                    <input
+                                      type="checkbox"
+                                      checked={ensureTimesShape(medicine)[time.key]}
+                                      onChange={() => handleDosageToggle(index, time.key)}
+                                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                    />
+                                    <span className="font-medium text-purple-700 text-xs uppercase">{time.label}</span>
+                                  </label>
+                                ))}
+
+                                {/* Additional Instructions Dropdown - Right next to dosage times */}
+                                <div className="flex-1 min-w-[200px]">
+                                  <select
+                                    value={medicine.dosageInstructions || ''}
+                                    onChange={(e) => handleMedicineChange(index, 'dosageInstructions', e.target.value)}
+                                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-xs bg-white shadow-sm"
+                                  >
+                                    <option value="">Additional Instructions...</option>
+                                    <option value="Take pill after meal 🍛">Take pill after meal 🍛</option>
+                                    <option value="Take pill before meal 🥗">Take pill before meal 🥗</option>
+                                    <option value="Take pill with water 💧">Take pill with water 💧</option>
+                                    <option value="Take pill on empty stomach ☀️">Take pill on empty stomach ☀️</option>
+                                  </select>
+                                </div>
+                              </div>
+                              {/* Custom Instructions Input (optional) */}
+                              <input
+                                type="text"
+                                placeholder="Custom instructions (optional)"
+                                value={medicine.dosageNotes || ''}
+                                onChange={(e) => handleMedicineChange(index, 'dosageNotes', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm"
+                              />
+                            </fieldset>
+                          </div>
+                        </div>
+                        {medicine.dosage && (
+                          <p className="mt-2 text-xs text-gray-500">Generated dosage: {medicine.dosage}</p>
+                        )}
+                        {prescriptionData.medicines.length > 1 && (
+                          <div className="mt-3 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() => removeMedicineField(index)}
+                              className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center gap-1"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              Remove Medicine
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {showInventoryPanel && (
+                    <aside className="mt-4 lg:mt-0 lg:w-80 w-full bg-purple-50/60 border border-purple-100 rounded-2xl p-4 shadow-inner">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-semibold text-purple-900">Injections & Surgical Items</h4>
+                          <p className="text-[11px] text-purple-600">Quickly reference inventory without leaving the chart.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowInventoryPanel(false)
+                            setInventorySearch('')
+                          }}
+                          className="text-xs text-purple-500 hover:text-purple-700 font-semibold"
+                        >
+                          Close
+                        </button>
+                      </div>
+
+                      <div className="mt-3 flex items-center gap-2 bg-white border border-purple-100 rounded-xl p-1.5">
+                        {[
+                          { key: 'injections', label: 'Injections' },
+                          { key: 'surgical', label: 'Surgical Items' }
+                        ].map((tab) => {
+                          const active = inventoryTab === tab.key
+                          return (
+                            <button
+                              key={tab.key}
+                              type="button"
+                              onClick={() => {
+                                setInventoryTab(tab.key)
+                                setInventorySearch('')
+                              }}
+                              className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                                active
+                                  ? 'bg-purple-600 text-white shadow'
+                                  : 'text-purple-600 hover:bg-purple-100'
+                              }`}
+                            >
+                              {tab.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+
+                      <div className="mt-3">
                         <div className="relative">
+                          <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" />
+                          </svg>
                           <input
                             type="text"
-                            placeholder="Start typing to search..."
-                            value={medicine.name}
-                            onChange={(e) => handleMedicineChange(index, 'name', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
+                            value={inventorySearch}
+                            onChange={(e) => setInventorySearch(e.target.value)}
+                            placeholder={`Search ${inventoryTab === 'injections' ? 'injections' : 'surgical items'}...`}
+                            className="w-full pl-9 pr-3 py-2 text-sm border border-purple-100 rounded-lg focus:ring-2 focus:ring-purple-200 focus:border-purple-300 bg-white shadow-sm"
                           />
-                          {loadingSuggestions[index] && (
-                            <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-                              <div className="flex items-center gap-2 text-sm text-gray-600">
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
-                                <span>Searching medicines...</span>
-                              </div>
-                            </div>
-                          )}
-                          {!loadingSuggestions[index] && medicineSuggestions[index] && medicineSuggestions[index].length > 0 && (
-                            <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                              {medicineSuggestions[index].map((suggestion) => (
-                                <button
-                                  type="button"
-                                  key={suggestion}
-                                  onClick={() => {
-                                    handleMedicineChange(index, 'name', suggestion, { skipLookup: true })
-                                  }}
-                                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-purple-50 border-b border-gray-100 last:border-b-0"
-                                >
-                                  {suggestion}
-                                </button>
-                              ))}
-                            </div>
-                          )}
                         </div>
                       </div>
 
-                      <div className="lg:col-span-3">
-                        <label className="block text-xs font-semibold text-gray-600 mb-1">Duration</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 5 days"
-                          value={medicine.duration}
-                          onChange={(e) => handleMedicineChange(index, 'duration', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
-                        />
+                      <div className="mt-3 space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {filteredInventoryItems.length === 0 ? (
+                          <div className="rounded-xl border border-purple-100 bg-white px-3 py-4 text-center text-xs text-purple-500">
+                            No items found. Try a different search term.
+                          </div>
+                        ) : (
+                          filteredInventoryItems.map((item) => {
+                            const selected = selectedInventoryItems.some((selectedItem) => selectedItem.code === item.code)
+                            return (
+                              <button
+                                type="button"
+                                key={item.code}
+                                onClick={() => toggleInventoryItem(item)}
+                                className={`w-full text-left border rounded-xl px-3 py-3 text-sm transition shadow-sm ${
+                                  selected
+                                    ? 'border-purple-400 bg-white ring-2 ring-purple-200'
+                                    : 'border-purple-100 bg-white hover:border-purple-300'
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-purple-900">{item.name}</p>
+                                    <p className="text-[11px] text-purple-500 mt-0.5">{item.usage}</p>
+                                  </div>
+                                  <span className={`text-[11px] font-bold uppercase tracking-wide ${selected ? 'text-purple-600' : 'text-purple-400'}`}>
+                                    {item.code}
+                                  </span>
+                                </div>
+                                <p className="mt-2 text-[11px] text-purple-600/90">Recommended dose: {item.dosage}</p>
+                                {selected && (
+                                  <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    Selected
+                                  </div>
+                                )}
+                              </button>
+                            )
+                          })
+                        )}
                       </div>
 
-                      <div className="lg:col-span-5">
-                        <fieldset className="border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
-                          <legend className="text-xs font-semibold text-gray-500 px-1">Dosage Times</legend>
-                          <div className="flex flex-wrap items-center gap-3 mb-3">
-                            {[
-                              { key: 'morning', label: 'Morning' },
-                              { key: 'afternoon', label: 'Afternoon' },
-                              { key: 'night', label: 'Night' }
-                            ].map((time) => (
-                              <label key={time.key} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-100 px-3 py-1 rounded-lg hover:border-purple-300 transition-colors">
-                                <input
-                                  type="checkbox"
-                                  checked={ensureTimesShape(medicine)[time.key]}
-                                  onChange={() => handleDosageToggle(index, time.key)}
-                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                                />
-                                <span className="font-medium text-purple-700 text-xs uppercase">{time.label}</span>
-                              </label>
-                            ))}
-                            
-                            {/* Additional Instructions Dropdown - Right next to dosage times */}
-                            <div className="flex-1 min-w-[200px]">
-                              <select
-                                value={medicine.dosageInstructions || ''}
-                                onChange={(e) => handleMedicineChange(index, 'dosageInstructions', e.target.value)}
-                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-xs bg-white shadow-sm"
-                              >
-                                <option value="">Additional Instructions...</option>
-                                <option value="Take pill after meal 🍛">Take pill after meal 🍛</option>
-                                <option value="Take pill before meal 🥗">Take pill before meal 🥗</option>
-                                <option value="Take pill with water 💧">Take pill with water 💧</option>
-                                <option value="Take pill on empty stomach ☀️">Take pill on empty stomach ☀️</option>
-                              </select>
-                            </div>
+                      <div className="mt-3 space-y-2">
+                        {selectedInventoryItems.length > 0 && (
+                          <div className="rounded-xl border border-purple-200 bg-white px-3 py-2 text-xs text-purple-600">
+                            <p className="font-semibold text-purple-800 mb-1">Selected ({selectedInventoryItems.length}):</p>
+                            <ul className="list-disc list-inside space-y-1">
+                              {selectedInventoryItems.map((item) => (
+                                <li key={item.code}>{item.name}</li>
+                              ))}
+                            </ul>
                           </div>
-                          {/* Custom Instructions Input (optional) */}
-                          <input
-                            type="text"
-                            placeholder="Custom instructions (optional)"
-                            value={medicine.dosageNotes || ''}
-                            onChange={(e) => handleMedicineChange(index, 'dosageNotes', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm"
-                          />
-                        </fieldset>
-                      </div>
-                    </div>
-                    {medicine.dosage && (
-                      <p className="mt-2 text-xs text-gray-500">Generated dosage: {medicine.dosage}</p>
-                    )}
-                    {prescriptionData.medicines.length > 1 && (
-                      <div className="mt-3 flex justify-end">
+                        )}
                         <button
                           type="button"
-                          onClick={() => removeMedicineField(index)}
-                          className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center gap-1"
+                          onClick={appendInventorySelectionToNotes}
+                          className={`w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg transition ${
+                            selectedInventoryItems.length === 0
+                              ? 'bg-purple-200 text-purple-500 cursor-not-allowed'
+                              : 'bg-purple-600 text-white hover:bg-purple-700 shadow'
+                          }`}
+                          disabled={selectedInventoryItems.length === 0}
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                           </svg>
-                          Remove Medicine
+                          Add selected to notes
                         </button>
                       </div>
-                    )}
-                  </div>
-                ))}
+                    </aside>
+                  )}
+                </div>
+
+                {inventorySelectionSummary}
               </div>
 
               <div>
@@ -2187,7 +2563,7 @@ const DoctorDashboard = () => {
                 Save & Generate PDF
               </button>
               <button
-                onClick={() => setShowPrescriptionModal(false)}
+                onClick={handleClosePrescriptionModal}
                 className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition"
               >
                 Cancel
@@ -2298,6 +2674,111 @@ const DoctorDashboard = () => {
         patientName={medicalHistoryPatientName}
         patientMobile={medicalHistoryPatientMobile}
       />
+
+      {showInventoryPanel && (
+        <aside className="mt-4 lg:mt-0 lg:w-80 w-full bg-purple-50/60 border border-purple-100 rounded-2xl p-4 shadow-inner">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-purple-900">Injections & Surgical Items</h4>
+              <p className="text-[11px] text-purple-600">Quickly reference inventory without leaving the chart.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowInventoryPanel(false)
+                setInventorySearch('')
+              }}
+              className="text-xs text-purple-500 hover:text-purple-700 font-semibold"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2 bg-white border border-purple-100 rounded-xl p-1.5">
+            {[
+              { key: 'injections', label: 'Injections' },
+              { key: 'surgical', label: 'Surgical Items' }
+            ].map((tab) => {
+              const active = inventoryTab === tab.key
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => {
+                    setInventoryTab(tab.key)
+                    setInventorySearch('')
+                  }}
+                  className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    active
+                      ? 'bg-purple-600 text-white shadow'
+                      : 'text-purple-600 hover:bg-purple-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="mt-3">
+            <div className="relative">
+              <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" />
+              </svg>
+              <input
+                type="text"
+                value={inventorySearch}
+                onChange={(e) => setInventorySearch(e.target.value)}
+                placeholder={`Search ${inventoryTab === 'injections' ? 'injections' : 'surgical items'}...`}
+                className="w-full pl-9 pr-3 py-2 text-sm border border-purple-100 rounded-lg focus:ring-2 focus:ring-purple-200 focus:border-purple-300 bg-white shadow-sm"
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-2 max-h-64 overflow-y-auto pr-1">
+            {filteredInventoryItems.length === 0 ? (
+              <div className="rounded-xl border border-purple-100 bg-white px-3 py-4 text-center text-xs text-purple-500">
+                No items found. Try a different search term.
+              </div>
+            ) : (
+              filteredInventoryItems.map((item) => {
+                const selected = selectedInventoryItems.some((selectedItem) => selectedItem.code === item.code)
+                return (
+                  <button
+                    type="button"
+                    key={item.code}
+                    onClick={() => toggleInventoryItem(item)}
+                    className={`w-full text-left border rounded-xl px-3 py-3 text-sm transition shadow-sm ${
+                      selected
+                        ? 'border-purple-400 bg-white ring-2 ring-purple-200'
+                        : 'border-purple-100 bg-white hover:border-purple-300'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-purple-900">{item.name}</p>
+                        <p className="text-[11px] text-purple-500 mt-0.5">{item.usage}</p>
+                      </div>
+                      <span className={`text-[11px] font-bold uppercase tracking-wide ${selected ? 'text-purple-600' : 'text-purple-400'}`}>
+                        {item.code}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-[11px] text-purple-600/90">Recommended dose: {item.dosage}</p>
+                    {selected && (
+                      <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Selected
+                      </div>
+                    )}
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </aside>
+      )}
     </div>
   )
 }

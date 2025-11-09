@@ -260,6 +260,76 @@ const generatePrescriptionPDF = (patient, doctor, prescription) => {
     y += rowHeight
   })
 
+  const inventoryItems = Array.isArray(prescription.inventoryItems) ? prescription.inventoryItems : []
+
+  if (inventoryItems.length > 0) {
+    y += sectionSpacing
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(...TEXT_DARK)
+    doc.text('Injections & Surgical Items', margin, y)
+    y += 8
+
+    inventoryItems.forEach((item, index) => {
+      const nameText = cleanText(String(item.name || 'N/A'))
+      const codeText = cleanText(String(item.code || ''))
+      const usageText = cleanText(String(item.usage || ''))
+      const doseText = cleanText(String(item.dosage || ''))
+
+      const nameLines = doc.splitTextToSize(nameText, contentWidth - 20)
+      const usageLines = usageText ? doc.splitTextToSize(`Usage: ${usageText}`, contentWidth - 24) : []
+      const doseLines = doseText ? doc.splitTextToSize(`Recommended dose: ${doseText}`, contentWidth - 24) : []
+
+      const linesCount = nameLines.length + usageLines.length + doseLines.length
+      const cardHeight = 18 + Math.max(12, linesCount * 5)
+
+      if (y + cardHeight > 260) {
+        doc.addPage()
+        y = margin
+      }
+
+      doc.setFillColor(...CARD_BG_ALT)
+      doc.setDrawColor(...BORDER_COLOR)
+      doc.setLineWidth(0.4)
+      doc.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, 'FD')
+
+      // Decorative accent line
+      doc.setDrawColor(...PURPLE_HEADER)
+      doc.setLineWidth(1.2)
+      doc.line(margin, y, margin, y + cardHeight)
+
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(10)
+      doc.setTextColor(...TEXT_DARK)
+      doc.text(nameLines, margin + 8, y + 10)
+
+      if (codeText) {
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(9)
+        doc.setTextColor(...PURPLE_DARK)
+        doc.text(codeText, margin + contentWidth - 25, y + 10, { align: 'right' })
+      }
+
+      let textY = y + 17
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(9)
+      doc.setTextColor(...TEXT_MEDIUM)
+
+      if (usageLines.length > 0) {
+        doc.text(usageLines, margin + 8, textY)
+        textY += usageLines.length * 5
+      }
+
+      if (doseLines.length > 0) {
+        doc.setTextColor(...PURPLE_DARK)
+        doc.text(doseLines, margin + 8, textY)
+      }
+
+      y += cardHeight + 6
+    })
+  }
+
   // Notes section (if present) - Clean Design
   if (prescription.notes && prescription.notes.trim()) {
     y += sectionSpacing
