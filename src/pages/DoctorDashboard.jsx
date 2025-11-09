@@ -1146,160 +1146,246 @@ const DoctorDashboard = () => {
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
               </div>
             ) : patients.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-12 text-center">
+              <div className="bg-white rounded-3xl border border-purple-100 shadow-lg p-12 text-center">
                 <p className="text-gray-500 text-lg">No patients for today</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                <div className="flex justify-end">
-                  <input
-                    type="text"
-                    value={searchToday}
-                    onChange={(e) => setSearchToday(e.target.value)}
-                    placeholder="Search patient, token, issue..."
-                    className="w-full sm:w-80 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
-                  />
-                </div>
-                {filteredTodayPatients.length === 0 ? (
-                  <div className="bg-white rounded-lg shadow p-12 text-center">
-                    <p className="text-gray-500 text-lg">No matching patients</p>
+              <div className="space-y-6">
+                <div className="bg-gradient-to-br from-white via-purple-50 to-blue-50 border border-purple-100 rounded-3xl shadow-xl overflow-hidden">
+                  <div className="px-6 py-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-purple-500">Today's Queue</p>
+                      <h3 className="text-xl font-semibold text-slate-800 mt-1">Manage active consultations effortlessly</h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        {filteredTodayPatients.length} {filteredTodayPatients.length === 1 ? 'patient' : 'patients'} in line • {patients.filter(p => p.status === 'waiting').length} waiting
+                      </p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                      <div className="inline-flex items-center gap-2 rounded-full bg-purple-100 text-purple-600 px-3 py-1.5 text-sm font-semibold shadow-inner">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        {patients.filter((patient) => patient.status === 'completed').length} completed
+                      </div>
+                      <input
+                        type="text"
+                        value={searchToday}
+                        onChange={(e) => setSearchToday(e.target.value)}
+                        placeholder="Search patient, token, issue..."
+                        className="w-full sm:w-72 rounded-full border border-purple-200 bg-white/80 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition"
+                      />
+                    </div>
                   </div>
-                ) : (
-                  <div className="bg-white rounded-lg shadow overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {filteredTodayPatients.map((patient) => {
-                            const hasPendingFees = !patient.isRecheck && patient.feeStatus !== 'not_required' && patient.feeStatus === 'pending'
-                            return (
-                              <tr 
-                                key={patient._id} 
-                                className={`hover:bg-gray-50 transition-colors ${
-                                  hasPendingFees ? 'bg-orange-50/50 border-l-4 border-orange-400' : ''
+
+                  {filteredTodayPatients.length === 0 ? (
+                    <div className="px-6 py-12 text-center text-sm text-slate-500 border-t border-purple-100 bg-white/70">
+                      No matching patients for your search. Try adjusting the filters.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="hidden md:grid grid-cols-12 gap-6 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 bg-white/70 border-t border-purple-100">
+                        <span className="col-span-3">Patient</span>
+                        <span className="col-span-2">Issue</span>
+                        <span className="col-span-2">Vitals</span>
+                        <span className="col-span-2">Schedule</span>
+                        <span className="col-span-1">Status</span>
+                        <span className="col-span-2 text-right">Actions</span>
+                      </div>
+                      <div className="px-4 py-5 space-y-4 bg-white/60">
+                        {filteredTodayPatients.map((patient) => {
+                          const hasPendingFees = !patient.isRecheck && patient.feeStatus !== 'not_required' && patient.feeStatus === 'pending'
+                          const formattedToken = (patient.tokenNumber ?? '-').toString().padStart(2, '0')
+                          const registrationDate = patient.visitDate
+                            ? new Date(`${patient.visitDate}T00:00:00`)
+                            : new Date(patient.registrationDate)
+                          const visitDateFormatted = registrationDate.toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })
+                          const visitTimeFormatted = patient.visitTime
+                            ? patient.visitTime
+                            : new Date(patient.registrationDate).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })
+                          const sugarFormatted =
+                            patient.sugarLevel !== undefined && patient.sugarLevel !== null && patient.sugarLevel !== ''
+                              ? `${patient.sugarLevel} mg/dL`
+                              : null
+
+                          return (
+                            <div
+                              key={patient._id}
+                              className={`relative rounded-2xl border ${
+                                hasPendingFees ? 'border-orange-200 bg-orange-50/40' : 'border-purple-100 bg-white'
+                              } shadow-sm transition-all duration-200 hover:shadow-md`}
+                            >
+                              <div
+                                className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-2xl ${
+                                  hasPendingFees
+                                    ? 'bg-gradient-to-b from-orange-400 via-orange-500 to-red-400'
+                                    : 'bg-gradient-to-b from-purple-400 via-purple-500 to-blue-500'
                                 }`}
-                              >
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold text-sm">
-                                    {patient.tokenNumber}
+                              ></div>
+                              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 px-5 py-5">
+                                <div className="md:col-span-3 flex items-start gap-4">
+                                  <div
+                                    className={`flex h-12 w-12 items-center justify-center rounded-full font-semibold text-white shadow-md ${
+                                      hasPendingFees
+                                        ? 'bg-gradient-to-br from-orange-500 to-red-500'
+                                        : 'bg-gradient-to-br from-purple-500 to-blue-600'
+                                    }`}
+                                  >
+                                    {formattedToken}
+                                  </div>
+                                  <div className="space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-sm font-semibold text-slate-800">{patient.fullName}</p>
+                                      <span className="text-xs text-slate-500">• {patient.age} yrs</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500">{patient.mobileNumber}</p>
+                                    <div className="flex flex-wrap gap-2 pt-1">
+                                      {patient.isRecheck || patient.feeStatus === 'not_required' ? (
+                                        <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600">
+                                          <span className="text-base">↺</span>
+                                          Recheck-up
+                                        </span>
+                                      ) : (
+                                        <span
+                                          className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                                            patient.feeStatus === 'paid'
+                                              ? 'border-emerald-100 bg-emerald-50 text-emerald-600'
+                                              : 'border-orange-100 bg-orange-50 text-orange-600'
+                                          }`}
+                                        >
+                                          {patient.feeStatus === 'paid' ? '✓ Fees Paid' : 'Pending Fees'}
+                                        </span>
+                                      )}
+                                      {patient.behaviorRating && (
+                                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-100 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-600">
+                                          ★ {patient.behaviorRating}/5
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="md:col-span-2 flex flex-col gap-2">
+                                  <span className="text-xs uppercase tracking-wide text-slate-400">Issue</span>
+                                  <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-600 shadow-sm">
+                                    <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                                    {patient.disease || 'Not specified'}
                                   </span>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <div className="text-sm font-medium text-gray-900">{patient.fullName}</div>
-                                  <div className="text-sm text-gray-500">{patient.age} years • {patient.mobileNumber}</div>
-                                  <div className="flex items-center gap-2 mt-1">
-                                    {patient.isRecheck || patient.feeStatus === 'not_required' ? (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
-                                        No Fees Required
+                                  {patient.notes && (
+                                    <p className="text-xs text-slate-500 break-words">{patient.notes}</p>
+                                  )}
+                                </div>
+
+                                <div className="md:col-span-2 flex flex-col gap-2">
+                                  <span className="text-xs uppercase tracking-wide text-slate-400">Vitals</span>
+                                  <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-600">
+                                    {patient.bloodPressure ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full border border-purple-100 bg-purple-50 px-2.5 py-1">
+                                        <svg className="h-3.5 w-3.5 text-purple-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.654 0-3 1.346-3 3 0 1.933 3 5 3 5s3-3.067 3-5c0-1.654-1.346-3-3-3z" />
+                                        </svg>
+                                        BP: {patient.bloodPressure}
                                       </span>
-                                    ) : (
-                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                                        patient.feeStatus === 'paid'
-                                          ? 'bg-green-100 text-green-700 border border-green-200'
-                                          : 'bg-orange-100 text-orange-700 border border-orange-200'
-                                      }`}>
-                                        {patient.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
+                                    ) : null}
+                                    {sugarFormatted ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full border border-purple-100 bg-purple-50 px-2.5 py-1">
+                                        <svg className="h-3.5 w-3.5 text-purple-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a5 5 0 00-10 0v2a2 2 0 00-2 2v5a4 4 0 004 4h6a4 4 0 004-4v-5a2 2 0 00-2-2z" />
+                                        </svg>
+                                        Sugar: {sugarFormatted}
                                       </span>
+                                    ) : null}
+                                    {!patient.bloodPressure && !sugarFormatted && (
+                                      <span className="text-xs text-slate-400">No vitals recorded</span>
                                     )}
                                   </div>
-                                  {patient.behaviorRating && (
-                                    <div className="flex items-center gap-1 mt-1">
-                                      <span className="text-xs text-gray-600">Behavior:</span>
-                                      <div className="flex items-center">
-                                        {[1, 2, 3, 4, 5].map((star) => (
-                                          <span
-                                            key={star}
-                                            className={`text-sm ${
-                                              star <= patient.behaviorRating
-                                                ? 'text-yellow-400'
-                                                : 'text-gray-300'
-                                            }`}
-                                          >
-                                            ★
-                                          </span>
-                                        ))}
-                                      </div>
-                                      <span className="text-xs text-gray-500 ml-1">
-                                        ({patient.behaviorRating}/5)
-                                      </span>
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4">
-                                  <div className="text-sm text-gray-900">{patient.disease}</div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                                    patient.status === 'completed'
-                                      ? 'bg-green-100 text-green-800'
-                                      : patient.status === 'in-progress'
-                                      ? 'bg-yellow-100 text-yellow-800'
-                                      : 'bg-gray-100 text-gray-800'
-                                  }`}>
+                                </div>
+
+                                <div className="md:col-span-2 flex flex-col gap-2">
+                                  <span className="text-xs uppercase tracking-wide text-slate-400">Schedule</span>
+                                  <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-600">
+                                    <span className="inline-flex items-center gap-2 rounded-full border border-purple-100 bg-white px-3 py-1 shadow-sm">
+                                      <svg className="h-4 w-4 text-purple-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
+                                      </svg>
+                                      {visitTimeFormatted}
+                                    </span>
+                                    <span className="inline-flex items-center gap-2 rounded-full border border-purple-100 bg-white px-3 py-1 shadow-sm">
+                                      <svg className="h-4 w-4 text-purple-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                      {visitDateFormatted}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="md:col-span-1 flex flex-col gap-2">
+                                  <span className="text-xs uppercase tracking-wide text-slate-400">Status</span>
+                                  <span
+                                    className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${
+                                      patient.status === 'completed'
+                                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                        : patient.status === 'in-progress'
+                                        ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                                        : 'bg-slate-50 text-slate-600 border border-slate-100'
+                                    }`}
+                                  >
                                     {patient.status === 'completed'
                                       ? 'Completed'
                                       : patient.status === 'in-progress'
                                       ? 'In Progress'
                                       : 'Waiting'}
                                   </span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                  {new Date(patient.registrationDate).toLocaleTimeString('en-US', {
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                  <div className="flex flex-col gap-2">
-                                    {hasPendingFees && (
-                                      <button
-                                        onClick={() => handleMarkAsPaid(patient)}
-                                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-semibold"
-                                      >
-                                        Mark as Paid
-                                      </button>
-                                    )}
+                                </div>
+
+                                <div className="md:col-span-2 flex flex-wrap gap-2 justify-start md:justify-end">
+                                  {hasPendingFees && (
                                     <button
-                                      onClick={() => {
-                                        setMedicalHistoryPatientId(patient._id)
-                                        setMedicalHistoryPatientName(patient.fullName)
-                                        setMedicalHistoryPatientMobile(patient.mobileNumber)
-                                        setShowMedicalHistoryModal(true)
-                                      }}
-                                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium"
+                                      onClick={() => handleMarkAsPaid(patient)}
+                                      className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
                                     >
-                                      View History
+                                      Mark as Paid
                                     </button>
-                                    {patient.status !== 'completed' && (
-                                      <button
-                                        onClick={() => handleOpenPrescriptionModal(patient)}
-                                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm"
-                                      >
-                                        Add Prescription
-                                      </button>
-                                    )}
-                                    {patient.status === 'completed' && patient.prescription && (
-                                      <span className="text-green-600 font-semibold text-sm">✓ Prescribed</span>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
+                                  )}
+                                  <button
+                                    onClick={() => {
+                                      setMedicalHistoryPatientId(patient._id)
+                                      setMedicalHistoryPatientName(patient.fullName)
+                                      setMedicalHistoryPatientMobile(patient.mobileNumber)
+                                      setShowMedicalHistoryModal(true)
+                                    }}
+                                    className="inline-flex items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
+                                  >
+                                    View History
+                                  </button>
+                                  {patient.status !== 'completed' && (
+                                    <button
+                                      onClick={() => handleOpenPrescriptionModal(patient)}
+                                      className="inline-flex items-center justify-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700"
+                                    >
+                                      Add Prescription
+                                    </button>
+                                  )}
+                                  {patient.status === 'completed' && patient.prescription && (
+                                    <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-600">
+                                      ✓ Prescribed
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1315,171 +1401,191 @@ const DoctorDashboard = () => {
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
               </div>
             ) : patientHistory.length === 0 ? (
-              <div className="bg-white rounded-lg shadow p-12 text-center">
+              <div className="bg-white rounded-3xl border border-purple-100 shadow-lg p-12 text-center">
                 <p className="text-gray-500 text-lg">No patient history available</p>
               </div>
             ) : (
-              <div className="bg-white rounded-lg shadow overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                  <input
-                    type="text"
-                    value={searchHistory}
-                    onChange={(e) => setSearchHistory(e.target.value)}
-                    placeholder="Search patient, token, issue..."
-                    className="w-full sm:w-96 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none"
-                  />
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Token</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Patient</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Issue</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prescription</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {limitedHistoryPatients.map((patient, index) => {
-                        const hasPendingFees = !patient.isRecheck && patient.feeStatus === 'pending'
-                        return (
-                          <tr 
-                            key={patient._id} 
-                            className={`hover:bg-gray-50 transition-colors ${
-                              hasPendingFees ? 'bg-orange-50/50 border-l-4 border-orange-400' : ''
-                            }`}
-                          >
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center text-sm font-semibold">
-                                {String(index + 1).padStart(2, '0')}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {new Date(patient.registrationDate || patient.createdAt).toLocaleDateString('en-US', {
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric'
-                              })}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full font-semibold text-sm">
-                                {patient.tokenNumber}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="text-sm font-semibold text-gray-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                                <span>{patient.fullName}</span>
-                                <span className="hidden sm:inline text-xs uppercase tracking-wide text-gray-400">•</span>
-                                <span className="text-sm text-gray-500 font-normal">Age {patient.age}</span>
-                              </div>
-                              <p className="text-xs text-gray-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
-                              <div className="flex items-center gap-2 mt-1">
-                                {patient.isRecheck || patient.feeStatus === 'not_required' ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
-                                    No Fees Required
-                                  </span>
-                                ) : (
-                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                                    patient.feeStatus === 'paid'
-                                      ? 'bg-green-100 text-green-700 border border-green-200'
-                                      : 'bg-orange-100 text-orange-700 border border-orange-200'
-                                  }`}>
-                                    {patient.feeStatus === 'paid' ? '✓ Fees Paid' : '⏳ Pending'}
-                                  </span>
-                                )}
-                              </div>
-                              {patient.behaviorRating && (
-                                <div className="flex items-center gap-1 mt-1">
-                                  <span className="text-xs text-gray-600">Behavior:</span>
-                                  <div className="flex items-center">
-                                    {[1, 2, 3, 4, 5].map((star) => (
-                                      <span
-                                        key={star}
-                                        className={`text-sm ${
-                                          star <= patient.behaviorRating
-                                            ? 'text-yellow-400'
-                                            : 'text-gray-300'
-                                        }`}
-                                      >
-                                        ★
-                                      </span>
-                                    ))}
+              <div className="space-y-6">
+                <div className="bg-gradient-to-br from-white via-purple-50 to-blue-50 border border-purple-100 rounded-3xl shadow-xl overflow-hidden">
+                  <div className="px-6 py-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-purple-500">Patient History</p>
+                      <h3 className="text-xl font-semibold text-slate-800 mt-1">Review previous consultations at a glance</h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        Showing {limitedHistoryPatients.length} of {patientHistory.length} total records
+                      </p>
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                      <div className="inline-flex items-center gap-2 rounded-full bg-purple-100 text-purple-600 px-3 py-1.5 text-sm font-semibold shadow-inner">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 5a7 7 0 00-7 7v5l1.5 1.5h11L19 17v-5a7 7 0 00-7-7z" />
+                        </svg>
+                        {patientHistory.filter((patient) => patient.status === 'completed').length} completed visits
+                      </div>
+                      <input
+                        type="text"
+                        value={searchHistory}
+                        onChange={(e) => setSearchHistory(e.target.value)}
+                        placeholder="Search patient, token, issue..."
+                        className="w-full sm:w-80 rounded-full border border-purple-200 bg-white/80 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition"
+                      />
+                    </div>
+                  </div>
+
+                  {limitedHistoryPatients.length === 0 ? (
+                    <div className="px-6 py-12 text-center text-sm text-slate-500 border-t border-purple-100 bg-white/70">
+                      No matching history entries. Try refining your search.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="hidden md:grid grid-cols-12 gap-6 px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 bg-white/70 border-t border-purple-100">
+                        <span className="col-span-2">Visit</span>
+                        <span className="col-span-2">Token</span>
+                        <span className="col-span-3">Patient</span>
+                        <span className="col-span-2">Issue</span>
+                        <span className="col-span-1">Status</span>
+                        <span className="col-span-2 text-right">Prescription</span>
+                      </div>
+                      <div className="px-4 py-5 space-y-4 bg-white/60">
+                        {limitedHistoryPatients.map((patient, index) => {
+                          const hasPendingFees = !patient.isRecheck && patient.feeStatus === 'pending'
+                          const hasPrescription = Boolean(patient.prescription)
+                          const formattedToken = (patient.tokenNumber ?? '-').toString().padStart(2, '0')
+                          const visitDate = new Date(patient.registrationDate || patient.createdAt)
+                          const visitDateDisplay = visitDate.toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })
+                          const visitTimeDisplay = visitDate.toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+
+                          return (
+                            <div
+                              key={patient._id || `${index}-${patient.fullName}`}
+                              className={`relative rounded-2xl border ${
+                                hasPendingFees ? 'border-orange-200 bg-orange-50/40' : 'border-purple-100 bg-white'
+                              } shadow-sm transition-all duration-200 hover:shadow-md`}
+                            >
+                              <div
+                                className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-2xl ${
+                                  hasPrescription
+                                    ? 'bg-gradient-to-b from-emerald-400 via-emerald-500 to-emerald-600'
+                                    : 'bg-gradient-to-b from-purple-400 via-purple-500 to-blue-500'
+                                }`}
+                              ></div>
+                              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 px-5 py-5">
+                                <div className="md:col-span-2 flex items-start gap-3">
+                                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-blue-600 font-semibold text-white shadow-md">
+                                    {(index + 1).toString().padStart(2, '0')}
                                   </div>
-                                  <span className="text-xs text-gray-500 ml-1">
-                                    ({patient.behaviorRating}/5)
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-semibold text-slate-700">Visited on</p>
+                                    <p className="text-sm font-medium text-slate-900">{visitDateDisplay}</p>
+                                    <p className="text-xs text-slate-500">{visitTimeDisplay}</p>
+                                  </div>
+                                </div>
+
+                                <div className="md:col-span-2 flex flex-col gap-2">
+                                  <span className="text-xs uppercase tracking-wide text-slate-400">Token</span>
+                                  <span className="inline-flex items-center gap-2 rounded-full border border-purple-100 bg-purple-50 px-3 py-1 text-sm font-semibold text-purple-600 shadow-sm">
+                                    <span className="h-2 w-2 rounded-full bg-purple-500"></span>
+                                    #{formattedToken}
                                   </span>
                                 </div>
-                              )}
-                            </td>
-                          <td className="px-6 py-4">
-                            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium">
-                              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                              <span className="capitalize">{patient.disease || 'Not specified'}</span>
+
+                                <div className="md:col-span-3 space-y-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-semibold text-slate-800">{patient.fullName}</p>
+                                    <span className="text-xs text-slate-500">Age {patient.age}</span>
+                                  </div>
+                                  <p className="text-xs text-slate-500">Mobile: {patient.mobileNumber || '—'}</p>
+                                  <div className="flex flex-wrap gap-2 pt-1">
+                                    {patient.isRecheck || patient.feeStatus === 'not_required' ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600">
+                                        Recheck-up
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                                          patient.feeStatus === 'paid'
+                                            ? 'border-emerald-100 bg-emerald-50 text-emerald-600'
+                                            : 'border-orange-100 bg-orange-50 text-orange-600'
+                                        }`}
+                                      >
+                                        {patient.feeStatus === 'paid' ? '✓ Fees Paid' : 'Pending Fees'}
+                                      </span>
+                                    )}
+                                    {patient.behaviorRating && (
+                                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-100 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-600">
+                                        ★ {patient.behaviorRating}/5
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="md:col-span-2 flex flex-col gap-2">
+                                  <span className="text-xs uppercase tracking-wide text-slate-400">Issue</span>
+                                  <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-600 shadow-sm">
+                                    <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                                    {patient.disease || 'Not specified'}
+                                  </span>
+                                </div>
+
+                                <div className="md:col-span-1 flex flex-col gap-2">
+                                  <span className="text-xs uppercase tracking-wide text-slate-400">Status</span>
+                                  <span
+                                    className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${
+                                      patient.status === 'completed'
+                                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                        : patient.status === 'in-progress'
+                                        ? 'bg-amber-50 text-amber-600 border border-amber-100'
+                                        : 'bg-slate-50 text-slate-600 border border-slate-100'
+                                    }`}
+                                  >
+                                    {patient.status === 'completed'
+                                      ? 'Completed'
+                                      : patient.status === 'in-progress'
+                                      ? 'In Progress'
+                                      : 'Waiting'}
+                                  </span>
+                                </div>
+
+                                <div className="md:col-span-2 flex flex-col items-start md:items-end justify-between gap-3">
+                                  <button
+                                    onClick={() => {
+                                      setMedicalHistoryPatientId(patient._id)
+                                      setMedicalHistoryPatientName(patient.fullName)
+                                      setMedicalHistoryPatientMobile(patient.mobileNumber)
+                                      setShowMedicalHistoryModal(true)
+                                    }}
+                                    className="inline-flex items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
+                                  >
+                                    View History
+                                  </button>
+                                  {hasPrescription ? (
+                                    <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-600">
+                                      <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                                      Prescribed
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-500">
+                                      <span className="h-2 w-2 rounded-full bg-slate-400"></span>
+                                      No Prescription
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wide ${
-                              patient.status === 'completed'
-                                ? 'bg-green-100 text-green-700'
-                                : patient.status === 'in-progress'
-                                ? 'bg-yellow-100 text-yellow-700'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}>
-                              {patient.status === 'completed'
-                                ? 'Completed'
-                                : patient.status === 'in-progress'
-                                ? 'In Progress'
-                                : 'Waiting'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            <div className="flex flex-col gap-2">
-                              {hasPendingFees && (
-                                <button
-                                  onClick={() => handleMarkAsPaid(patient)}
-                                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-xs font-semibold w-full"
-                                >
-                                  Mark as Paid
-                                </button>
-                              )}
-                              <button
-                                onClick={() => {
-                                  setMedicalHistoryPatientId(patient._id)
-                                  setMedicalHistoryPatientName(patient.fullName)
-                                  setMedicalHistoryPatientMobile(patient.mobileNumber)
-                                  setShowMedicalHistoryModal(true)
-                                }}
-                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs font-medium w-full"
-                              >
-                                View History
-                              </button>
-                              {patient.prescription ? (
-                                <span className="inline-flex items-center gap-1 text-green-600 font-semibold text-xs">
-                                  <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                  Prescribed
-                                </span>
-                              ) : (
-                                <span className="text-gray-400 text-xs">—</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                          )
+                        })}
+                      </div>
+                    </>
+                  )}
                 </div>
-                {filteredHistoryPatients.length === 0 && (
-                  <div className="px-6 py-8 text-center text-gray-500">No matching patients</div>
-                )}
-                {filteredHistoryPatients.length > 100 && (
-                  <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-                    <p className="text-sm text-gray-500 text-center">Showing latest 100 records</p>
-                  </div>
-                )}
               </div>
             )}
           </div>
