@@ -972,6 +972,12 @@ const ReceptionistDashboard = () => {
     }
     
     return filtered
+      .slice()
+      .sort((a, b) => {
+        const dateA = new Date(a.registrationDate || a.createdAt || 0).getTime()
+        const dateB = new Date(b.registrationDate || b.createdAt || 0).getTime()
+        return dateB - dateA
+      })
   }, [todayPatients, patientsRegisterView, patientsRegisterSearchDebounced])
 
   const filteredPatientHistory = useMemo(() => {
@@ -1001,6 +1007,12 @@ const ReceptionistDashboard = () => {
     }
     
     return filtered
+      .slice()
+      .sort((a, b) => {
+        const dateA = new Date(a.registrationDate || a.createdAt || 0).getTime()
+        const dateB = new Date(b.registrationDate || b.createdAt || 0).getTime()
+        return dateB - dateA
+      })
   }, [patientHistory, patientsRegisterView, patientsRegisterSearchDebounced])
 
   // Calculate counts for each view
@@ -2298,11 +2310,12 @@ const ReceptionistDashboard = () => {
                         {paginatedTodayPatients.map((patient, index) => {
                           const { dateLabel, timeLabel } = getDateTimeLabels(patient.registrationDate)
                           const globalIndex = todayPatientsStartIndex + index
+                          const displayIndex = filteredTodayPatients.length - globalIndex
                           return (
                             <tr key={patient._id} className="bg-green-50/30 hover:bg-green-50/50 transition border-l-4 border-green-400">
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
-                                  {String(globalIndex + 1).padStart(2, '0')}
+                                  {String(displayIndex).padStart(2, '0')}
                                 </div>
                               </td>
                               <td className="px-6 py-4">
@@ -2356,13 +2369,13 @@ const ReceptionistDashboard = () => {
                                   {dateLabel}
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
                                   <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                   </svg>
-                                  {timeLabel}
-                                </div>
+                                  <span>{timeLabel}</span>
+                            </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
@@ -2553,11 +2566,12 @@ const ReceptionistDashboard = () => {
                             {paginatedPatientHistory.map((patient, index) => {
                               const { dateLabel, timeLabel } = getDateTimeLabels(patient.registrationDate || patient.createdAt)
                               const globalIndex = patientHistoryStartIndex + index
+                              const displayIndex = filteredPatientHistory.length - globalIndex
                               return (
-                                <tr key={patient._id} className="hover:bg-slate-50 transition border border-slate-200">
+                                <tr key={patient._id} className="hover:bg-green-50/40 transition border border-slate-200">
                                   <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
-                                      {String(globalIndex + 1).padStart(2, '0')}
+                                      {String(displayIndex).padStart(2, '0')}
                                     </div>
                                   </td>
                                   <td className="px-6 py-4 border-r border-slate-200">
@@ -2616,7 +2630,7 @@ const ReceptionistDashboard = () => {
                                       <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                       </svg>
-                                      {timeLabel}
+                                      <span>{timeLabel}</span>
                                     </div>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
@@ -423,6 +423,10 @@ const DoctorDashboard = () => {
   const [searchToday, setSearchToday] = useState('')
   const [searchHistory, setSearchHistory] = useState('')
   const [searchMedical, setSearchMedical] = useState('')
+  const PAGE_SIZE_TODAY = 5
+  const PAGE_SIZE_HISTORY = 6
+  const [todayPage, setTodayPage] = useState(1)
+  const [historyPage, setHistoryPage] = useState(1)
   const [prescriptionData, setPrescriptionData] = useState({
     diagnosis: '',
     medicines: [{
@@ -448,38 +452,47 @@ const DoctorDashboard = () => {
   const [medicalHistoryPatientName, setMedicalHistoryPatientName] = useState(null)
   const [medicalHistoryPatientMobile, setMedicalHistoryPatientMobile] = useState(null)
 
-  useEffect(() => {
-    fetchTodayPatients()
-    fetchDoctorStats()
-  }, [])
+  const fetchTodayPatients = useCallback(
+    async ({ showLoader = false } = {}) => {
+      if (!user?.id) return
+      if (showLoader) setLoading(true)
+      try {
+        const response = await api.get(`/patient/today/${user.id}`)
+        setPatients(response.data.data)
+      } catch (error) {
+        toast.error('Failed to fetch patients')
+      } finally {
+        if (showLoader) setLoading(false)
+      }
+    },
+    [user?.id]
+  )
 
-  useEffect(() => {
-    if (activeTab === 'history') {
-      fetchPatientHistory()
-    } else if (activeTab === 'medical') {
-      fetchMedicalRecords()
-    }
-  }, [activeTab])
-
-  const fetchTodayPatients = async () => {
+  const fetchDoctorStats = useCallback(async () => {
+    if (!user?.id) return
     try {
-      const response = await api.get(`/patient/today/${user?.id}`)
-      setPatients(response.data.data)
-      setLoading(false)
-    } catch (error) {
-      toast.error('Failed to fetch patients')
-      setLoading(false)
-    }
-  }
-
-  const fetchDoctorStats = async () => {
-    try {
-      const response = await api.get(`/doctor/${user?.id}/stats`)
+      const response = await api.get(`/doctor/${user.id}/stats`)
       setDoctorStats(response.data.data)
     } catch (error) {
       console.error('Failed to fetch doctor stats:', error)
     }
-  }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchTodayPatients({ showLoader: true })
+      fetchDoctorStats()
+    }
+  }, [user?.id, fetchTodayPatients, fetchDoctorStats])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const interval = setInterval(() => {
+      fetchTodayPatients()
+      fetchDoctorStats()
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [user?.id, fetchTodayPatients, fetchDoctorStats])
 
   const handleToggleAvailability = async () => {
     try {
@@ -528,35 +541,16 @@ const DoctorDashboard = () => {
     }
   }
 
-  const fetchPatientHistory = async () => {
-    setLoadingHistory(true)
-    try {
-      const response = await api.get('/patient')
-      const allPatients = response.data.data || []
-      // Filter only this doctor's patients
-      const myPatients = allPatients.filter(p => p.doctor?._id === user?.id || p.doctor === user?.id)
-      // Sort by most recent first
-      myPatients.sort((a, b) => new Date(b.createdAt || b.registrationDate) - new Date(a.createdAt || a.registrationDate))
-      setPatientHistory(myPatients)
-    } catch (error) {
-      console.error('Error fetching patient history:', error)
-      toast.error('Failed to fetch patient history')
-    } finally {
-      setLoadingHistory(false)
-    }
-  }
-
-  const fetchMedicalRecords = async () => {
+  const fetchMedicalRecords = useCallback(async () => {
+    if (!user?.id) return
     setLoadingMedical(true)
     try {
       const response = await api.get('/patient')
       const allPatients = response.data.data || []
-      // Filter only this doctor's patients with prescriptions
       const recordsWithPrescriptions = allPatients.filter(
-        p => (p.doctor?._id === user?.id || p.doctor === user?.id) && p.prescription
+        p => (p.doctor?._id === user.id || p.doctor === user.id) && p.prescription
       )
-      // Sort by most recent first
-      recordsWithPrescriptions.sort((a, b) => 
+      recordsWithPrescriptions.sort((a, b) =>
         new Date(b.prescription?.createdAt || b.createdAt) - new Date(a.prescription?.createdAt || a.createdAt)
       )
       setMedicalRecords(recordsWithPrescriptions)
@@ -566,7 +560,33 @@ const DoctorDashboard = () => {
     } finally {
       setLoadingMedical(false)
     }
-  }
+  }, [user?.id])
+
+  const fetchPatientHistory = useCallback(async () => {
+    if (!user?.id) return
+    setLoadingHistory(true)
+    try {
+      const response = await api.get(`/doctor/${user.id}/patients/history`)
+      const myPatients = response.data.data || []
+      setPatientHistory(myPatients)
+    } catch (error) {
+      console.error('Error fetching patient history:', error)
+      toast.error('Failed to fetch patient history')
+    } finally {
+      setLoadingHistory(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      fetchPatientHistory()
+    } else if (activeTab === 'medical') {
+      fetchMedicalRecords()
+    } else if (activeTab === 'today') {
+      fetchTodayPatients()
+      fetchDoctorStats()
+    }
+  }, [activeTab, fetchPatientHistory, fetchMedicalRecords, fetchTodayPatients, fetchDoctorStats])
 
   const filterPatients = (list, query) => {
     if (!query) return list
@@ -956,9 +976,54 @@ const DoctorDashboard = () => {
   }
 
   const filteredTodayPatients = filterPatients(patients, searchToday)
+    .slice()
+    .sort((a, b) => {
+      const dateA = new Date(a.registrationDate || a.createdAt || 0).getTime()
+      const dateB = new Date(b.registrationDate || b.createdAt || 0).getTime()
+      return dateB - dateA
+    })
   const filteredHistoryPatients = filterPatients(patientHistory, searchHistory)
+    .slice()
+    .sort((a, b) => {
+      const dateA = new Date(a.registrationDate || a.createdAt || 0).getTime()
+      const dateB = new Date(b.registrationDate || b.createdAt || 0).getTime()
+      return dateB - dateA
+    })
   const filteredMedicalRecords = filterPatients(medicalRecords, searchMedical)
-  const limitedHistoryPatients = filteredHistoryPatients.slice(0, 100)
+  const todayTotalPages = Math.max(1, Math.ceil(filteredTodayPatients.length / PAGE_SIZE_TODAY))
+  const historyTotalPages = Math.max(1, Math.ceil(filteredHistoryPatients.length / PAGE_SIZE_HISTORY))
+  const paginatedTodayPatients = useMemo(
+    () =>
+      filteredTodayPatients.slice(
+        (todayPage - 1) * PAGE_SIZE_TODAY,
+        todayPage * PAGE_SIZE_TODAY
+      ),
+    [filteredTodayPatients, todayPage]
+  )
+  const paginatedHistoryPatients = useMemo(
+    () =>
+      filteredHistoryPatients.slice(
+        (historyPage - 1) * PAGE_SIZE_HISTORY,
+        historyPage * PAGE_SIZE_HISTORY
+      ),
+    [filteredHistoryPatients, historyPage]
+  )
+
+  useEffect(() => {
+    setTodayPage(1)
+  }, [searchToday])
+
+  useEffect(() => {
+    setHistoryPage(1)
+  }, [searchHistory])
+
+  useEffect(() => {
+    setTodayPage(1)
+  }, [filteredTodayPatients.length])
+
+  useEffect(() => {
+    setHistoryPage(1)
+  }, [filteredHistoryPatients.length])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1145,9 +1210,9 @@ const DoctorDashboard = () => {
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
               </div>
-            ) : patients.length === 0 ? (
+            ) : filteredTodayPatients.length === 0 && !searchToday ? (
               <div className="bg-white rounded-3xl border border-purple-100 shadow-lg p-12 text-center">
-                <p className="text-gray-500 text-lg">No patients for today</p>
+                <p className="text-gray-500 text-lg">No patients have registered today yet.</p>
               </div>
             ) : (
               <div className="space-y-6">
@@ -1179,7 +1244,9 @@ const DoctorDashboard = () => {
 
                   {filteredTodayPatients.length === 0 ? (
                     <div className="px-6 py-12 text-center text-sm text-slate-500 border-t border-purple-100 bg-white/70">
-                      No matching patients for your search. Try adjusting the filters.
+                      {searchToday
+                        ? 'No matching patients for your search. Try adjusting the filters.'
+                        : 'No patients have registered today yet.'}
                     </div>
                   ) : (
                     <>
@@ -1192,7 +1259,7 @@ const DoctorDashboard = () => {
                         <span className="col-span-2 text-right">Actions</span>
                       </div>
                       <div className="px-4 py-5 space-y-4 bg-white/60">
-                        {filteredTodayPatients.map((patient) => {
+                        {paginatedTodayPatients.map((patient) => {
                           const hasPendingFees = !patient.isRecheck && patient.feeStatus !== 'not_required' && patient.feeStatus === 'pending'
                           const formattedToken = (patient.tokenNumber ?? '-').toString().padStart(2, '0')
                           const registrationDate = patient.visitDate
@@ -1243,8 +1310,11 @@ const DoctorDashboard = () => {
                                     <div className="flex flex-wrap items-center gap-2">
                                       <p className="text-sm font-semibold text-slate-800">{patient.fullName}</p>
                                       <span className="text-xs text-slate-500">• {patient.age} yrs</span>
+                                      <span className="inline-flex items-center gap-1 rounded-full border border-purple-100 bg-purple-50 px-2.5 py-0.5 text-[11px] font-semibold text-purple-600">
+                                        Token #{formattedToken}
+                                      </span>
                                     </div>
-                                    <p className="text-xs text-slate-500">{patient.mobileNumber}</p>
+                                    <p className="text-xs text-slate-500">Mobile: {patient.mobileNumber}</p>
                                     <div className="flex flex-wrap gap-2 pt-1">
                                       {patient.isRecheck || patient.feeStatus === 'not_required' ? (
                                         <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600">
@@ -1383,6 +1453,57 @@ const DoctorDashboard = () => {
                           )
                         })}
                       </div>
+                      {todayTotalPages > 1 && (
+                        <div className="px-6 pb-6">
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-2xl bg-purple-50/60 border border-purple-100 px-4 py-3">
+                            <span className="text-sm text-slate-600">
+                              Showing{' '}
+                              <span className="font-semibold text-slate-900">
+                                {(todayPage - 1) * PAGE_SIZE_TODAY + 1}
+                              </span>{' '}
+                              –{' '}
+                              <span className="font-semibold text-slate-900">
+                                {Math.min(todayPage * PAGE_SIZE_TODAY, filteredTodayPatients.length)}
+                              </span>{' '}
+                              of{' '}
+                              <span className="font-semibold text-slate-900">{filteredTodayPatients.length}</span> patients
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setTodayPage((page) => Math.max(1, page - 1))}
+                                disabled={todayPage === 1}
+                                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                  todayPage === 1
+                                    ? 'bg-purple-100 text-purple-300 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-sm hover:from-purple-600 hover:to-purple-700'
+                                }`}
+                              >
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                </svg>
+                                Prev
+                              </button>
+                              <span className="text-xs font-semibold text-purple-600">
+                                Page {todayPage} / {todayTotalPages}
+                              </span>
+                              <button
+                                onClick={() => setTodayPage((page) => Math.min(todayTotalPages, page + 1))}
+                                disabled={todayPage === todayTotalPages}
+                                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                  todayPage === todayTotalPages
+                                    ? 'bg-purple-100 text-purple-300 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-sm hover:from-purple-600 hover:to-purple-700'
+                                }`}
+                              >
+                                Next
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1412,7 +1533,7 @@ const DoctorDashboard = () => {
                       <p className="text-xs font-semibold uppercase tracking-wider text-purple-500">Patient History</p>
                       <h3 className="text-xl font-semibold text-slate-800 mt-1">Review previous consultations at a glance</h3>
                       <p className="text-sm text-slate-500 mt-1">
-                        Showing {limitedHistoryPatients.length} of {patientHistory.length} total records
+                        Showing {filteredHistoryPatients.length} record{filteredHistoryPatients.length === 1 ? '' : 's'}
                       </p>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
@@ -1433,7 +1554,7 @@ const DoctorDashboard = () => {
                     </div>
                   </div>
 
-                  {limitedHistoryPatients.length === 0 ? (
+                  {filteredHistoryPatients.length === 0 ? (
                     <div className="px-6 py-12 text-center text-sm text-slate-500 border-t border-purple-100 bg-white/70">
                       No matching history entries. Try refining your search.
                     </div>
@@ -1448,7 +1569,7 @@ const DoctorDashboard = () => {
                         <span className="col-span-2 text-right">Prescription</span>
                       </div>
                       <div className="px-4 py-5 space-y-4 bg-white/60">
-                        {limitedHistoryPatients.map((patient, index) => {
+                        {paginatedHistoryPatients.map((patient) => {
                           const hasPendingFees = !patient.isRecheck && patient.feeStatus === 'pending'
                           const hasPrescription = Boolean(patient.prescription)
                           const formattedToken = (patient.tokenNumber ?? '-').toString().padStart(2, '0')
@@ -1465,7 +1586,7 @@ const DoctorDashboard = () => {
 
                           return (
                             <div
-                              key={patient._id || `${index}-${patient.fullName}`}
+                              key={patient._id || `${patient.tokenNumber}-${patient.registrationDate}`}
                               className={`relative rounded-2xl border ${
                                 hasPendingFees ? 'border-orange-200 bg-orange-50/40' : 'border-purple-100 bg-white'
                               } shadow-sm transition-all duration-200 hover:shadow-md`}
@@ -1478,15 +1599,10 @@ const DoctorDashboard = () => {
                                 }`}
                               ></div>
                               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 px-5 py-5">
-                                <div className="md:col-span-2 flex items-start gap-3">
-                                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-blue-600 font-semibold text-white shadow-md">
-                                    {(index + 1).toString().padStart(2, '0')}
-                                  </div>
-                                  <div className="space-y-1">
-                                    <p className="text-xs font-semibold text-slate-700">Visited on</p>
-                                    <p className="text-sm font-medium text-slate-900">{visitDateDisplay}</p>
-                                    <p className="text-xs text-slate-500">{visitTimeDisplay}</p>
-                                  </div>
+                                <div className="md:col-span-2 space-y-1">
+                                  <p className="text-xs font-semibold text-slate-700">Visit Date</p>
+                                  <p className="text-sm font-medium text-slate-900">{visitDateDisplay}</p>
+                                  <p className="text-xs text-slate-500">{visitTimeDisplay}</p>
                                 </div>
 
                                 <div className="md:col-span-2 flex flex-col gap-2">
@@ -1583,6 +1699,57 @@ const DoctorDashboard = () => {
                           )
                         })}
                       </div>
+                      {historyTotalPages > 1 && (
+                        <div className="px-6 pb-6">
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 rounded-2xl bg-purple-50/60 border border-purple-100 px-4 py-3">
+                            <span className="text-sm text-slate-600">
+                              Showing{' '}
+                              <span className="font-semibold text-slate-900">
+                                {(historyPage - 1) * PAGE_SIZE_HISTORY + 1}
+                              </span>{' '}
+                              –{' '}
+                              <span className="font-semibold text-slate-900">
+                                {Math.min(historyPage * PAGE_SIZE_HISTORY, filteredHistoryPatients.length)}
+                              </span>{' '}
+                              of{' '}
+                              <span className="font-semibold text-slate-900">{filteredHistoryPatients.length}</span> records
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}
+                                disabled={historyPage === 1}
+                                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                  historyPage === 1
+                                    ? 'bg-purple-100 text-purple-300 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-sm hover:from-purple-600 hover:to-purple-700'
+                                }`}
+                              >
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                </svg>
+                                Prev
+                              </button>
+                              <span className="text-xs font-semibold text-purple-600">
+                                Page {historyPage} / {historyTotalPages}
+                              </span>
+                              <button
+                                onClick={() => setHistoryPage((page) => Math.min(historyTotalPages, page + 1))}
+                                disabled={historyPage === historyTotalPages}
+                                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                  historyPage === historyTotalPages
+                                    ? 'bg-purple-100 text-purple-300 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-sm hover:from-purple-600 hover:to-purple-700'
+                                }`}
+                              >
+                                Next
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
