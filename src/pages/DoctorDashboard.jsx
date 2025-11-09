@@ -2292,10 +2292,18 @@ const DoctorDashboard = () => {
                                     className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-xs bg-white shadow-sm"
                                   >
                                     <option value="">Additional Instructions...</option>
-                                    <option value="Take pill after meal 🍛">Take pill after meal 🍛</option>
-                                    <option value="Take pill before meal 🥗">Take pill before meal 🥗</option>
-                                    <option value="Take pill with water 💧">Take pill with water 💧</option>
-                                    <option value="Take pill on empty stomach ☀️">Take pill on empty stomach ☀️</option>
+                                    <option value="Take the tablet after meals | जेवणानंतर गोळी घ्या | भोजन के बाद टैबलेट लें">
+                                      Take the tablet after meals | जेवणानंतर गोळी घ्या | भोजन के बाद टैबलेट लें
+                                    </option>
+                                    <option value="Take the tablet before meals | जेवणापूर्वी गोळी घ्या | भोजन से पहले टैबलेट लें">
+                                      Take the tablet before meals | जेवणापूर्वी गोळी घ्या | भोजन से पहले टैबलेट लें
+                                    </option>
+                                    <option value="Take the tablet with water | पाण्यासोबत गोळी घ्या | पानी के साथ टैबलेट लें">
+                                      Take the tablet with water | पाण्यासोबत गोळी घ्या | पानी के साथ टैबलेट लें
+                                    </option>
+                                    <option value="Take the tablet on an empty stomach | रिकाम्या पोटी गोळी घ्या | खाली पेट टैबलेट लें">
+                                      Take the tablet on an empty stomach | रिकाम्या पोटी गोळी घ्या | खाली पेट टैबलेट लें
+                                    </option>
                                   </select>
                                 </div>
                               </div>
