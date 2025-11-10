@@ -523,6 +523,7 @@ const DoctorDashboard = () => {
   const [medicalHistoryPatientId, setMedicalHistoryPatientId] = useState(null)
   const [medicalHistoryPatientName, setMedicalHistoryPatientName] = useState(null)
   const [medicalHistoryPatientMobile, setMedicalHistoryPatientMobile] = useState(null)
+  const todaysPatientsRef = useRef(null)
 
   const fetchTodayPatients = useCallback(
     async ({ showLoader = false } = {}) => {
@@ -611,6 +612,22 @@ const DoctorDashboard = () => {
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update payment status')
     }
+  }
+
+  const openMedicalHistory = (patient) => {
+    if (!patient?._id) return
+    setMedicalHistoryPatientId(patient._id)
+    setMedicalHistoryPatientName(patient.fullName)
+    setMedicalHistoryPatientMobile(patient.mobileNumber)
+    setShowMedicalHistoryModal(true)
+  }
+
+  const handleShowTodaysPatients = () => {
+    setActiveTab('today')
+    setSearchToday('')
+    requestAnimationFrame(() => {
+      todaysPatientsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }
 
   const fetchMedicalRecords = useCallback(async () => {
@@ -1323,10 +1340,19 @@ const DoctorDashboard = () => {
                     <p className="text-2xl font-bold text-purple-600">{doctorStats.dailyPatientLimit}</p>
                   </div>
                   <div className="h-12 w-px bg-gray-300"></div>
-                  <div>
-                    <p className="text-sm text-gray-600">Today's Patients</p>
+                  <button
+                    type="button"
+                    onClick={handleShowTodaysPatients}
+                    className="text-left px-3 py-2 rounded-lg transition hover:bg-white/70 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                  >
+                    <p className="text-sm text-gray-600 flex items-center gap-2">
+                      Today's Patients
+                      <svg className="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </p>
                     <p className="text-2xl font-bold text-gray-800">{doctorStats.todayPatientCount}</p>
-                  </div>
+                  </button>
                   <div className="h-12 w-px bg-gray-300"></div>
                   <div>
                     <p className="text-sm text-gray-600">Remaining Slots</p>
@@ -1403,7 +1429,7 @@ const DoctorDashboard = () => {
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Patients Today Tab */}
         {activeTab === 'today' && (
-          <div>
+          <div ref={todaysPatientsRef}>
             <h2 className="text-2xl font-bold text-gray-800 mb-6">Patients Today</h2>
 
             {loading ? (
@@ -1484,9 +1510,19 @@ const DoctorDashboard = () => {
                           return (
                             <div
                               key={patient._id}
+                              role="button"
+                              tabIndex={0}
+                              aria-label={`View medical history for ${patient.fullName}`}
+                              onClick={() => openMedicalHistory(patient)}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault()
+                                  openMedicalHistory(patient)
+                                }
+                              }}
                               className={`relative rounded-2xl border ${
                                 hasPendingFees ? 'border-orange-200 bg-orange-50/40' : 'border-purple-100 bg-white'
-                              } shadow-sm transition-all duration-200 hover:shadow-md`}
+                              } shadow-sm transition-all duration-200 hover:shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-400/60`}
                             >
                               <div
                                 className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-2xl ${
@@ -1617,18 +1653,19 @@ const DoctorDashboard = () => {
                                 <div className="md:col-span-2 flex flex-wrap gap-2 justify-start md:justify-end">
                                   {hasPendingFees && (
                                     <button
-                                      onClick={() => handleMarkAsPaid(patient)}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        handleMarkAsPaid(patient)
+                                      }}
                                       className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
                                     >
                                       Mark as Paid
                                     </button>
                                   )}
                                   <button
-                                    onClick={() => {
-                                      setMedicalHistoryPatientId(patient._id)
-                                      setMedicalHistoryPatientName(patient.fullName)
-                                      setMedicalHistoryPatientMobile(patient.mobileNumber)
-                                      setShowMedicalHistoryModal(true)
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      openMedicalHistory(patient)
                                     }}
                                     className="inline-flex items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
                                   >
@@ -1636,7 +1673,10 @@ const DoctorDashboard = () => {
                                   </button>
                                   {patient.status !== 'completed' && (
                                     <button
-                                      onClick={() => handleOpenPrescriptionModal(patient)}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        handleOpenPrescriptionModal(patient)
+                                      }}
                                       className="inline-flex items-center justify-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700"
                                     >
                                       Add Prescription

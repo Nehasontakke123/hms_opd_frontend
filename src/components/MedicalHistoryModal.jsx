@@ -37,7 +37,13 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
       }
 
       const response = await api.get('/prescription/medical-history', { params })
-      setMedicalHistory(response.data.data)
+      const historyData = response.data.data
+      setMedicalHistory(historyData)
+      if (historyData?.medicalHistory?.length) {
+        setExpandedCards({ 0: true })
+      } else {
+        setExpandedCards({})
+      }
     } catch (error) {
       console.error('Error fetching medical history:', error)
       if (error.response?.status === 404) {
@@ -46,6 +52,7 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
         toast.error('Failed to fetch medical history')
       }
       setMedicalHistory(null)
+      setExpandedCards({})
     } finally {
       setLoading(false)
     }
@@ -261,150 +268,202 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
                 </div>
               )}
 
-              {/* Medical History Cards */}
-              {medicalHistory.medicalHistory.map((record, index) => (
-                <div
-                  key={index}
-                  className="border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow"
-                >
-                  {/* Card Header */}
-                  <div
-                    className="bg-gradient-to-r from-gray-50 to-gray-100 p-4 cursor-pointer flex justify-between items-center"
-                    onClick={() => toggleCard(index)}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="bg-blue-600 text-white rounded-full w-10 h-10 flex items-center justify-center font-bold">
-                        {index + 1}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-gray-900">
-                          Visit on {formatDate(record.visitDate)}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {record.doctor?.name ? `Dr. ${record.doctor.name}` : 'Unknown Doctor'}
-                          {record.doctor?.specialization && ` • ${record.doctor.specialization}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {record.prescription && (
-                        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium">
-                          Prescription Available
-                        </span>
-                      )}
-                      <svg
-                        className={`w-5 h-5 text-gray-600 transform transition-transform ${expandedCards[index] ? 'rotate-180' : ''}`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
-                  </div>
+              <div className="relative pl-6">
+                <div className="absolute left-[1rem] top-2 bottom-2 w-px bg-gradient-to-b from-blue-200 via-purple-200 to-blue-200"></div>
+                {medicalHistory.medicalHistory.map((record, index) => {
+                  const isExpanded = !!expandedCards[index]
+                  const sugarLabel =
+                    record?.vitals?.sugarLevel || record?.vitals?.sugarLevel === 0
+                      ? `${record.vitals.sugarLevel} mg/dL`
+                      : null
 
-                  {/* Expanded Content */}
-                  {expandedCards[index] && (
-                    <div className="p-4 space-y-4 border-t">
-                      {/* Visit Details */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <span className="text-gray-600">Token #:</span>
-                          <p className="font-medium">{record.tokenNumber}</p>
+                  return (
+                    <div key={index} className="relative pb-10">
+                      <div className="absolute left-4 top-3 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-white bg-blue-600 shadow-md"></div>
+                      <div className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+                        <div
+                          className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-5 cursor-pointer"
+                          onClick={() => toggleCard(index)}
+                        >
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-blue-500">
+                              Visit #{medicalHistory.medicalHistory.length - index}
+                            </p>
+                            <h3 className="text-lg font-semibold text-gray-900">{formatDate(record.visitDate)}</h3>
+                            <p className="text-sm text-gray-600">
+                              {record.doctor?.name ? `Dr. ${record.doctor.name}` : 'Doctor not recorded'}
+                              {record.doctor?.specialization && ` • ${record.doctor.specialization}`}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {record.patientInfo?.disease && (
+                              <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
+                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                {record.patientInfo.disease}
+                              </span>
+                            )}
+                            {record.visitDetails?.status && (
+                              <span
+                                className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${
+                                  record.visitDetails.status === 'completed'
+                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                                    : record.visitDetails.status === 'in-progress'
+                                    ? 'bg-amber-50 text-amber-600 border border-amber-200'
+                                    : 'bg-gray-50 text-gray-600 border border-gray-200'
+                                }`}
+                              >
+                                <span className="w-2 h-2 rounded-full bg-current"></span>
+                                {record.visitDetails.status.replace('-', ' ')}
+                              </span>
+                            )}
+                            {record.prescription && (
+                              <span className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 border border-green-200">
+                                <span>📄</span> Prescription saved
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              toggleCard(index)
+                            }}
+                            className="inline-flex items-center gap-2 rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:border-purple-300 hover:text-purple-600 transition"
+                          >
+                            {isExpanded ? 'Hide details' : 'View details'}
+                            <svg
+                              className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
                         </div>
-                        <div>
-                          <span className="text-gray-600">Fees:</span>
-                          <p className="font-medium">₹{record.visitDetails?.fees || 0}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Status:</span>
-                          <p className="font-medium capitalize">{record.visitDetails?.status || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Recheck:</span>
-                          <p className="font-medium">{record.visitDetails?.isRecheck ? 'Yes' : 'No'}</p>
-                        </div>
-                      </div>
 
-                      {/* Diagnosis */}
-                      {record.patientInfo?.disease && (
-                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                          <span className="text-sm font-semibold text-amber-900">Complaint:</span>
-                          <p className="text-amber-800">{record.patientInfo.disease}</p>
-                        </div>
-                      )}
+                        {isExpanded && (
+                          <div className="px-5 pb-5 space-y-5 border-t border-gray-100">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm pt-5">
+                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                <p className="text-xs uppercase tracking-wide text-gray-500">Token</p>
+                                <p className="text-base font-semibold text-gray-800 mt-1">
+                                  #{record.tokenNumber?.toString().padStart(2, '0') || 'N/A'}
+                                </p>
+                              </div>
+                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                <p className="text-xs uppercase tracking-wide text-gray-500">Fees</p>
+                                <p className="text-base font-semibold text-gray-800 mt-1">₹{record.visitDetails?.fees || 0}</p>
+                                <p className="text-[11px] text-gray-500">
+                                  Status: {record.visitDetails?.feeStatus ? record.visitDetails.feeStatus.toUpperCase() : 'N/A'}
+                                </p>
+                              </div>
+                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                <p className="text-xs uppercase tracking-wide text-gray-500">Recheck</p>
+                                <p className="text-base font-semibold text-gray-800 mt-1">
+                                  {record.visitDetails?.isRecheck ? 'Yes' : 'No'}
+                                </p>
+                              </div>
+                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                                <p className="text-xs uppercase tracking-wide text-gray-500">Vitals</p>
+                                <div className="mt-1 space-y-1 text-gray-800">
+                                  {record.vitals?.bloodPressure && <p>BP: {record.vitals.bloodPressure}</p>}
+                                  {sugarLabel && <p>Sugar: {sugarLabel}</p>}
+                                  {!record.vitals?.bloodPressure && !sugarLabel && <p>No vitals recorded</p>}
+                                </div>
+                              </div>
+                            </div>
 
-                      {/* Prescription Details */}
-                      {record.prescription ? (
-                        <div className="space-y-3">
-                          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                            <h4 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
-                              <span>📋</span> Prescription Details
-                            </h4>
-                            
-                            {/* Diagnosis */}
-                            {record.prescription.diagnosis && (
-                              <div className="mb-3">
-                                <span className="text-sm font-semibold text-gray-700">Diagnosis:</span>
-                                <p className="text-gray-900 font-medium">{record.prescription.diagnosis}</p>
+                            {record.prescription?.diagnosis && (
+                              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                                <p className="text-sm font-semibold text-purple-900">Diagnosis</p>
+                                <p className="text-sm text-purple-800 mt-2 whitespace-pre-line">
+                                  {record.prescription.diagnosis}
+                                </p>
                               </div>
                             )}
 
-                            {/* Medicines */}
-                            {record.prescription.medicines && record.prescription.medicines.length > 0 && (
-                              <div className="mb-3">
-                                <span className="text-sm font-semibold text-gray-700">Medicines:</span>
-                                <ul className="mt-2 space-y-1">
+                            {record.prescription?.medicines?.length > 0 && (
+                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <p className="text-sm font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                                  <span>💊</span> Medicines Prescribed
+                                </p>
+                                <div className="space-y-2">
                                   {record.prescription.medicines.map((med, medIndex) => (
-                                    <li key={medIndex} className="text-sm text-gray-800 flex items-start gap-2">
-                                      <span className="text-blue-600">💊</span>
-                                      <span>
-                                        <span className="font-medium">{med.name}</span>
-                                        {med.dosage && ` - ${med.dosage}`}
-                                        {med.duration && ` (${med.duration})`}
-                                      </span>
+                                    <div key={medIndex} className="flex items-start gap-2 text-sm text-blue-900">
+                                      <span className="mt-0.5 text-blue-600">•</span>
+                                      <div>
+                                        <p className="font-semibold">{med.name}</p>
+                                        <p className="text-xs text-blue-700">
+                                          {[med.dosage, med.duration].filter(Boolean).join(' • ')}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {record.prescription?.inventoryItems?.length > 0 && (
+                              <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-4">
+                                <p className="text-sm font-semibold text-cyan-900 mb-2 flex items-center gap-2">
+                                  <span>🛠️</span> Injections & Surgical Items
+                                </p>
+                                <ul className="space-y-1 text-sm text-cyan-900">
+                                  {record.prescription.inventoryItems.map((item, itemIndex) => (
+                                    <li key={itemIndex} className="flex items-start gap-2">
+                                      <span className="mt-0.5 text-cyan-600">•</span>
+                                      <div>
+                                        <p className="font-semibold">{item.name}</p>
+                                        <p className="text-xs text-cyan-700">
+                                          {[item.dosage, item.usage].filter(Boolean).join(' • ')}
+                                        </p>
+                                      </div>
                                     </li>
                                   ))}
                                 </ul>
                               </div>
                             )}
 
-                            {/* Notes */}
-                            {record.prescription.notes && (
-                              <div className="mb-3">
-                                <span className="text-sm font-semibold text-gray-700">Notes:</span>
-                                <p className="text-gray-800 text-sm whitespace-pre-wrap">{record.prescription.notes}</p>
+                            {record.prescription?.notes && (
+                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                <p className="text-sm font-semibold text-gray-800">Doctor Notes</p>
+                                <p className="text-sm text-gray-700 mt-2 whitespace-pre-line">
+                                  {record.prescription.notes}
+                                </p>
                               </div>
                             )}
 
-                            {/* PDF View Button */}
-                            {record.prescription.pdfPath && (
-                              <button
-                                onClick={() => viewPrescription(
-                                  record.prescription.pdfPath,
-                                  medicalHistory.patientInfo?.fullName || 'Patient',
-                                  record.visitDate
-                                )}
-                                className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium flex items-center gap-2"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                <span>📄</span>
-                                View PDF
-                              </button>
+                            {record.prescription?.pdfPath ? (
+                              <div className="flex justify-start">
+                                <button
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    viewPrescription(
+                                      record.prescription.pdfPath,
+                                      medicalHistory.patientInfo?.fullName || 'Patient',
+                                      record.visitDate
+                                    )
+                                  }}
+                                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  View Prescription PDF
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-600">
+                                No prescription PDF available for this visit.
+                              </div>
                             )}
                           </div>
-                        </div>
-                      ) : (
-                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center text-gray-600">
-                          No prescription available for this visit
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
+                  )
+                })}
+              </div>
             </div>
           ) : (
             <div className="text-center py-12 text-gray-600">
