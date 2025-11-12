@@ -1074,7 +1074,7 @@ const DoctorDashboard = () => {
       const token = localStorage.getItem('token')
       
       // Use fetch instead of axios for file uploads to properly handle multipart/form-data
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}/doctor/${user?.id}/profile-image`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:7000/api'}/doctor/${user?.id}/profile-image`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`
