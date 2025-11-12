@@ -532,14 +532,31 @@ const ReceptionistDashboard = () => {
 
     try {
       const token = localStorage.getItem('token')
+      const apiUrl = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:7000/api'}/doctor/${selectedDoctorForProfile._id}/profile-image`
       
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:7000/api'}/doctor/${selectedDoctorForProfile._id}/profile-image`, {
+      // Mobile-friendly: Add timeout and better error handling
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+      
+      const response = await fetch(apiUrl, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      }).catch((fetchError) => {
+        clearTimeout(timeoutId)
+        // Handle network errors (common on mobile)
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Request timeout — please check your connection and try again')
+        } else if (fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
+          throw new Error('Network error — please check your internet connection')
         }
+        throw fetchError
       })
+      
+      clearTimeout(timeoutId)
 
       // Mobile-friendly: Handle response parsing errors
       let data
@@ -568,7 +585,14 @@ const ReceptionistDashboard = () => {
       await fetchDoctors()
     } catch (error) {
       console.error('Remove error:', error)
-      toast.error(error.message || 'Failed to remove profile photo. Please try again.')
+      // Mobile-friendly error messages
+      if (error.message && error.message.includes('fetch')) {
+        toast.error('Remove failed — please check your internet connection and try again')
+      } else if (error.message && error.message.includes('network')) {
+        toast.error('Network error — please try again')
+      } else {
+        toast.error(error.message || 'Failed to remove profile photo. Please try again.')
+      }
     }
   }
 
@@ -4238,8 +4262,7 @@ const ReceptionistDashboard = () => {
                 <input
                   ref={profileFileInputRef}
                   type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
-                  capture="user"
+                  accept="image/*"
                   onChange={handleProfileImageChange}
                   className="hidden"
                 />
