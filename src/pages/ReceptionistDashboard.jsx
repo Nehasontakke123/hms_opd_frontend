@@ -2708,8 +2708,41 @@ const ReceptionistDashboard = () => {
                                     </div>
                                   </td>
                                   <td className="px-6 py-4 border-r border-slate-200">
-                                    <div className="text-sm font-semibold text-slate-900">{patient.doctor?.fullName || 'N/A'}</div>
-                                    <div className="text-xs text-slate-500">{patient.doctor?.specialization || '—'}</div>
+                                    {patient.doctor ? (
+                                      <div className="flex items-center gap-3">
+                                        {/* Doctor Profile Image */}
+                                        <div className="flex-shrink-0">
+                                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center shadow-md border-2 border-white overflow-hidden">
+                                            {patient.doctor.profileImage ? (
+                                              <img 
+                                                src={patient.doctor.profileImage} 
+                                                alt={patient.doctor.fullName || 'Doctor'} 
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                  // Fallback to initials if image fails to load
+                                                  e.target.style.display = 'none'
+                                                  const fallback = e.target.parentElement.querySelector('.doctor-profile-fallback-history')
+                                                  if (fallback) fallback.style.display = 'flex'
+                                                }}
+                                              />
+                                            ) : null}
+                                            <span 
+                                              className={`doctor-profile-fallback-history text-sm font-bold text-white ${patient.doctor.profileImage ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}
+                                              style={{ fontSize: '14px', fontWeight: 700 }}
+                                            >
+                                              {(patient.doctor.fullName || 'D').charAt(0).toUpperCase()}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        {/* Doctor Name and Specialization */}
+                                        <div className="flex-1 min-w-0">
+                                          <div className="text-sm font-semibold text-slate-900 truncate">{patient.doctor.fullName || 'N/A'}</div>
+                                          <div className="text-xs text-slate-500 truncate">{patient.doctor.specialization || '—'}</div>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="text-sm font-semibold text-slate-400">N/A</div>
+                                    )}
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
                                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-sm font-medium border border-purple-200">
