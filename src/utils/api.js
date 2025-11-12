@@ -12,11 +12,24 @@ import toast from 'react-hot-toast'
 const isLocalhost = window.location.hostname === "localhost";
 
 
+// const api = axios.create({
+//   // Prefer environment variable; then local; then deployed backend
+//   baseURL : isLocalhost
+//     ? "http://localhost:7000/api"
+//     : "https://hms-opd-backend.vercel.app/api",
+//   headers: {
+//     "Content-Type": "application/json",
+//   },
+// });
+
+
+
 const api = axios.create({
-  // Prefer environment variable; then local; then deployed backend
-  baseURL : isLocalhost
-    ? "http://localhost:7000/api"
-    : "https://hms-opd-backend.vercel.app/api",
+  baseURL:
+    import.meta.env.VITE_API_BASE_URL ||
+    (isLocalhost
+      ? "http://localhost:7000/api" // Local backend
+      : "https://hms-opd-backend.vercel.app/api"), // Deployed backend
   headers: {
     "Content-Type": "application/json",
   },

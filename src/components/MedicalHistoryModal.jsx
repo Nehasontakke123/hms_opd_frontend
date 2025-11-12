@@ -97,7 +97,7 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
     if (pdfPath.startsWith('http://') || pdfPath.startsWith('https://')) {
       return pdfPath
     }
-    const baseURL = api.defaults.baseURL || (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api')
+    const baseURL = api.defaults.baseURL || (import.meta.env.VITE_API_BASE_URL || 'http://localhost:7000/api')
     const backendBase = baseURL.endsWith('/api') ? baseURL.slice(0, -4) : baseURL
     const cleanPath = pdfPath.startsWith('/') ? pdfPath : `/${pdfPath}`
     return `${backendBase}${cleanPath}`
