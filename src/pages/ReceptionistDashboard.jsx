@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import PatientLimitModal from '../components/PatientLimitModal'
 import MedicalHistoryModal from '../components/MedicalHistoryModal'
 import CreatableSelect from 'react-select/creatable'
+import generatePatientHistoryPDF from '../utils/generatePatientHistoryPDF'
 
 const getDefaultVisitDate = () => {
   const now = new Date()
@@ -225,6 +226,7 @@ const ReceptionistDashboard = () => {
   const [medicalHistoryPatientId, setMedicalHistoryPatientId] = useState(null)
   const [medicalHistoryPatientName, setMedicalHistoryPatientName] = useState(null)
   const [medicalHistoryPatientMobile, setMedicalHistoryPatientMobile] = useState(null)
+  const [downloadingReport, setDownloadingReport] = useState(null) // Track which patient's report is being downloaded
 
   const selectedDoctor = useMemo(
     () => doctors.find((doc) => doc._id === formData.doctor),
@@ -386,15 +388,53 @@ const ReceptionistDashboard = () => {
         toast.error('Image size must be less than 2MB')
         return
       }
-      // Check file type
-      if (!file.type.startsWith('image/')) {
-        toast.error('Please select a valid image file')
+      
+      // Validate MIME type - accept common image formats
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/webp',
+        'image/gif'
+      ]
+      
+      // Normalize MIME type (handle variations like image/jpeg vs image/jpg)
+      const normalizedMimeType = file.type.toLowerCase().trim()
+      
+      // Check if MIME type is valid
+      const isValidMimeType = file.type.startsWith('image/') && 
+        (allowedMimeTypes.includes(normalizedMimeType) ||
+         normalizedMimeType === 'image/jpeg' ||
+         normalizedMimeType.includes('jpeg') ||
+         normalizedMimeType.includes('jpg'))
+      
+      // Additional validation: Check file extension as fallback (for cases where MIME type might be missing)
+      const fileName = file.name.toLowerCase()
+      const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif']
+      const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext))
+      
+      // File must have valid MIME type OR valid extension
+      if (!isValidMimeType && !hasValidExtension) {
+        toast.error('Only image files are allowed (JPG, JPEG, PNG, WEBP)')
+        // Reset file input
+        if (e.target) {
+          e.target.value = ''
+        }
         return
       }
+      
       setProfileImageFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
         setProfileImagePreview(reader.result)
+      }
+      reader.onerror = () => {
+        toast.error('Failed to read image file. Please try another image.')
+        if (e.target) {
+          e.target.value = ''
+        }
+        setProfileImageFile(null)
+        setProfileImagePreview(null)
       }
       reader.readAsDataURL(file)
     }
@@ -440,6 +480,71 @@ const ReceptionistDashboard = () => {
     } catch (error) {
       console.error('Upload error:', error)
       toast.error(error.message || 'Failed to upload profile photo')
+    }
+  }
+
+  const handleDownloadPatientReport = async (patient) => {
+    if (!patient) {
+      toast.error('Patient information not available')
+      return
+    }
+
+    setDownloadingReport(patient._id)
+    
+    try {
+      // Fetch complete medical history for the patient
+      const params = {}
+      if (patient._id) {
+        params.patientId = patient._id
+      } else if (patient.mobileNumber) {
+        params.mobileNumber = patient.mobileNumber
+      } else if (patient.fullName) {
+        params.fullName = patient.fullName
+      }
+
+      const response = await api.get('/prescription/medical-history', { params })
+      const historyData = response.data.data
+
+      if (!historyData || !historyData.medicalHistory || historyData.medicalHistory.length === 0) {
+        toast.error('No medical history found for this patient')
+        setDownloadingReport(null)
+        return
+      }
+
+      // Generate PDF
+      const pdfBase64 = generatePatientHistoryPDF(historyData.patientInfo, historyData.medicalHistory)
+      
+      // Convert base64 to blob and download
+      const base64Data = pdfBase64.split(',')[1]
+      const byteCharacters = atob(base64Data)
+      const byteNumbers = new Array(byteCharacters.length)
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      const blob = new Blob([byteArray], { type: 'application/pdf' })
+      
+      const url = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      const patientName = (patient.fullName || 'Patient').replace(/\s/g, '_').replace(/[^a-zA-Z0-9_]/g, '')
+      const fileName = `Patient_History_${patientName}_${new Date().toISOString().split('T')[0]}.pdf`
+      anchor.download = fileName
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      window.URL.revokeObjectURL(url)
+      
+      toast.success('Patient history report downloaded successfully!')
+    } catch (error) {
+      console.error('Error downloading patient report:', error)
+      if (error.response?.status === 404) {
+        toast.error('No medical history found for this patient')
+      } else {
+        toast.error('Failed to download patient report')
+      }
+    } finally {
+      setDownloadingReport(null)
     }
   }
 
@@ -2899,6 +3004,33 @@ const ReceptionistDashboard = () => {
                                         </svg>
                                         View History
                                       </button>
+                                      <button
+                                        onClick={() => handleDownloadPatientReport(patient)}
+                                        disabled={downloadingReport === patient._id}
+                                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                                          downloadingReport === patient._id
+                                            ? 'text-gray-500 bg-gray-100 border border-gray-200 cursor-not-allowed'
+                                            : 'text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 hover:border-green-300'
+                                        }`}
+                                        title="Download Patient History Report"
+                                      >
+                                        {downloadingReport === patient._id ? (
+                                          <>
+                                            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Generating...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                            </svg>
+                                            Download Report
+                                          </>
+                                        )}
+                                      </button>
                                       {!patient.isCancelled && patient.status !== 'cancelled' && (
                                         <button
                                           onClick={() => handleCancelClick(patient)}
@@ -4017,7 +4149,7 @@ const ReceptionistDashboard = () => {
                 <input
                   ref={profileFileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
                   onChange={handleProfileImageChange}
                   className="hidden"
                 />

@@ -1043,18 +1043,58 @@ const DoctorDashboard = () => {
   const handleProfileImageChange = (e) => {
     const file = e.target.files?.[0]
     if (file) {
-      if (file.size > 2 * 1024 * 1024) { // 2MB limit
-        toast.error('Image size should be less than 2MB')
+      // Check file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error('Image size must be less than 2MB')
         return
       }
-      if (!file.type.startsWith('image/')) {
-        toast.error('Please select a valid image file')
+      
+      // Validate MIME type - accept common image formats
+      const allowedMimeTypes = [
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/webp',
+        'image/gif'
+      ]
+      
+      // Normalize MIME type (handle variations like image/jpeg vs image/jpg)
+      const normalizedMimeType = file.type.toLowerCase().trim()
+      
+      // Check if MIME type is valid
+      const isValidMimeType = file.type.startsWith('image/') && 
+        (allowedMimeTypes.includes(normalizedMimeType) ||
+         normalizedMimeType === 'image/jpeg' ||
+         normalizedMimeType.includes('jpeg') ||
+         normalizedMimeType.includes('jpg'))
+      
+      // Additional validation: Check file extension as fallback (for cases where MIME type might be missing)
+      const fileName = file.name.toLowerCase()
+      const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif']
+      const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext))
+      
+      // File must have valid MIME type OR valid extension
+      if (!isValidMimeType && !hasValidExtension) {
+        toast.error('Only image files are allowed (JPG, JPEG, PNG, WEBP)')
+        // Reset file input
+        if (e.target) {
+          e.target.value = ''
+        }
         return
       }
+      
       setProfileImageFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
         setProfileImagePreview(reader.result)
+      }
+      reader.onerror = () => {
+        toast.error('Failed to read image file. Please try another image.')
+        if (e.target) {
+          e.target.value = ''
+        }
+        setProfileImageFile(null)
+        setProfileImagePreview(null)
       }
       reader.readAsDataURL(file)
     }
@@ -2668,7 +2708,7 @@ const DoctorDashboard = () => {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
                   onChange={handleProfileImageChange}
                   className="hidden"
                 />
