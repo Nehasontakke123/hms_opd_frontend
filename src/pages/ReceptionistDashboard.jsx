@@ -182,6 +182,7 @@ const ReceptionistDashboard = () => {
   const [patientsRegisterSearchDebounced, setPatientsRegisterSearchDebounced] = useState('')
   const [appointmentsSearch, setAppointmentsSearch] = useState('')
   const [appointmentsSearchDebounced, setAppointmentsSearchDebounced] = useState('')
+  const [doctorsSearch, setDoctorsSearch] = useState('')
   
   // Constants
   const todayPatientsPerPage = 10
@@ -1432,9 +1433,56 @@ const ReceptionistDashboard = () => {
         {/* Doctors Overview Tab */}
         {activeTab === 'doctors' && (
           <div>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4" style={{ fontFamily: 'Poppins, sans-serif' }}>Doctors Overview</h2>
+            {/* Header with Search Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+              <h2 className="text-xl font-semibold text-gray-900" style={{ fontFamily: 'Poppins, sans-serif' }}>Doctors Overview</h2>
+              
+              {/* Search Bar */}
+              <div className="relative max-w-md w-full sm:w-auto">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <span className="text-gray-400 text-lg" role="img" aria-label="Search">🔍</span>
+                </div>
+                <input
+                  type="text"
+                  value={doctorsSearch}
+                  onChange={(e) => setDoctorsSearch(e.target.value)}
+                  placeholder="Search doctor by name or specialization.."
+                  className="block w-full pl-12 pr-10 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-200 shadow-sm hover:shadow-md"
+                  style={{ fontFamily: 'Poppins, sans-serif', fontSize: '14px' }}
+                />
+                {doctorsSearch && (
+                  <button
+                    onClick={() => setDoctorsSearch('')}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                    aria-label="Clear search"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {doctors.map((doctor, index) => {
+              {doctors
+                .filter((doctor) => {
+                  if (!doctorsSearch.trim()) return true
+                  
+                  const stats = doctorStats[doctor._id] || {}
+                  const isAvailable = stats.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
+                  const availabilityStatus = isAvailable ? 'available' : 'unavailable'
+                  
+                  const searchLower = doctorsSearch.toLowerCase().trim()
+                  const nameMatch = doctor.fullName?.toLowerCase().includes(searchLower) || false
+                  const specializationMatch = doctor.specialization?.toLowerCase().includes(searchLower) || false
+                  const availabilityMatch = availabilityStatus.includes(searchLower) || 
+                                           (isAvailable && 'available'.includes(searchLower)) ||
+                                           (!isAvailable && 'unavailable'.includes(searchLower))
+                  
+                  return nameMatch || specializationMatch || availabilityMatch
+                })
+                .map((doctor, index) => {
                 const stats = doctorStats[doctor._id] || {}
                 const dailyLimit = stats.dailyPatientLimit ?? doctor.dailyPatientLimit ?? 0
                 const todayCount = stats.todayPatientCount ?? 0
