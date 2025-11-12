@@ -1045,11 +1045,14 @@ const DoctorDashboard = () => {
     if (file) {
       // Check file size (max 2MB)
       if (file.size > 2 * 1024 * 1024) {
-        toast.error('Image size must be less than 2MB')
+        toast.error('Image size must be less than 2MB. Please compress or select a smaller image.')
+        if (e.target) {
+          e.target.value = ''
+        }
         return
       }
       
-      // Validate MIME type - accept common image formats
+      // Validate MIME type - accept common image formats (including mobile variations)
       const allowedMimeTypes = [
         'image/jpeg',
         'image/jpg',
@@ -1058,24 +1061,40 @@ const DoctorDashboard = () => {
         'image/gif'
       ]
       
-      // Normalize MIME type (handle variations like image/jpeg vs image/jpg)
-      const normalizedMimeType = file.type.toLowerCase().trim()
+      // Normalize MIME type (handle variations like image/jpeg vs image/jpg, and mobile-specific types)
+      let normalizedMimeType = file.type.toLowerCase().trim()
+      
+      // Handle mobile-specific MIME type variations
+      // Some mobile devices may report different MIME types
+      if (!normalizedMimeType && file.name) {
+        const ext = file.name.toLowerCase().split('.').pop()
+        const mimeMap = {
+          'jpg': 'image/jpeg',
+          'jpeg': 'image/jpeg',
+          'png': 'image/png',
+          'webp': 'image/webp',
+          'gif': 'image/gif'
+        }
+        normalizedMimeType = mimeMap[ext] || ''
+      }
       
       // Check if MIME type is valid
-      const isValidMimeType = file.type.startsWith('image/') && 
+      const isValidMimeType = normalizedMimeType && (
+        normalizedMimeType.startsWith('image/') && 
         (allowedMimeTypes.includes(normalizedMimeType) ||
          normalizedMimeType === 'image/jpeg' ||
          normalizedMimeType.includes('jpeg') ||
          normalizedMimeType.includes('jpg'))
+      )
       
-      // Additional validation: Check file extension as fallback (for cases where MIME type might be missing)
+      // Additional validation: Check file extension as fallback (important for mobile)
       const fileName = file.name.toLowerCase()
       const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.gif']
       const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext))
       
-      // File must have valid MIME type OR valid extension
+      // File must have valid MIME type OR valid extension (mobile-friendly)
       if (!isValidMimeType && !hasValidExtension) {
-        toast.error('Only image files are allowed (JPG, JPEG, PNG, WEBP)')
+        toast.error('Only image files are allowed (JPG, JPEG, PNG, WEBP). Please select a valid image file.')
         // Reset file input
         if (e.target) {
           e.target.value = ''
@@ -1089,7 +1108,7 @@ const DoctorDashboard = () => {
         setProfileImagePreview(reader.result)
       }
       reader.onerror = () => {
-        toast.error('Failed to read image file. Please try another image.')
+        toast.error('Failed to read image file. Please try another image or check if the file is corrupted.')
         if (e.target) {
           e.target.value = ''
         }
@@ -1114,16 +1133,46 @@ const DoctorDashboard = () => {
       const token = localStorage.getItem('token')
       
       // Use fetch instead of axios for file uploads to properly handle multipart/form-data
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:7000/api'}/doctor/${user?.id}/profile-image`, {
+      // Mobile-friendly: Ensure proper headers and error handling
+      const apiUrl = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:7000/api'}/doctor/${user?.id}/profile-image`
+      
+      // Create AbortController for timeout (mobile-friendly)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second timeout
+      
+      const response = await fetch(apiUrl, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`
-          // Don't set Content-Type - let browser set it with boundary
+          // Don't set Content-Type - let browser set it with boundary for multipart/form-data
         },
-        body: formData
+        body: formData,
+        signal: controller.signal
+      }).catch((fetchError) => {
+        clearTimeout(timeoutId)
+        // Handle network errors (common on mobile)
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Upload timeout — please check your connection and try again')
+        } else if (fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
+          throw new Error('Network error — please check your internet connection')
+        }
+        throw fetchError
       })
+      
+      clearTimeout(timeoutId)
 
-      const data = await response.json()
+      // Mobile-friendly: Handle response parsing errors
+      let data
+      try {
+        const responseText = await response.text()
+        if (!responseText) {
+          throw new Error('Empty response from server')
+        }
+        data = JSON.parse(responseText)
+      } catch (parseError) {
+        console.error('Response parsing error:', parseError)
+        throw new Error('Server response error — please try again')
+      }
 
       if (!response.ok) {
         throw new Error(data.message || 'Failed to upload profile photo')
@@ -1167,7 +1216,78 @@ const DoctorDashboard = () => {
       }, 1500)
     } catch (error) {
       console.error('Upload error:', error)
-      toast.error(error.message || 'Failed to upload profile photo')
+      // Mobile-friendly error messages
+      if (error.message && error.message.includes('fetch')) {
+        toast.error('Upload failed — please check your internet connection and try again')
+      } else if (error.message && error.message.includes('network')) {
+        toast.error('Network error — please try again or select a valid image')
+      } else {
+        toast.error(error.message || 'Upload failed — please try again or select a valid image')
+      }
+    }
+  }
+
+  const handleRemoveProfilePhoto = async () => {
+    if (!user?.id) {
+      toast.error('User information not available')
+      return
+    }
+
+    if (!window.confirm('Are you sure you want to remove your profile photo? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      const token = localStorage.getItem('token')
+      
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:7000/api'}/doctor/${user.id}/profile-image`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to remove profile photo')
+      }
+
+      // Update user data in context
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
+      const updatedUser = {
+        ...currentUser,
+        profileImage: null
+      }
+      
+      if (setUserData) {
+        setUserData(updatedUser)
+      } else {
+        localStorage.setItem('user', JSON.stringify(updatedUser))
+      }
+      
+      // Fetch complete updated user data from backend
+      if (updateUser) {
+        try {
+          await updateUser()
+        } catch (err) {
+          console.error('Failed to fetch updated user from backend:', err)
+        }
+      }
+
+      toast.success('Profile photo removed successfully!')
+      setShowProfileModal(false)
+      setProfileImageFile(null)
+      setProfileImagePreview(null)
+      
+      // Small delay to let toast show, then reload
+      setTimeout(() => {
+        window.location.reload()
+      }, 1500)
+    } catch (error) {
+      console.error('Remove error:', error)
+      toast.error(error.message || 'Failed to remove profile photo. Please try again.')
     }
   }
 
@@ -2709,6 +2829,7 @@ const DoctorDashboard = () => {
                   ref={fileInputRef}
                   type="file"
                   accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                  capture="user"
                   onChange={handleProfileImageChange}
                   className="hidden"
                 />
@@ -2721,28 +2842,41 @@ const DoctorDashboard = () => {
               </div>
               
               {/* Action Buttons */}
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={handleUploadProfilePhoto}
-                  disabled={!profileImageFile}
-                  className={`flex-1 px-4 py-2 rounded-lg font-semibold transition ${
-                    profileImageFile
-                      ? 'bg-blue-600 text-white hover:bg-blue-700'
-                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  }`}
-                >
-                  Upload Photo
-                </button>
-                <button
-                  onClick={() => {
-                    setShowProfileModal(false)
-                    setProfileImageFile(null)
-                    setProfileImagePreview(null)
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition"
-                >
-                  Cancel
-                </button>
+              <div className="flex flex-col gap-3 mt-6">
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleUploadProfilePhoto}
+                    disabled={!profileImageFile}
+                    className={`flex-1 px-4 py-2 rounded-lg font-semibold transition ${
+                      profileImageFile
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    Upload Photo
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowProfileModal(false)
+                      setProfileImageFile(null)
+                      setProfileImagePreview(null)
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {user?.profileImage && (
+                  <button
+                    onClick={handleRemoveProfilePhoto}
+                    className="w-full px-4 py-2 bg-red-50 text-red-700 rounded-lg font-semibold hover:bg-red-100 border border-red-200 transition flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Remove Profile Photo
+                  </button>
+                )}
               </div>
             </div>
           </div>
