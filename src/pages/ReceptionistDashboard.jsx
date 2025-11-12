@@ -210,6 +210,11 @@ const ReceptionistDashboard = () => {
   const [selectedDoctorForLimit, setSelectedDoctorForLimit] = useState(null)
   const [generatedToken, setGeneratedToken] = useState(null)
   const [formData, setFormData] = useState(getInitialFormData)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [selectedDoctorForProfile, setSelectedDoctorForProfile] = useState(null)
+  const [profileImageFile, setProfileImageFile] = useState(null)
+  const [profileImagePreview, setProfileImagePreview] = useState(null)
+  const profileFileInputRef = useRef(null)
   const [formErrors, setFormErrors] = useState({})
   const [appointmentForm, setAppointmentForm] = useState(getInitialAppointmentForm)
   const [showAppointmentSuccess, setShowAppointmentSuccess] = useState(false)
@@ -371,6 +376,71 @@ const ReceptionistDashboard = () => {
   const handleSetLimitClick = (doctor) => {
     setSelectedDoctorForLimit(doctor)
     setShowLimitModal(true)
+  }
+
+  const handleProfileImageChange = (e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Check file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error('Image size must be less than 2MB')
+        return
+      }
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select a valid image file')
+        return
+      }
+      setProfileImageFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setProfileImagePreview(reader.result)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleUploadProfilePhoto = async () => {
+    if (!profileImageFile || !selectedDoctorForProfile) {
+      toast.error('Please select an image file')
+      return
+    }
+
+    try {
+      const formData = new FormData()
+      formData.append('profileImage', profileImageFile)
+
+      // Get token for manual request
+      const token = localStorage.getItem('token')
+      
+      // Use fetch instead of axios for file uploads to properly handle multipart/form-data
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:7000/api'}/doctor/${selectedDoctorForProfile._id}/profile-image`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`
+          // Don't set Content-Type - let browser set it with boundary
+        },
+        body: formData
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to upload profile photo')
+      }
+
+      toast.success('Profile photo updated successfully!')
+      setShowProfileModal(false)
+      setProfileImageFile(null)
+      setProfileImagePreview(null)
+      setSelectedDoctorForProfile(null)
+      
+      // Refresh doctors list to show updated profile image
+      await fetchDoctors()
+    } catch (error) {
+      console.error('Upload error:', error)
+      toast.error(error.message || 'Failed to upload profile photo')
+    }
   }
 
   const handleToggleAvailability = async (doctor) => {
@@ -1505,26 +1575,43 @@ const ReceptionistDashboard = () => {
                   >
                     {/* Profile Image - Top Right Corner */}
                     <div className="absolute top-4 right-4 z-10">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center shadow-lg border-2 border-white overflow-hidden">
-                        {doctor.profileImage ? (
-                          <img 
-                            src={doctor.profileImage} 
-                            alt={doctor.fullName || 'Doctor'} 
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              // Fallback to initials if image fails to load
-                              e.target.style.display = 'none'
-                              const fallback = e.target.parentElement.querySelector('.profile-fallback')
-                              if (fallback) fallback.style.display = 'flex'
-                            }}
-                          />
-                        ) : null}
-                        <span 
-                          className={`profile-fallback text-xl font-bold text-white ${doctor.profileImage ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}
-                          style={{ fontSize: '20px', fontWeight: 700 }}
+                      <div className="relative">
+                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center shadow-lg border-2 border-white overflow-hidden">
+                          {doctor.profileImage ? (
+                            <img 
+                              src={doctor.profileImage} 
+                              alt={doctor.fullName || 'Doctor'} 
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                // Fallback to initials if image fails to load
+                                e.target.style.display = 'none'
+                                const fallback = e.target.parentElement.querySelector('.profile-fallback')
+                                if (fallback) fallback.style.display = 'flex'
+                              }}
+                            />
+                          ) : null}
+                          <span 
+                            className={`profile-fallback text-xl font-bold text-white ${doctor.profileImage ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}
+                            style={{ fontSize: '20px', fontWeight: 700 }}
+                          >
+                            {(doctor.fullName || 'D').charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        {/* Upload Button Overlay */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedDoctorForProfile(doctor)
+                            setProfileImagePreview(doctor.profileImage || null)
+                            setShowProfileModal(true)
+                          }}
+                          className="absolute bottom-0 right-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-blue-700 transition-all duration-200 border-2 border-white"
+                          title="Upload Profile Photo"
                         >
-                          {(doctor.fullName || 'D').charAt(0).toUpperCase()}
-                        </span>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                          </svg>
+                        </button>
                       </div>
                     </div>
 
@@ -3896,6 +3983,81 @@ const ReceptionistDashboard = () => {
         patientName={medicalHistoryPatientName}
         patientMobile={medicalHistoryPatientMobile}
       />
+
+      {/* Profile Photo Upload Modal */}
+      {showProfileModal && selectedDoctorForProfile && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
+            <h3 className="text-2xl font-bold mb-2 text-gray-900">Upload Profile Photo</h3>
+            <p className="text-sm text-gray-600 mb-4">for {selectedDoctorForProfile.fullName}</p>
+            
+            <div className="space-y-4">
+              {/* Preview */}
+              <div className="flex justify-center">
+                <div className="w-32 h-32 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center shadow-lg border-4 border-gray-200 overflow-hidden">
+                  {profileImagePreview ? (
+                    <img 
+                      src={profileImagePreview} 
+                      alt="Preview" 
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-4xl font-bold text-white">
+                      {(selectedDoctorForProfile.fullName || 'D').charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              {/* File Input */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Image (Max 2MB)
+                </label>
+                <input
+                  ref={profileFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfileImageChange}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => profileFileInputRef.current?.click()}
+                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-sm font-medium border border-gray-300"
+                >
+                  Choose Image
+                </button>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={handleUploadProfilePhoto}
+                  disabled={!profileImageFile}
+                  className={`flex-1 px-4 py-2 rounded-lg font-semibold transition ${
+                    profileImageFile
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  Upload Photo
+                </button>
+                <button
+                  onClick={() => {
+                    setShowProfileModal(false)
+                    setProfileImageFile(null)
+                    setProfileImagePreview(null)
+                    setSelectedDoctorForProfile(null)
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
