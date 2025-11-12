@@ -1503,10 +1503,34 @@ const ReceptionistDashboard = () => {
                       fontSize: '14px'
                     }}
                   >
+                    {/* Profile Image - Top Right Corner */}
+                    <div className="absolute top-4 right-4 z-10">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center shadow-lg border-2 border-white overflow-hidden">
+                        {doctor.profileImage ? (
+                          <img 
+                            src={doctor.profileImage} 
+                            alt={doctor.fullName || 'Doctor'} 
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              // Fallback to initials if image fails to load
+                              e.target.style.display = 'none'
+                              const fallback = e.target.parentElement.querySelector('.profile-fallback')
+                              if (fallback) fallback.style.display = 'flex'
+                            }}
+                          />
+                        ) : null}
+                        <span 
+                          className={`profile-fallback text-xl font-bold text-white ${doctor.profileImage ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}
+                          style={{ fontSize: '20px', fontWeight: 700 }}
+                        >
+                          {(doctor.fullName || 'D').charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    </div>
 
                     <div className="p-4">
                       {/* Doctor Name */}
-                      <div className="mb-3">
+                      <div className="mb-3 pr-20">
                         <h3 className="text-lg font-bold text-gray-900 leading-tight mb-2" style={{ fontSize: '18px', fontWeight: 700 }}>
                           {doctor.fullName}
                         </h3>
@@ -2345,7 +2369,7 @@ const ReceptionistDashboard = () => {
                         <tr>
                           <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
                           <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
+                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor Profile</th>
                           <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
                           <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
                           <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
@@ -2395,8 +2419,41 @@ const ReceptionistDashboard = () => {
                                 </div>
                               </td>
                               <td className="px-6 py-4">
-                                <div className="text-sm font-semibold text-slate-900">{patient.doctor?.fullName || 'N/A'}</div>
-                                <div className="text-xs text-slate-500">{patient.doctor?.specialization || '—'}</div>
+                                {patient.doctor ? (
+                                  <div className="flex items-center gap-3">
+                                    {/* Doctor Profile Image */}
+                                    <div className="flex-shrink-0">
+                                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center shadow-md border-2 border-white overflow-hidden">
+                                        {patient.doctor.profileImage ? (
+                                          <img 
+                                            src={patient.doctor.profileImage} 
+                                            alt={patient.doctor.fullName || 'Doctor'} 
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => {
+                                              // Fallback to initials if image fails to load
+                                              e.target.style.display = 'none'
+                                              const fallback = e.target.parentElement.querySelector('.doctor-profile-fallback')
+                                              if (fallback) fallback.style.display = 'flex'
+                                            }}
+                                          />
+                                        ) : null}
+                                        <span 
+                                          className={`doctor-profile-fallback text-sm font-bold text-white ${patient.doctor.profileImage ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}
+                                          style={{ fontSize: '14px', fontWeight: 700 }}
+                                        >
+                                          {(patient.doctor.fullName || 'D').charAt(0).toUpperCase()}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    {/* Doctor Name and Specialization */}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm font-semibold text-slate-900 truncate">{patient.doctor.fullName || 'N/A'}</div>
+                                      <div className="text-xs text-slate-500 truncate">{patient.doctor.specialization || '—'}</div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="text-sm font-semibold text-slate-400">N/A</div>
+                                )}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">
