@@ -1588,17 +1588,24 @@ const DoctorDashboard = () => {
               {/* Notification Icon */}
               <div className="relative" ref={notificationRef}>
                 <button
-                  onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
+                  onClick={() => {
+                    const wasOpen = showNotificationDropdown
+                    setShowNotificationDropdown(!showNotificationDropdown)
+                    // Clear new patients indicator when opening the dropdown (doctor has viewed the list)
+                    if (!wasOpen && newPatients.length > 0) {
+                      setNewPatients([])
+                    }
+                  }}
                   className={`relative p-2 rounded-lg transition-all duration-200 ${
-                    newPatients.length > 0
+                    newPatients.length > 0 && !showNotificationDropdown
                       ? 'text-red-600 bg-red-50 hover:bg-red-100 animate-pulse'
                       : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
                   }`}
-                  title={newPatients.length > 0 ? `${newPatients.length} new patient${newPatients.length > 1 ? 's' : ''} arrived!` : 'Patient Notifications'}
+                  title={newPatients.length > 0 && !showNotificationDropdown ? `${newPatients.length} new patient${newPatients.length > 1 ? 's' : ''} arrived!` : 'Patient Notifications'}
                 >
                   <svg 
                     className={`w-6 h-6 transition-transform duration-200 ${
-                      newPatients.length > 0 ? 'animate-bounce' : ''
+                      newPatients.length > 0 && !showNotificationDropdown ? 'animate-bounce' : ''
                     }`}
                     fill="none" 
                     stroke="currentColor" 
@@ -1606,13 +1613,15 @@ const DoctorDashboard = () => {
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
-                  {newPatients.length > 0 && (
+                  {newPatients.length > 0 && !showNotificationDropdown && (
                     <>
-                      {/* Pulsing ring effect */}
-                      <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center">
+                      {/* Red dot indicator */}
+                      <span className="absolute top-1 right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white shadow-lg animate-pulse"></span>
+                      {/* Pulsing ring effect with count badge */}
+                      <span className="absolute top-0 right-0 flex h-6 w-6 items-center justify-center">
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white shadow-lg">
-                          {newPatients.length > 9 ? '9+' : newPatients.length}
+                        <span className="relative inline-flex h-6 w-6 min-w-[24px] items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white shadow-lg ring-2 ring-white">
+                          {newPatients.length > 99 ? '99+' : newPatients.length}
                         </span>
                       </span>
                     </>
@@ -2239,21 +2248,22 @@ const DoctorDashboard = () => {
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="bg-gradient-to-br from-green-50 via-white to-emerald-50 border-2 border-green-200 rounded-3xl shadow-xl overflow-hidden">
-                  <div className="px-6 py-6 bg-gradient-to-r from-green-500 to-emerald-600">
+                {/* Active Consultation Header */}
+                <div className="bg-gradient-to-br from-white via-purple-50 to-blue-50 border border-purple-100 rounded-3xl shadow-xl overflow-hidden">
+                  <div className="px-6 py-6 bg-gradient-to-r from-purple-600 via-purple-700 to-blue-600">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center ring-4 ring-white/30">
+                          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
                         </div>
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-white/90">Active Consultation</p>
-                          <h3 className="text-xl font-bold text-white mt-1">Currently Treating Patient</h3>
+                          <p className="text-xs font-bold uppercase tracking-wider text-white/90">Active Consultation</p>
+                          <h3 className="text-2xl font-bold text-white mt-1">Currently Treating Patient</h3>
                         </div>
                       </div>
-                      <span className="px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-full text-sm font-bold animate-pulse">
+                      <span className="px-5 py-2.5 bg-white/25 backdrop-blur-sm text-white rounded-full text-sm font-bold shadow-lg ring-2 ring-white/30 animate-pulse">
                         ACTIVE
                       </span>
                     </div>
@@ -2285,95 +2295,124 @@ const DoctorDashboard = () => {
                       return (
                         <div
                           key={patient._id}
-                          className="bg-white rounded-2xl border-2 border-green-200 shadow-lg overflow-hidden"
+                          className="bg-white rounded-2xl border-2 border-purple-200 shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300"
                         >
-                          <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-4 border-b border-green-100">
+                          {/* Patient Header */}
+                          <div className="bg-gradient-to-r from-purple-50 via-blue-50 to-purple-50 px-6 py-5 border-b-2 border-purple-100">
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-                                  {patient.fullName?.charAt(0).toUpperCase() || 'P'}
+                              <div className="flex items-center gap-5">
+                                <div className="relative">
+                                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 via-purple-600 to-blue-600 flex items-center justify-center text-white text-3xl font-bold shadow-xl ring-4 ring-purple-100">
+                                    {patient.fullName?.charAt(0).toUpperCase() || 'P'}
+                                  </div>
+                                  <span className="absolute -bottom-1 -right-1 w-6 h-6 bg-purple-600 rounded-full border-3 border-white flex items-center justify-center shadow-lg">
+                                    <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+                                  </span>
                                 </div>
                                 <div>
-                                  <h4 className="text-xl font-bold text-gray-900">{patient.fullName}</h4>
-                                  <div className="flex items-center gap-3 mt-1">
-                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm font-semibold shadow-sm">
-                                      <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                                  <h4 className="text-2xl font-bold text-gray-900 mb-2">{patient.fullName}</h4>
+                                  <div className="flex items-center gap-3 flex-wrap">
+                                    <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 text-sm font-bold shadow-sm border border-purple-200">
+                                      <span className="h-2.5 w-2.5 rounded-full bg-purple-500 animate-pulse"></span>
                                       Token #{formattedToken}
                                     </span>
                                     {patient.age && (
-                                      <span className="text-sm text-gray-600">
+                                      <span className="text-sm font-semibold text-gray-700 bg-gray-50 px-3 py-1 rounded-lg">
                                         {patient.age} {patient.gender ? `• ${patient.gender}` : ''}
                                       </span>
                                     )}
                                   </div>
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <p className="text-xs text-gray-500 mb-1">Mobile</p>
-                                <p className="text-sm font-semibold text-gray-900">{patient.mobileNumber}</p>
+                              <div className="text-right bg-white/80 rounded-xl px-4 py-3 border border-purple-100 shadow-sm">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Mobile</p>
+                                <p className="text-base font-bold text-gray-900">{patient.mobileNumber}</p>
                               </div>
                             </div>
                           </div>
 
-                          <div className="px-6 py-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-4">
+                          {/* Patient Details Grid */}
+                          <div className="px-6 py-6 grid grid-cols-1 lg:grid-cols-2 gap-6 bg-gradient-to-br from-white to-purple-50/30">
+                            {/* Left Column */}
+                            <div className="space-y-5">
                               <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Health Issue</p>
-                                <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 rounded-lg border border-blue-100">
-                                  <span className="h-2 w-2 rounded-full bg-blue-500"></span>
-                                  <p className="font-semibold text-gray-900">{patient.disease || 'Not specified'}</p>
+                                <p className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-3 flex items-center gap-2">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  Health Issue
+                                </p>
+                                <div className="flex items-center gap-3 px-5 py-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 shadow-sm">
+                                  <span className="h-3 w-3 rounded-full bg-blue-500 shadow-sm"></span>
+                                  <p className="font-bold text-lg text-gray-900">{patient.disease || 'Not specified'}</p>
                                 </div>
                               </div>
 
                               <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Vitals</p>
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2 px-4 py-2 bg-purple-50 rounded-lg border border-purple-100">
-                                    <span className="h-2 w-2 rounded-full bg-purple-500"></span>
-                                    <span className="text-sm text-gray-600">BP:</span>
-                                    <span className="font-semibold text-gray-900">{patient.bloodPressure || 'N/A'}</span>
+                                <p className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-3 flex items-center gap-2">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                  </svg>
+                                  Vitals
+                                </p>
+                                <div className="space-y-3">
+                                  <div className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200 shadow-sm">
+                                    <span className="h-3 w-3 rounded-full bg-purple-500 shadow-sm"></span>
+                                    <span className="text-sm font-semibold text-gray-600">BP:</span>
+                                    <span className="font-bold text-lg text-gray-900">{patient.bloodPressure || 'N/A'}</span>
                                   </div>
-                                  <div className="flex items-center gap-2 px-4 py-2 bg-purple-50 rounded-lg border border-purple-100">
-                                    <span className="h-2 w-2 rounded-full bg-purple-500"></span>
-                                    <span className="text-sm text-gray-600">Sugar:</span>
-                                    <span className="font-semibold text-gray-900">{sugarFormatted}</span>
+                                  <div className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200 shadow-sm">
+                                    <span className="h-3 w-3 rounded-full bg-purple-500 shadow-sm"></span>
+                                    <span className="text-sm font-semibold text-gray-600">Sugar:</span>
+                                    <span className="font-bold text-lg text-gray-900">{sugarFormatted}</span>
                                   </div>
                                 </div>
                               </div>
                             </div>
 
-                            <div className="space-y-4">
+                            {/* Right Column */}
+                            <div className="space-y-5">
                               <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Schedule</p>
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-lg border border-slate-100">
-                                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <p className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-3 flex items-center gap-2">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  Schedule
+                                </p>
+                                <div className="space-y-3">
+                                  <div className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-slate-50 to-gray-50 rounded-xl border-2 border-slate-200 shadow-sm">
+                                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                     </svg>
-                                    <span className="text-sm font-medium text-gray-900">{visitDateFormatted}</span>
+                                    <span className="text-base font-bold text-gray-900">{visitDateFormatted}</span>
                                   </div>
-                                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-lg border border-slate-100">
-                                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <div className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-slate-50 to-gray-50 rounded-xl border-2 border-slate-200 shadow-sm">
+                                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                     </svg>
-                                    <span className="text-sm font-medium text-gray-900">{visitTimeFormatted}</span>
+                                    <span className="text-base font-bold text-gray-900">{visitTimeFormatted}</span>
                                   </div>
                                 </div>
                               </div>
 
                               <div>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Status</p>
-                                <span className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold ${
+                                <p className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-3 flex items-center gap-2">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  Status
+                                </p>
+                                <span className={`inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold shadow-sm ${
                                   patient.status === 'completed'
-                                    ? 'bg-green-100 text-green-700 border border-green-200'
+                                    ? 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 border-2 border-green-300'
                                     : patient.status === 'in-progress'
-                                    ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
-                                    : 'bg-green-100 text-green-700 border border-green-200'
+                                    ? 'bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-700 border-2 border-yellow-300'
+                                    : 'bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 border-2 border-purple-300'
                                 }`}>
-                                  <span className={`w-2 h-2 rounded-full ${
+                                  <span className={`w-3 h-3 rounded-full shadow-sm ${
                                     patient.status === 'completed' ? 'bg-green-500'
                                     : patient.status === 'in-progress' ? 'bg-yellow-500'
-                                    : 'bg-green-500 animate-pulse'
+                                    : 'bg-purple-500 animate-pulse'
                                   }`}></span>
                                   {patient.status === 'completed' ? 'Completed' : patient.status === 'in-progress' ? 'In Progress' : 'Waiting'}
                                 </span>
@@ -2381,10 +2420,11 @@ const DoctorDashboard = () => {
                             </div>
                           </div>
 
-                          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-wrap items-center justify-between gap-4">
-                            <div className="flex items-center gap-4">
+                          {/* Footer Actions */}
+                          <div className="px-6 py-5 bg-gradient-to-r from-gray-50 to-purple-50/50 border-t-2 border-purple-100 flex flex-wrap items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 flex-wrap">
                               {patient.feeStatus === 'paid' && (
-                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
+                                <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 text-sm font-bold border-2 border-green-300 shadow-sm">
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                   </svg>
@@ -2392,17 +2432,20 @@ const DoctorDashboard = () => {
                                 </span>
                               )}
                               {patient.behaviorRating && (
-                                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold">
-                                  ⭐ {patient.behaviorRating}/5
+                                <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-700 text-sm font-bold border-2 border-yellow-300 shadow-sm">
+                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                                  </svg>
+                                  {patient.behaviorRating}/5
                                 </span>
                               )}
                             </div>
                             <div className="flex items-center gap-3">
                               <button
                                 onClick={() => openMedicalHistory(patient)}
-                                className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 border border-blue-200 transition font-semibold text-sm flex items-center gap-2"
+                                className="px-5 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 rounded-xl hover:from-blue-100 hover:to-indigo-100 border-2 border-blue-200 transition-all font-bold text-sm flex items-center gap-2 shadow-sm hover:shadow-md"
                               >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                 </svg>
                                 View History
@@ -2412,10 +2455,10 @@ const DoctorDashboard = () => {
                                   setSelectedPatient(patient)
                                   setShowPrescriptionModal(true)
                                 }}
-                                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 transition font-semibold text-sm flex items-center gap-2 shadow-md"
+                                className="px-5 py-2.5 bg-gradient-to-r from-purple-600 via-purple-700 to-blue-600 text-white rounded-xl hover:from-purple-700 hover:via-purple-800 hover:to-blue-700 transition-all font-bold text-sm flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                               >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                 </svg>
                                 Add Prescription
                               </button>
