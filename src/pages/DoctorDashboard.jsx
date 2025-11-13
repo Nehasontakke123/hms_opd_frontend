@@ -475,7 +475,7 @@ const DoctorDashboard = () => {
     }
   }
 
-  const [activeTab, setActiveTab] = useState('today') // 'today', 'history', or 'medical'
+  const [activeTab, setActiveTab] = useState('today') // 'today', 'active', 'history', or 'medical'
   const [patients, setPatients] = useState([])
   const [patientHistory, setPatientHistory] = useState([])
   const [medicalRecords, setMedicalRecords] = useState([])
@@ -483,6 +483,11 @@ const DoctorDashboard = () => {
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [loadingMedical, setLoadingMedical] = useState(false)
   const [selectedPatient, setSelectedPatient] = useState(null)
+  const [activePatientFilter, setActivePatientFilter] = useState(null) // Patient ID to filter by
+  const [newPatients, setNewPatients] = useState([]) // Newly registered patients
+  const seenPatientIdsRef = useRef(new Set()) // Track seen patients using ref to avoid dependency issues
+  const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
+  const notificationRef = useRef(null)
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [showStatsNotification, setShowStatsNotification] = useState(true)
@@ -531,7 +536,42 @@ const DoctorDashboard = () => {
       if (showLoader) setLoading(true)
       try {
         const response = await api.get(`/patient/today/${user.id}`)
-        setPatients(response.data.data)
+        const newPatientsList = response.data.data || []
+        
+        // Detect new patients
+        if (seenPatientIdsRef.current.size > 0) {
+          const newlyRegistered = newPatientsList.filter(
+            patient => !seenPatientIdsRef.current.has(patient._id)
+          )
+          
+          if (newlyRegistered.length > 0) {
+            setNewPatients(prev => {
+              // Add new patients to the list, avoiding duplicates
+              const existingIds = new Set(prev.map(p => p._id))
+              const uniqueNew = newlyRegistered.filter(p => !existingIds.has(p._id))
+              return [...prev, ...uniqueNew]
+            })
+            
+            // Show toast notification for new patients
+            if (newlyRegistered.length === 1) {
+              toast.success(`New patient registered: ${newlyRegistered[0].fullName}`, {
+                icon: '👤',
+                duration: 4000
+              })
+            } else {
+              toast.success(`${newlyRegistered.length} new patients registered`, {
+                icon: '👥',
+                duration: 4000
+              })
+            }
+          }
+        }
+        
+        // Update seen patients
+        const newSeenIds = new Set(newPatientsList.map(p => p._id))
+        seenPatientIdsRef.current = newSeenIds
+        
+        setPatients(newPatientsList)
       } catch (error) {
         toast.error('Failed to fetch patients')
       } finally {
@@ -625,10 +665,38 @@ const DoctorDashboard = () => {
   const handleShowTodaysPatients = () => {
     setActiveTab('today')
     setSearchToday('')
+    setActivePatientFilter(null)
     requestAnimationFrame(() => {
       todaysPatientsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
   }
+
+  const handlePatientNotificationClick = (patient) => {
+    setActivePatientFilter(patient._id)
+    setSelectedPatient(patient)
+    setActiveTab('active')
+    setShowNotificationDropdown(false)
+    // Remove from new patients list if it was a new patient
+    setNewPatients(prev => prev.filter(p => p._id !== patient._id))
+    toast.success(`Viewing patient: ${patient.fullName}`, { icon: '👤' })
+  }
+
+  const handleClearActiveFilter = () => {
+    setActivePatientFilter(null)
+    setSelectedPatient(null)
+    setActiveTab('today')
+  }
+
+  // Close notification dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setShowNotificationDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const fetchMedicalRecords = useCallback(async () => {
     if (!user?.id) return
@@ -671,7 +739,7 @@ const DoctorDashboard = () => {
       fetchPatientHistory()
     } else if (activeTab === 'medical') {
       fetchMedicalRecords()
-    } else if (activeTab === 'today') {
+    } else if (activeTab === 'today' || activeTab === 'active') {
       fetchTodayPatients()
       fetchDoctorStats()
     }
@@ -1333,6 +1401,13 @@ const DoctorDashboard = () => {
 
   const filteredTodayPatients = filterPatients(patients, searchToday)
     .slice()
+    .filter(patient => {
+      // If active patient filter is set, only show that patient
+      if (activePatientFilter) {
+        return patient._id === activePatientFilter
+      }
+      return true
+    })
     .sort((a, b) => {
       const dateA = new Date(a.registrationDate || a.createdAt || 0).getTime()
       const dateB = new Date(b.registrationDate || b.createdAt || 0).getTime()
@@ -1510,6 +1585,155 @@ const DoctorDashboard = () => {
             
             {/* Right Side: Action Buttons */}
             <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+              {/* Notification Icon */}
+              <div className="relative" ref={notificationRef}>
+                <button
+                  onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
+                  className={`relative p-2 rounded-lg transition-all duration-200 ${
+                    newPatients.length > 0
+                      ? 'text-red-600 bg-red-50 hover:bg-red-100 animate-pulse'
+                      : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
+                  }`}
+                  title={newPatients.length > 0 ? `${newPatients.length} new patient${newPatients.length > 1 ? 's' : ''} arrived!` : 'Patient Notifications'}
+                >
+                  <svg 
+                    className={`w-6 h-6 transition-transform duration-200 ${
+                      newPatients.length > 0 ? 'animate-bounce' : ''
+                    }`}
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  {newPatients.length > 0 && (
+                    <>
+                      {/* Pulsing ring effect */}
+                      <span className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white shadow-lg">
+                          {newPatients.length > 9 ? '9+' : newPatients.length}
+                        </span>
+                      </span>
+                    </>
+                  )}
+                </button>
+                
+                {/* Notification Dropdown */}
+                {showNotificationDropdown && (
+                  <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 max-h-96 overflow-hidden">
+                    <div className="bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-3 flex items-center justify-between">
+                      <h3 className="text-white font-bold text-sm flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                        </svg>
+                        Patients Today ({patients.length})
+                        {newPatients.length > 0 && (
+                          <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-xs font-bold">
+                            {newPatients.length} new
+                          </span>
+                        )}
+                      </h3>
+                      <button
+                        onClick={() => setShowNotificationDropdown(false)}
+                        className="text-white hover:text-gray-200 text-xs font-semibold"
+                      >
+                        Close
+                      </button>
+                    </div>
+                    
+                    <div className="max-h-80 overflow-y-auto">
+                      {patients.length === 0 ? (
+                        <div className="px-4 py-8 text-center text-gray-500">
+                          <svg className="w-12 h-12 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                          </svg>
+                          <p className="text-sm">No patients registered today</p>
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-gray-100">
+                          {patients
+                            .slice()
+                            .sort((a, b) => {
+                              const dateA = new Date(a.registrationDate || a.createdAt || 0).getTime()
+                              const dateB = new Date(b.registrationDate || b.createdAt || 0).getTime()
+                              return dateB - dateA
+                            })
+                            .map((patient) => {
+                              const isNew = newPatients.some(p => p._id === patient._id)
+                              return (
+                                <button
+                                  key={patient._id}
+                                  onClick={() => handlePatientNotificationClick(patient)}
+                                  className={`w-full px-4 py-3 text-left hover:bg-purple-50 transition-colors duration-150 group ${
+                                    isNew ? 'bg-blue-50/50 border-l-4 border-blue-500' : ''
+                                  }`}
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className="relative flex-shrink-0">
+                                      <div className={`w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white font-bold shadow-md ${
+                                        isNew ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+                                      }`}>
+                                        {patient.fullName?.charAt(0).toUpperCase() || 'P'}
+                                      </div>
+                                      {isNew && (
+                                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white flex items-center justify-center">
+                                          <span className="text-[8px] text-white font-bold">!</span>
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center justify-between gap-2 mb-1">
+                                        <div className="flex items-center gap-2">
+                                          <p className="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors truncate">
+                                            {patient.fullName}
+                                          </p>
+                                          {isNew && (
+                                            <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-bold">
+                                              NEW
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className="flex-shrink-0 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
+                                          #{patient.tokenNumber}
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-gray-600 mb-1">
+                                        {patient.disease || 'No issue specified'}
+                                      </p>
+                                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                                        {patient.age && (
+                                          <span className="flex items-center gap-1">
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                            </svg>
+                                            {patient.age} {patient.gender ? `• ${patient.gender}` : ''}
+                                          </span>
+                                        )}
+                                        {patient.mobileNumber && (
+                                          <span className="flex items-center gap-1">
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                            </svg>
+                                            {patient.mobileNumber}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <svg className="w-5 h-5 text-gray-400 group-hover:text-purple-600 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                  </div>
+                                </button>
+                              )
+                            })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
               <button
                 onClick={() => setShowLimitModal(true)}
                 className="px-3 sm:px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm whitespace-nowrap"
@@ -1582,7 +1806,10 @@ const DoctorDashboard = () => {
         <div className="border-b border-gray-200">
           <nav className="flex space-x-8">
             <button
-              onClick={() => setActiveTab('today')}
+              onClick={() => {
+                setActiveTab('today')
+                setActivePatientFilter(null)
+              }}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'today'
                   ? 'border-purple-600 text-purple-600'
@@ -1590,6 +1817,21 @@ const DoctorDashboard = () => {
               }`}
             >
               Patients Today
+            </button>
+            <button
+              onClick={() => setActiveTab('active')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm relative ${
+                activeTab === 'active'
+                  ? 'border-purple-600 text-purple-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Active Patients
+              {activePatientFilter && (
+                <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-semibold animate-pulse">
+                  Active
+                </span>
+              )}
             </button>
             <button
               onClick={() => setActiveTab('history')}
@@ -1941,6 +2183,248 @@ const DoctorDashboard = () => {
                       )}
                     </>
                   )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Active Patients Tab */}
+        {activeTab === 'active' && (
+          <div>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Active Patients</h2>
+              {activePatientFilter && (
+                <button
+                  onClick={handleClearActiveFilter}
+                  className="px-4 py-2 text-sm font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Clear Filter
+                </button>
+              )}
+            </div>
+
+            {!activePatientFilter ? (
+              <div className="bg-gradient-to-br from-white via-purple-50 to-blue-50 border-2 border-dashed border-purple-200 rounded-3xl shadow-lg p-12 text-center">
+                <div className="max-w-md mx-auto">
+                  <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center">
+                    <svg className="w-10 h-10 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">No Active Patient Selected</h3>
+                  <p className="text-gray-600 mb-4">
+                    Click on a patient from the notification dropdown or select a patient from "Patients Today" to view their details here.
+                  </p>
+                  <button
+                    onClick={() => setActiveTab('today')}
+                    className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold"
+                  >
+                    View All Patients
+                  </button>
+                </div>
+              </div>
+            ) : filteredTodayPatients.length === 0 ? (
+              <div className="bg-white rounded-3xl border border-purple-100 shadow-lg p-12 text-center">
+                <p className="text-gray-500 text-lg">Patient not found or no longer available.</p>
+                <button
+                  onClick={handleClearActiveFilter}
+                  className="mt-4 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold"
+                >
+                  Clear Filter
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="bg-gradient-to-br from-green-50 via-white to-emerald-50 border-2 border-green-200 rounded-3xl shadow-xl overflow-hidden">
+                  <div className="px-6 py-6 bg-gradient-to-r from-green-500 to-emerald-600">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wider text-white/90">Active Consultation</p>
+                          <h3 className="text-xl font-bold text-white mt-1">Currently Treating Patient</h3>
+                        </div>
+                      </div>
+                      <span className="px-4 py-2 bg-white/20 backdrop-blur-sm text-white rounded-full text-sm font-bold animate-pulse">
+                        ACTIVE
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="px-6 py-6 space-y-6">
+                    {filteredTodayPatients.map((patient) => {
+                      const hasPendingFees = !patient.isRecheck && patient.feeStatus !== 'not_required' && patient.feeStatus === 'pending'
+                      const formattedToken = (patient.tokenNumber ?? '-').toString().padStart(2, '0')
+                      const registrationDate = patient.visitDate
+                        ? new Date(`${patient.visitDate}T00:00:00`)
+                        : new Date(patient.registrationDate)
+                      const visitDateFormatted = registrationDate.toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric'
+                      })
+                      const visitTimeFormatted = patient.visitTime
+                        ? patient.visitTime
+                        : new Date(patient.registrationDate).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                      const sugarFormatted =
+                        patient.sugarLevel !== undefined && patient.sugarLevel !== null && patient.sugarLevel !== ''
+                          ? `${patient.sugarLevel} mg/dL`
+                          : 'N/A'
+
+                      return (
+                        <div
+                          key={patient._id}
+                          className="bg-white rounded-2xl border-2 border-green-200 shadow-lg overflow-hidden"
+                        >
+                          <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-4 border-b border-green-100">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg">
+                                  {patient.fullName?.charAt(0).toUpperCase() || 'P'}
+                                </div>
+                                <div>
+                                  <h4 className="text-xl font-bold text-gray-900">{patient.fullName}</h4>
+                                  <div className="flex items-center gap-3 mt-1">
+                                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm font-semibold shadow-sm">
+                                      <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                                      Token #{formattedToken}
+                                    </span>
+                                    {patient.age && (
+                                      <span className="text-sm text-gray-600">
+                                        {patient.age} {patient.gender ? `• ${patient.gender}` : ''}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs text-gray-500 mb-1">Mobile</p>
+                                <p className="text-sm font-semibold text-gray-900">{patient.mobileNumber}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="px-6 py-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Health Issue</p>
+                                <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 rounded-lg border border-blue-100">
+                                  <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                                  <p className="font-semibold text-gray-900">{patient.disease || 'Not specified'}</p>
+                                </div>
+                              </div>
+
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Vitals</p>
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2 px-4 py-2 bg-purple-50 rounded-lg border border-purple-100">
+                                    <span className="h-2 w-2 rounded-full bg-purple-500"></span>
+                                    <span className="text-sm text-gray-600">BP:</span>
+                                    <span className="font-semibold text-gray-900">{patient.bloodPressure || 'N/A'}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 px-4 py-2 bg-purple-50 rounded-lg border border-purple-100">
+                                    <span className="h-2 w-2 rounded-full bg-purple-500"></span>
+                                    <span className="text-sm text-gray-600">Sugar:</span>
+                                    <span className="font-semibold text-gray-900">{sugarFormatted}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-4">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Schedule</p>
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-lg border border-slate-100">
+                                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <span className="text-sm font-medium text-gray-900">{visitDateFormatted}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-lg border border-slate-100">
+                                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    <span className="text-sm font-medium text-gray-900">{visitTimeFormatted}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">Status</p>
+                                <span className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold ${
+                                  patient.status === 'completed'
+                                    ? 'bg-green-100 text-green-700 border border-green-200'
+                                    : patient.status === 'in-progress'
+                                    ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                                    : 'bg-green-100 text-green-700 border border-green-200'
+                                }`}>
+                                  <span className={`w-2 h-2 rounded-full ${
+                                    patient.status === 'completed' ? 'bg-green-500'
+                                    : patient.status === 'in-progress' ? 'bg-yellow-500'
+                                    : 'bg-green-500 animate-pulse'
+                                  }`}></span>
+                                  {patient.status === 'completed' ? 'Completed' : patient.status === 'in-progress' ? 'In Progress' : 'Waiting'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-wrap items-center justify-between gap-4">
+                            <div className="flex items-center gap-4">
+                              {patient.feeStatus === 'paid' && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  Fees Paid
+                                </span>
+                              )}
+                              {patient.behaviorRating && (
+                                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-yellow-100 text-yellow-700 text-xs font-semibold">
+                                  ⭐ {patient.behaviorRating}/5
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <button
+                                onClick={() => openMedicalHistory(patient)}
+                                className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 border border-blue-200 transition font-semibold text-sm flex items-center gap-2"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                View History
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedPatient(patient)
+                                  setShowPrescriptionModal(true)
+                                }}
+                                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 transition font-semibold text-sm flex items-center gap-2 shadow-md"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                Add Prescription
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
             )}
