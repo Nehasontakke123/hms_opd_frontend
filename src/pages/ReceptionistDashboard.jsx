@@ -27,6 +27,7 @@ const REQUIRED_FIELDS = [
   { name: 'mobileNumber', label: 'Mobile Number' },
   { name: 'address', label: 'Address' },
   { name: 'age', label: 'Age' },
+  { name: 'gender', label: 'Gender' },
   { name: 'doctor', label: 'Select Doctor' },
   { name: 'visitDate', label: 'Visit Date' },
   { name: 'visitTime', label: 'Visit Time' },
@@ -40,6 +41,7 @@ const getInitialFormData = () => ({
   mobileNumber: '',
   address: '',
   age: '',
+  gender: '',
   disease: '', // Empty by default - will populate based on doctor selection
   doctor: '',
   visitDate: getDefaultVisitDate(),
@@ -216,6 +218,9 @@ const ReceptionistDashboard = () => {
   const [profileImageFile, setProfileImageFile] = useState(null)
   const [profileImagePreview, setProfileImagePreview] = useState(null)
   const profileFileInputRef = useRef(null)
+  const [showEditFeeModal, setShowEditFeeModal] = useState(false)
+  const [selectedDoctorForFeeEdit, setSelectedDoctorForFeeEdit] = useState(null)
+  const [editFeeValue, setEditFeeValue] = useState(0)
   const [formErrors, setFormErrors] = useState({})
   const [appointmentForm, setAppointmentForm] = useState(getInitialAppointmentForm)
   const [showAppointmentSuccess, setShowAppointmentSuccess] = useState(false)
@@ -593,6 +598,34 @@ const ReceptionistDashboard = () => {
       } else {
         toast.error(error.message || 'Failed to remove profile photo. Please try again.')
       }
+    }
+  }
+
+  const handleUpdateDoctorFee = async () => {
+    if (!selectedDoctorForFeeEdit?._id) {
+      toast.error('Doctor information not available')
+      return
+    }
+
+    if (!editFeeValue || editFeeValue < 0) {
+      toast.error('Please enter a valid fee amount')
+      return
+    }
+
+    try {
+      const response = await api.put(`/doctor/${selectedDoctorForFeeEdit._id}/fees`, {
+        fees: Number(editFeeValue)
+      })
+
+      if (response.data.success) {
+        toast.success(`Doctor fees updated to ₹${editFeeValue}`)
+        setShowEditFeeModal(false)
+        setSelectedDoctorForFeeEdit(null)
+        setEditFeeValue(0)
+        await fetchDoctors() // Refresh doctors list
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to update doctor fees')
     }
   }
 
@@ -2129,6 +2162,29 @@ const ReceptionistDashboard = () => {
               </div>
 
               <div className="space-y-2">
+                <label className={getLabelClasses('gender')}>
+                  Gender <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="gender"
+                  ref={(el) => (inputRefs.current.gender = el)}
+                  value={formData.gender}
+                  onChange={handleChange}
+                  onFocus={() => handleFieldFocus('gender')}
+                  onBlur={handleFieldBlur}
+                  className={`${getFieldClasses('gender')} appearance-none pr-10`}
+                >
+                  <option value="">Select Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+                {formErrors.gender && (
+                  <p className="text-xs text-red-600">{formErrors.gender}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
                 <label className={getLabelClasses('doctor')}>
                   Select Doctor <span className="text-red-500">*</span>
                 </label>
@@ -2166,7 +2222,24 @@ const ReceptionistDashboard = () => {
                   <div className="mt-3 rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 space-y-2 text-sm text-slate-700">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold">Consultation Fee</span>
-                      <span className="text-lg font-bold text-blue-700">₹{consultationFee || 'Not set'}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-bold text-blue-700">₹{consultationFee || 'Not set'}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDoctorForFeeEdit(selectedDoctor)
+                            setEditFeeValue(selectedDoctor.fees || 0)
+                            setShowEditFeeModal(true)
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 rounded-lg transition-colors"
+                          title="Edit Doctor Fees"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Edit
+                        </button>
+                      </div>
                     </div>
                     {selectedDoctorStats && (
                       <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm">
@@ -4311,6 +4384,61 @@ const ReceptionistDashboard = () => {
                     Remove Profile Photo
                   </button>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Doctor Fees Modal */}
+      {showEditFeeModal && selectedDoctorForFeeEdit && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
+            <h3 className="text-2xl font-bold mb-2 text-gray-900">Edit Doctor Fees</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Update consultation fees for <span className="font-semibold">{selectedDoctorForFeeEdit.fullName}</span>
+              {selectedDoctorForFeeEdit.specialization && (
+                <span className="text-gray-500"> - {selectedDoctorForFeeEdit.specialization}</span>
+              )}
+            </p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Consultation Fee (₹)
+                </label>
+                <input
+                  type="number"
+                  value={editFeeValue}
+                  onChange={(e) => setEditFeeValue(e.target.value)}
+                  min="0"
+                  step="1"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-lg font-semibold"
+                  placeholder="Enter fee amount"
+                  autoFocus
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Current fee: ₹{selectedDoctorForFeeEdit.fees || 0}
+                </p>
+              </div>
+              
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={handleUpdateDoctorFee}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition"
+                >
+                  Update Fee
+                </button>
+                <button
+                  onClick={() => {
+                    setShowEditFeeModal(false)
+                    setSelectedDoctorForFeeEdit(null)
+                    setEditFeeValue(0)
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           </div>
