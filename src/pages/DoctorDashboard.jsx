@@ -475,7 +475,7 @@ const DoctorDashboard = () => {
     }
   }
 
-  const [activeTab, setActiveTab] = useState('today') // 'today', 'active', 'emergency', 'history', or 'medical'
+  const [activeTab, setActiveTab] = useState('today') // 'today', 'active', 'emergency', 'history', 'medical', or 'medicine'
   const [patients, setPatients] = useState([])
   const [emergencyPatients, setEmergencyPatients] = useState([])
   const [patientHistory, setPatientHistory] = useState([])
@@ -497,6 +497,18 @@ const DoctorDashboard = () => {
   const [searchToday, setSearchToday] = useState('')
   const [searchHistory, setSearchHistory] = useState('')
   const [searchMedical, setSearchMedical] = useState('')
+  // Medicine search states
+  const [medicineSearch, setMedicineSearch] = useState('')
+  const [medicineSearchDebounced, setMedicineSearchDebounced] = useState('')
+  const [medicines, setMedicines] = useState([])
+  const [loadingMedicines, setLoadingMedicines] = useState(false)
+  const [selectedMedicine, setSelectedMedicine] = useState(null)
+  const [showMedicineModal, setShowMedicineModal] = useState(false)
+  const [medicineCategory, setMedicineCategory] = useState('')
+  const [searchMedicineSuggestions, setSearchMedicineSuggestions] = useState([])
+  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false)
+  const [isListening, setIsListening] = useState(false)
+  const recognitionRef = useRef(null)
   const [showInventoryPanel, setShowInventoryPanel] = useState(false)
   const [inventoryTab, setInventoryTab] = useState('injections')
   const [inventorySearch, setInventorySearch] = useState('')
@@ -666,6 +678,183 @@ const DoctorDashboard = () => {
       if (showLoader) setLoadingEmergency(false)
     }
   }, [user?.id])
+
+  // Medicine search functions
+  const fetchMedicines = useCallback(async (searchTerm = '', category = '') => {
+    setLoadingMedicines(true)
+    try {
+      const params = new URLSearchParams()
+      if (searchTerm) params.append('search', searchTerm)
+      if (category) params.append('category', category)
+      params.append('limit', '50')
+      params.append('sortBy', 'name')
+      params.append('sortOrder', 'asc')
+
+      const response = await api.get(`/inventory/medicines?${params.toString()}`)
+      setMedicines(response.data.data || [])
+    } catch (error) {
+      console.error('Failed to fetch medicines:', error)
+      toast.error('Failed to fetch medicines')
+      setMedicines([])
+    } finally {
+      setLoadingMedicines(false)
+    }
+  }, [])
+
+  const fetchSearchMedicineSuggestions = useCallback(async (searchTerm) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setSearchMedicineSuggestions([])
+      return
+    }
+    try {
+      const response = await api.get(`/inventory/medicines/search/suggestions?query=${encodeURIComponent(searchTerm)}`)
+      setSearchMedicineSuggestions(response.data.data || [])
+    } catch (error) {
+      console.error('Failed to fetch suggestions:', error)
+      setSearchMedicineSuggestions([])
+    }
+  }, [])
+
+  // Debounce medicine search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setMedicineSearchDebounced(medicineSearch)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [medicineSearch])
+
+  // Fetch medicines when debounced search changes
+  useEffect(() => {
+    if (activeTab === 'medicine') {
+      fetchMedicines(medicineSearchDebounced, medicineCategory)
+    }
+  }, [medicineSearchDebounced, medicineCategory, activeTab, fetchMedicines])
+
+  // Fetch suggestions for auto-complete
+  useEffect(() => {
+    if (medicineSearch && medicineSearch.length >= 2) {
+      fetchSearchMedicineSuggestions(medicineSearch)
+      setShowSearchSuggestions(true)
+    } else {
+      setSearchMedicineSuggestions([])
+      setShowSearchSuggestions(false)
+    }
+  }, [medicineSearch, fetchSearchMedicineSuggestions])
+
+  // Voice search setup
+  useEffect(() => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+      recognitionRef.current = new SpeechRecognition()
+      recognitionRef.current.continuous = false
+      recognitionRef.current.interimResults = false
+      recognitionRef.current.lang = 'en-US'
+
+      recognitionRef.current.onresult = (event) => {
+        const transcript = event.results[0][0].transcript
+        setMedicineSearch(transcript)
+        setIsListening(false)
+        toast.success('Voice search completed')
+      }
+
+      recognitionRef.current.onerror = (event) => {
+        console.error('Speech recognition error:', event.error)
+        setIsListening(false)
+        if (event.error === 'no-speech') {
+          toast.error('No speech detected. Please try again.')
+        } else {
+          toast.error('Voice search failed. Please try again.')
+        }
+      }
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false)
+      }
+    }
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+      }
+    }
+  }, [])
+
+  const startVoiceSearch = () => {
+    if (!recognitionRef.current) {
+      toast.error('Voice search is not supported in your browser')
+      return
+    }
+    try {
+      setIsListening(true)
+      recognitionRef.current.start()
+      toast.success('Listening... Speak the medicine name')
+    } catch (error) {
+      console.error('Failed to start voice search:', error)
+      setIsListening(false)
+      toast.error('Failed to start voice search')
+    }
+  }
+
+  const stopVoiceSearch = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      setIsListening(false)
+    }
+  }
+
+  const handleMedicineSelect = (medicine) => {
+    setSelectedMedicine(medicine)
+    setShowMedicineModal(true)
+    setShowSearchSuggestions(false)
+  }
+
+  const handleSuggestionClick = (suggestion) => {
+    setMedicineSearch(suggestion.name)
+    setShowSearchSuggestions(false)
+    fetchMedicines(suggestion.name, medicineCategory)
+  }
+
+  const clearMedicineSearch = () => {
+    setMedicineSearch('')
+    setMedicineCategory('')
+    setSearchMedicineSuggestions([])
+    setShowSearchSuggestions(false)
+    fetchMedicines('', '')
+  }
+
+  // Export medicines to PDF
+  const exportMedicinesToPDF = () => {
+    // This would use jsPDF - implementation similar to prescription PDF
+    toast.success('PDF export feature coming soon')
+  }
+
+  // Export medicines to Excel
+  const exportMedicinesToExcel = async () => {
+    try {
+      const params = new URLSearchParams()
+      if (medicineSearchDebounced) params.append('search', medicineSearchDebounced)
+      if (medicineCategory) params.append('category', medicineCategory)
+      
+      const response = await api.get(`/inventory/export/excel?${params.toString()}`, {
+        responseType: 'blob'
+      })
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `medicines_${new Date().toISOString().split('T')[0]}.xlsx`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+      
+      toast.success('Medicines exported to Excel successfully')
+    } catch (error) {
+      console.error('Export failed:', error)
+      toast.error('Failed to export medicines')
+    }
+  }
 
   // Initial load - only run once when user.id is available
   useEffect(() => {
@@ -2001,6 +2190,16 @@ const DoctorDashboard = () => {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setActiveTab('medicine')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'medicine'
+                  ? 'border-green-600 text-green-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              View Medicine
+            </button>
           </nav>
         </div>
       </div>
@@ -3060,6 +3259,224 @@ const DoctorDashboard = () => {
           </div>
         )}
 
+        {/* View Medicine Tab */}
+        {activeTab === 'medicine' && (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-800 mb-2 flex items-center gap-3">
+                  <span className="px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-semibold uppercase tracking-wide">💊</span>
+                  <span>View Medicine</span>
+                </h2>
+                <p className="text-sm text-gray-500">Search medicines by name or composition in real-time</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={exportMedicinesToExcel}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2 text-sm font-semibold"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Export Excel
+                </button>
+              </div>
+            </div>
+
+            {/* Search Section */}
+            <div className="bg-white rounded-2xl shadow-lg border border-green-100 p-6">
+              <div className="space-y-4">
+                {/* Search Bar with Voice Search */}
+                <div className="relative">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 relative">
+                      <svg className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <input
+                        type="text"
+                        value={medicineSearch}
+                        onChange={(e) => {
+                          setMedicineSearch(e.target.value)
+                          setShowSearchSuggestions(true)
+                        }}
+                        onFocus={() => {
+                          if (searchMedicineSuggestions.length > 0) setShowSearchSuggestions(true)
+                        }}
+                        onBlur={() => {
+                          setTimeout(() => setShowSearchSuggestions(false), 200)
+                        }}
+                        placeholder="Search by medicine name or composition..."
+                        className="w-full pl-12 pr-32 py-3 border-2 border-green-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition text-sm"
+                      />
+                      {medicineSearch && (
+                        <button
+                          onClick={clearMedicineSearch}
+                          className="absolute right-24 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                      {isListening && (
+                        <div className="absolute right-24 top-1/2 -translate-y-1/2 flex items-center gap-2 text-red-500">
+                          <span className="animate-pulse">●</span>
+                          <span className="text-xs font-semibold">Listening...</span>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={isListening ? stopVoiceSearch : startVoiceSearch}
+                      className={`px-4 py-3 rounded-xl font-semibold text-sm transition ${
+                        isListening
+                          ? 'bg-red-500 text-white hover:bg-red-600'
+                          : 'bg-green-500 text-white hover:bg-green-600'
+                      }`}
+                      title="Voice Search"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Auto-suggestions Dropdown */}
+                  {showSearchSuggestions && searchMedicineSuggestions.length > 0 && (
+                    <div className="absolute z-50 w-full mt-2 bg-white border-2 border-green-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                      {searchMedicineSuggestions.slice(0, 5).map((suggestion, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => handleSuggestionClick(suggestion)}
+                          className="w-full text-left px-4 py-3 hover:bg-green-50 transition border-b border-gray-100 last:border-b-0"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-green-600">💊</span>
+                            <div>
+                              <p className="font-semibold text-gray-800">{suggestion.name}</p>
+                              {suggestion.genericName && (
+                                <p className="text-xs text-gray-500">{suggestion.genericName}</p>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Category Filter */}
+                <div className="flex items-center gap-4">
+                  <label className="text-sm font-semibold text-gray-700">Filter by Category:</label>
+                  <select
+                    value={medicineCategory}
+                    onChange={(e) => setMedicineCategory(e.target.value)}
+                    className="px-4 py-2 border-2 border-green-200 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none text-sm"
+                  >
+                    <option value="">All Categories</option>
+                    <option value="Antibiotics">Antibiotics</option>
+                    <option value="Painkillers">Painkillers</option>
+                    <option value="Vitamins">Vitamins</option>
+                    <option value="Cardiac">Cardiac</option>
+                    <option value="Diabetes">Diabetes</option>
+                    <option value="Hypertension">Hypertension</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Results Section */}
+            {loadingMedicines ? (
+              <div className="bg-white rounded-2xl shadow-lg border border-green-100 p-12 text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+                <p className="text-gray-500">Searching medicines...</p>
+              </div>
+            ) : medicines.length === 0 ? (
+              <div className="bg-white rounded-2xl shadow-lg border border-green-100 p-12 text-center">
+                <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-gray-500 text-lg font-semibold mb-2">No medicines found</p>
+                <p className="text-gray-400 text-sm">
+                  {medicineSearchDebounced
+                    ? 'Try adjusting your search terms or filters'
+                    : 'Start typing to search for medicines'}
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl shadow-lg border border-green-100 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gradient-to-r from-green-50 to-green-100">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">💊 Medicine</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">🧪 Composition</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">💰 Price</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">🕒 Dosage</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">🏭 Manufacturer</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">📦 Stock</th>
+                        <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {medicines.map((medicine) => (
+                        <tr key={medicine._id} className="hover:bg-green-50 transition">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{medicine.name}</p>
+                              {medicine.brandName && (
+                                <p className="text-xs text-gray-500">{medicine.brandName}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="text-sm text-gray-700">{medicine.genericName || 'N/A'}</p>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <p className="text-sm font-semibold text-green-600">₹{medicine.price || 0}</p>
+                            {medicine.unit && (
+                              <p className="text-xs text-gray-500">per {medicine.unit}</p>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="text-sm text-gray-700">
+                              {medicine.strength || 'N/A'} {medicine.form || ''}
+                            </p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className="text-sm text-gray-700">{medicine.manufacturer || 'N/A'}</p>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                              (medicine.stockQuantity || 0) <= (medicine.minStockLevel || 10)
+                                ? 'bg-red-100 text-red-800'
+                                : (medicine.stockQuantity || 0) > 0
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {medicine.stockQuantity || 0} {medicine.unit || 'units'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <button
+                              onClick={() => handleMedicineSelect(medicine)}
+                              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-semibold"
+                            >
+                              View Details
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Medical Records Tab */}
         {activeTab === 'medical' && (
           <div>
@@ -3901,6 +4318,165 @@ const DoctorDashboard = () => {
             )}
           </div>
         </aside>
+      )}
+
+      {/* Medicine Details Modal */}
+      {showMedicineModal && selectedMedicine && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-gradient-to-r from-green-600 to-green-700 text-white p-6 rounded-t-2xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">💊</span>
+                <div>
+                  <h3 className="text-2xl font-bold">{selectedMedicine.name}</h3>
+                  {selectedMedicine.brandName && (
+                    <p className="text-green-100 text-sm">Brand: {selectedMedicine.brandName}</p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowMedicineModal(false)
+                  setSelectedMedicine(null)
+                }}
+                className="text-white hover:text-gray-200 transition"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Basic Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-green-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">🧪 Composition</p>
+                  <p className="text-gray-900 font-medium">{selectedMedicine.genericName || 'N/A'}</p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">💰 Price</p>
+                  <p className="text-gray-900 font-medium">₹{selectedMedicine.price || 0} per {selectedMedicine.unit || 'unit'}</p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">🕒 Dosage Frequency</p>
+                  <p className="text-gray-900 font-medium">
+                    {selectedMedicine.strength || 'N/A'} {selectedMedicine.form || ''}
+                  </p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">🏭 Manufacturer</p>
+                  <p className="text-gray-900 font-medium">{selectedMedicine.manufacturer || 'N/A'}</p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">📦 Stock Availability</p>
+                  <p className={`font-medium ${
+                    (selectedMedicine.stockQuantity || 0) <= (selectedMedicine.minStockLevel || 10)
+                      ? 'text-red-600'
+                      : (selectedMedicine.stockQuantity || 0) > 0
+                      ? 'text-green-600'
+                      : 'text-gray-600'
+                  }`}>
+                    {selectedMedicine.stockQuantity || 0} {selectedMedicine.unit || 'units'}
+                    {(selectedMedicine.stockQuantity || 0) <= (selectedMedicine.minStockLevel || 10) && (
+                      <span className="ml-2 text-xs">(Low Stock)</span>
+                    )}
+                  </p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">📋 Category</p>
+                  <p className="text-gray-900 font-medium">{selectedMedicine.category || 'N/A'}</p>
+                </div>
+              </div>
+
+              {/* Description */}
+              {selectedMedicine.description && (
+                <div>
+                  <h4 className="text-lg font-bold text-gray-800 mb-2">📝 Medicine Description</h4>
+                  <p className="text-gray-700 bg-gray-50 rounded-xl p-4">{selectedMedicine.description}</p>
+                </div>
+              )}
+
+              {/* Usage Instructions */}
+              <div>
+                <h4 className="text-lg font-bold text-gray-800 mb-2">💡 Usage Instructions</h4>
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <p className="text-gray-700">
+                    {selectedMedicine.form === 'Tablet' && 'Take the tablet with water as directed by your doctor.'}
+                    {selectedMedicine.form === 'Capsule' && 'Swallow the capsule whole with water. Do not crush or chew.'}
+                    {selectedMedicine.form === 'Syrup' && 'Take the syrup as measured by the provided spoon or cup.'}
+                    {selectedMedicine.form === 'Injection' && 'For injection use only. Administer as directed by healthcare professional.'}
+                    {selectedMedicine.form === 'Cream' && 'Apply a thin layer to the affected area as directed.'}
+                    {selectedMedicine.form === 'Ointment' && 'Apply to the affected area 2-3 times daily or as directed.'}
+                    {!selectedMedicine.form && 'Follow the dosage instructions provided by your doctor.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Side Effects */}
+              <div>
+                <h4 className="text-lg font-bold text-gray-800 mb-2">⚠️ Side Effects</h4>
+                <div className="bg-yellow-50 rounded-xl p-4">
+                  <p className="text-gray-700">
+                    Common side effects may include nausea, dizziness, or mild stomach upset. 
+                    If you experience severe side effects or allergic reactions, stop taking the medicine 
+                    and consult your doctor immediately.
+                  </p>
+                </div>
+              </div>
+
+              {/* Storage Information */}
+              <div>
+                <h4 className="text-lg font-bold text-gray-800 mb-2">🌡️ Storage Information</h4>
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <ul className="text-gray-700 space-y-2">
+                    <li>• Store in a cool, dry place away from direct sunlight</li>
+                    <li>• Keep out of reach of children</li>
+                    {selectedMedicine.expiryDate && (
+                      <li>• Expiry Date: {new Date(selectedMedicine.expiryDate).toLocaleDateString()}</li>
+                    )}
+                    {selectedMedicine.batchNumber && (
+                      <li>• Batch Number: {selectedMedicine.batchNumber}</li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Additional Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {selectedMedicine.expiryDate && (
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-gray-700 uppercase mb-1">Expiry Date</p>
+                    <p className="text-gray-900 font-medium">
+                      {new Date(selectedMedicine.expiryDate).toLocaleDateString()}
+                      {new Date(selectedMedicine.expiryDate) < new Date() && (
+                        <span className="ml-2 text-red-600 text-xs">(Expired)</span>
+                      )}
+                    </p>
+                  </div>
+                )}
+                {selectedMedicine.batchNumber && (
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <p className="text-xs font-semibold text-gray-700 uppercase mb-1">Batch Number</p>
+                    <p className="text-gray-900 font-medium">{selectedMedicine.batchNumber}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 p-4 rounded-b-2xl flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowMedicineModal(false)
+                  setSelectedMedicine(null)
+                }}
+                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
