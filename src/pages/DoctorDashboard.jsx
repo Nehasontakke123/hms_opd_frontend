@@ -475,11 +475,13 @@ const DoctorDashboard = () => {
     }
   }
 
-  const [activeTab, setActiveTab] = useState('today') // 'today', 'active', 'history', or 'medical'
+  const [activeTab, setActiveTab] = useState('today') // 'today', 'active', 'emergency', 'history', or 'medical'
   const [patients, setPatients] = useState([])
+  const [emergencyPatients, setEmergencyPatients] = useState([])
   const [patientHistory, setPatientHistory] = useState([])
   const [medicalRecords, setMedicalRecords] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadingEmergency, setLoadingEmergency] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [loadingMedical, setLoadingMedical] = useState(false)
   const [selectedPatient, setSelectedPatient] = useState(null)
@@ -538,17 +540,26 @@ const DoctorDashboard = () => {
         const response = await api.get(`/patient/today/${user.id}`)
         const newPatientsList = response.data.data || []
         
+        // Deduplicate patients by _id to prevent duplicate entries
+        const uniquePatientsMap = new Map()
+        newPatientsList.forEach(patient => {
+          if (patient._id && !uniquePatientsMap.has(patient._id)) {
+            uniquePatientsMap.set(patient._id, patient)
+          }
+        })
+        const deduplicatedPatients = Array.from(uniquePatientsMap.values())
+        
         // Detect new patients
         if (seenPatientIdsRef.current.size > 0) {
-          const newlyRegistered = newPatientsList.filter(
-            patient => !seenPatientIdsRef.current.has(patient._id)
+          const newlyRegistered = deduplicatedPatients.filter(
+            patient => patient._id && !seenPatientIdsRef.current.has(patient._id)
           )
           
           if (newlyRegistered.length > 0) {
             setNewPatients(prev => {
               // Add new patients to the list, avoiding duplicates
-              const existingIds = new Set(prev.map(p => p._id))
-              const uniqueNew = newlyRegistered.filter(p => !existingIds.has(p._id))
+              const existingIds = new Set(prev.map(p => p._id).filter(Boolean))
+              const uniqueNew = newlyRegistered.filter(p => p._id && !existingIds.has(p._id))
               return [...prev, ...uniqueNew]
             })
             
@@ -568,11 +579,26 @@ const DoctorDashboard = () => {
         }
         
         // Update seen patients
-        const newSeenIds = new Set(newPatientsList.map(p => p._id))
+        const newSeenIds = new Set(deduplicatedPatients.map(p => p._id).filter(Boolean))
         seenPatientIdsRef.current = newSeenIds
         
-        setPatients(newPatientsList)
+        // Only update state if data actually changed (by comparing patient IDs)
+        setPatients(prev => {
+          const prevIds = new Set(prev.map(p => p._id).filter(Boolean))
+          const newIds = new Set(deduplicatedPatients.map(p => p._id).filter(Boolean))
+          
+          // If IDs are the same, return previous to prevent re-render
+          if (prevIds.size === newIds.size && 
+              [...prevIds].every(id => newIds.has(id)) &&
+              [...newIds].every(id => prevIds.has(id))) {
+            return prev
+          }
+          
+          // Data changed, return deduplicated list
+          return deduplicatedPatients
+        })
       } catch (error) {
+        console.error('Failed to fetch patients:', error)
         toast.error('Failed to fetch patients')
       } finally {
         if (showLoader) setLoading(false)
@@ -591,21 +617,91 @@ const DoctorDashboard = () => {
     }
   }, [user?.id])
 
+  const fetchEmergencyPatients = useCallback(async (showLoader = false) => {
+    if (!user?.id) return
+    if (showLoader) setLoadingEmergency(true)
+    try {
+      const response = await api.get(`/patient/emergency/${user.id}`)
+      // Only update state if we have valid data and it's different from current
+      const newData = response?.data?.data || response?.data || []
+      const emergencyData = Array.isArray(newData) ? newData : []
+      
+      // Only update if data actually changed to prevent unnecessary re-renders
+      // Compare by checking array length and patient IDs for efficiency
+      setEmergencyPatients(prev => {
+        // If lengths are different, definitely update
+        if (prev.length !== emergencyData.length) {
+          return emergencyData
+        }
+        // If both are empty, no update needed
+        if (prev.length === 0 && emergencyData.length === 0) {
+          return prev
+        }
+        // Compare patient IDs to see if data actually changed
+        const prevIds = new Set(prev.map(p => p._id || p.id).filter(Boolean))
+        const newIds = new Set(emergencyData.map(p => p._id || p.id).filter(Boolean))
+        
+        // If IDs are different, update
+        if (prevIds.size !== newIds.size || 
+            [...prevIds].some(id => !newIds.has(id)) ||
+            [...newIds].some(id => !prevIds.has(id))) {
+          return emergencyData
+        }
+        // Data is the same, return previous to prevent re-render
+        return prev
+      })
+    } catch (error) {
+      console.error('Failed to fetch emergency patients:', error)
+      // Don't clear existing data on error - preserve what we have
+      // Use functional update to check current state without dependency
+      setEmergencyPatients(prev => {
+        // Only show error if we don't have any data yet
+        if (prev.length === 0) {
+          toast.error('Failed to fetch emergency patients')
+        }
+        // Return previous state to preserve it
+        return prev
+      })
+    } finally {
+      if (showLoader) setLoadingEmergency(false)
+    }
+  }, [user?.id])
+
+  // Initial load - only run once when user.id is available
   useEffect(() => {
     if (user?.id) {
       fetchTodayPatients({ showLoader: true })
       fetchDoctorStats()
     }
-  }, [user?.id, fetchTodayPatients, fetchDoctorStats])
+    // Only depend on user?.id to prevent re-runs on tab changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   useEffect(() => {
     if (!user?.id) return
+    
+    // Use ref to track if component is mounted to prevent state updates after unmount
+    let isMounted = true
+    
     const interval = setInterval(() => {
-      fetchTodayPatients()
-      fetchDoctorStats()
+      if (!isMounted) return
+      
+      // Only fetch if we're on relevant tabs to prevent unnecessary API calls
+      if (activeTab === 'today' || activeTab === 'active') {
+        fetchTodayPatients()
+        fetchDoctorStats()
+      }
+      // Only fetch emergency patients if we're currently viewing the emergency tab
+      if (activeTab === 'emergency') {
+        fetchEmergencyPatients(false)
+      }
     }, 5000)
-    return () => clearInterval(interval)
-  }, [user?.id, fetchTodayPatients, fetchDoctorStats])
+    
+    return () => {
+      isMounted = false
+      clearInterval(interval)
+    }
+  }, [user?.id, activeTab, fetchTodayPatients, fetchDoctorStats, fetchEmergencyPatients])
 
   const handleToggleAvailability = async () => {
     try {
@@ -737,13 +833,16 @@ const DoctorDashboard = () => {
   useEffect(() => {
     if (activeTab === 'history') {
       fetchPatientHistory()
+    } else if (activeTab === 'emergency') {
+      // Only fetch when switching to emergency tab, with loader
+      fetchEmergencyPatients(true)
     } else if (activeTab === 'medical') {
       fetchMedicalRecords()
     } else if (activeTab === 'today' || activeTab === 'active') {
       fetchTodayPatients()
       fetchDoctorStats()
     }
-  }, [activeTab, fetchPatientHistory, fetchMedicalRecords, fetchTodayPatients, fetchDoctorStats])
+  }, [activeTab, fetchPatientHistory, fetchMedicalRecords, fetchTodayPatients, fetchDoctorStats, fetchEmergencyPatients])
 
   const filterPatients = (list, query) => {
     if (!query) return list
@@ -1399,7 +1498,21 @@ const DoctorDashboard = () => {
     setProfileImagePreview(user?.profileImage || null)
   }
 
-  const filteredTodayPatients = filterPatients(patients, searchToday)
+  // Deduplicate patients before filtering to prevent duplicate entries in UI
+  const uniquePatients = useMemo(() => {
+    const seenIds = new Set()
+    return patients.filter(patient => {
+      if (!patient._id) return false
+      if (seenIds.has(patient._id)) {
+        console.warn('Duplicate patient detected:', patient._id, patient.fullName)
+        return false
+      }
+      seenIds.add(patient._id)
+      return true
+    })
+  }, [patients])
+
+  const filteredTodayPatients = filterPatients(uniquePatients, searchToday)
     .slice()
     .filter(patient => {
       // If active patient filter is set, only show that patient
@@ -1840,6 +1953,27 @@ const DoctorDashboard = () => {
                 <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-semibold animate-pulse">
                   Active
                 </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('emergency')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm relative ${
+                activeTab === 'emergency'
+                  ? 'border-red-600 text-red-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Emergency
+              {emergencyPatients.length > 0 && (
+                <>
+                  <span className="ml-2 px-2 py-0.5 bg-red-500 text-white rounded-full text-xs font-bold animate-pulse">
+                    {emergencyPatients.length}
+                  </span>
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                  </span>
+                </>
               )}
             </button>
             <button
@@ -2462,6 +2596,212 @@ const DoctorDashboard = () => {
                                 </svg>
                                 Add Prescription
                               </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Emergency Tab */}
+        {activeTab === 'emergency' && (
+          <div key="emergency-tab-content">
+            <h2 className="text-2xl font-bold text-gray-800 mb-6 flex items-center gap-3">
+              <span className="px-3 py-1 rounded-full bg-red-50 text-red-700 text-xs font-semibold uppercase tracking-wide">Emergency</span>
+              <span>Emergency Patients</span>
+            </h2>
+
+            {loadingEmergency ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto"></div>
+                <p className="mt-4 text-sm text-gray-500">Loading emergency patients...</p>
+              </div>
+            ) : emergencyPatients.length === 0 ? (
+              <div className="bg-white rounded-3xl border border-red-100 shadow-lg p-12 text-center">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-red-50 flex items-center justify-center">
+                  <svg className="w-10 h-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <p className="text-gray-500 text-lg font-semibold">No Emergency Patients</p>
+                <p className="text-gray-400 text-sm mt-2">Emergency patients will appear here when registered.</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="bg-gradient-to-br from-white via-red-50 to-orange-50 border border-red-100 rounded-3xl shadow-xl overflow-hidden">
+                  <div className="px-6 py-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-red-500">Emergency Queue</p>
+                      <h3 className="text-xl font-semibold text-slate-800 mt-1">Urgent patient care required</h3>
+                      <p className="text-sm text-slate-500 mt-1">
+                        {emergencyPatients.length} {emergencyPatients.length === 1 ? 'emergency patient' : 'emergency patients'} requiring immediate attention
+                      </p>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-full bg-red-100 text-red-600 px-4 py-2 text-sm font-semibold shadow-inner">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      {emergencyPatients.length} Urgent
+                    </div>
+                  </div>
+
+                  <div className="px-4 py-5 space-y-4 bg-white/60">
+                    {emergencyPatients.map((patient) => {
+                      const formattedToken = (patient.tokenNumber ?? '-').toString().padStart(2, '0')
+                      const registrationDate = patient.visitDate
+                        ? new Date(`${patient.visitDate}T00:00:00`)
+                        : new Date(patient.registrationDate)
+                      const visitDateFormatted = registrationDate.toLocaleDateString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric'
+                      })
+                      const visitTimeFormatted = patient.visitTime
+                        ? patient.visitTime
+                        : new Date(patient.registrationDate).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })
+                      const sugarFormatted =
+                        patient.sugarLevel !== undefined && patient.sugarLevel !== null && patient.sugarLevel !== ''
+                          ? `${patient.sugarLevel} mg/dL`
+                          : null
+
+                      return (
+                        <div
+                          key={patient._id}
+                          className="relative rounded-2xl border-2 border-red-200 bg-gradient-to-br from-red-50 via-white to-orange-50 shadow-lg transition-all duration-200 hover:shadow-xl"
+                        >
+                          <div className="absolute left-0 top-0 bottom-0 w-2 rounded-l-2xl bg-gradient-to-b from-red-500 via-red-600 to-orange-600"></div>
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 px-6 py-5">
+                            <div className="md:col-span-3 flex items-start gap-4">
+                              <div className="flex h-12 w-12 items-center justify-center rounded-full font-semibold text-white shadow-md bg-gradient-to-br from-red-500 to-orange-600">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                              </div>
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-sm font-bold text-slate-800">{patient.fullName}</p>
+                                  <span className="text-xs text-slate-500">• {patient.age} yrs</span>
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-100 px-2.5 py-0.5 text-[11px] font-bold text-red-700">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-red-600"></span>
+                                    EMERGENCY
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-500">Mobile: {patient.mobileNumber}</p>
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                  {patient.isRecheck || patient.feeStatus === 'not_required' ? (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600">
+                                      <span className="text-base">↺</span>
+                                      Recheck-up
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                                        patient.feeStatus === 'paid'
+                                          ? 'border-emerald-100 bg-emerald-50 text-emerald-600'
+                                          : 'border-orange-100 bg-orange-50 text-orange-600'
+                                      }`}
+                                    >
+                                      {patient.feeStatus === 'paid' ? '✓ Fees Paid' : 'Pending Fees'}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="md:col-span-2 flex flex-col gap-2">
+                              <span className="text-xs uppercase tracking-wide text-slate-400">Issue</span>
+                              <span className="inline-flex items-center gap-2 rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-700 shadow-sm">
+                                <span className="h-2 w-2 rounded-full bg-red-500"></span>
+                                {patient.disease || 'Not specified'}
+                              </span>
+                            </div>
+
+                            <div className="md:col-span-2 flex flex-col gap-2">
+                              <span className="text-xs uppercase tracking-wide text-slate-400">Vitals</span>
+                              <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-600">
+                                {patient.bloodPressure ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-red-100 bg-red-50 px-2.5 py-1">
+                                    <svg className="h-3.5 w-3.5 text-red-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.654 0-3 1.346-3 3 0 1.933 3 5 3 5s3-3.067 3-5c0-1.654-1.346-3-3-3z" />
+                                    </svg>
+                                    BP: {patient.bloodPressure}
+                                  </span>
+                                ) : null}
+                                {sugarFormatted ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-red-100 bg-red-50 px-2.5 py-1">
+                                    <svg className="h-3.5 w-3.5 text-red-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a5 5 0 00-10 0v2a2 2 0 00-2 2v5a4 4 0 004 4h6a4 4 0 004-4v-5a2 2 0 00-2-2z" />
+                                    </svg>
+                                    Sugar: {sugarFormatted}
+                                  </span>
+                                ) : null}
+                                {!patient.bloodPressure && !sugarFormatted && (
+                                  <span className="text-xs text-slate-400">No vitals recorded</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="md:col-span-2 flex flex-col gap-2">
+                              <span className="text-xs uppercase tracking-wide text-slate-400">Schedule</span>
+                              <div className="flex flex-wrap gap-2 text-xs font-medium text-slate-600">
+                                <span className="inline-flex items-center gap-2 rounded-full border border-red-100 bg-white px-3 py-1 shadow-sm">
+                                  <svg className="h-4 w-4 text-red-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  {visitTimeFormatted}
+                                </span>
+                                <span className="inline-flex items-center gap-2 rounded-full border border-red-100 bg-white px-3 py-1 shadow-sm">
+                                  <svg className="h-4 w-4 text-red-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  {visitDateFormatted}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="md:col-span-1 flex flex-col gap-2">
+                              <span className="text-xs uppercase tracking-wide text-slate-400">Status</span>
+                              <span className="inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold bg-red-50 text-red-600 border border-red-100">
+                                Urgent
+                              </span>
+                            </div>
+
+                            <div className="md:col-span-2 flex flex-wrap gap-2 justify-start md:justify-end">
+                              {!patient.isRecheck && patient.feeStatus === 'pending' && (
+                                <button
+                                  onClick={() => handleMarkAsPaid(patient)}
+                                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                                >
+                                  Mark as Paid
+                                </button>
+                              )}
+                              <button
+                                onClick={() => openMedicalHistory(patient)}
+                                className="inline-flex items-center justify-center rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
+                              >
+                                View History
+                              </button>
+                              {patient.status !== 'completed' && (
+                                <button
+                                  onClick={() => handleOpenPrescriptionModal(patient)}
+                                  className="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700"
+                                >
+                                  Add Prescription
+                                </button>
+                              )}
+                              {patient.status === 'completed' && patient.prescription && (
+                                <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-600">
+                                  ✓ Prescribed
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
