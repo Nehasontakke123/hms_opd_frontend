@@ -1903,7 +1903,11 @@ const DoctorDashboard = () => {
                       ? 'text-red-600 bg-red-50 hover:bg-red-100 animate-pulse'
                       : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
                   }`}
-                  title={newPatients.length > 0 && !showNotificationDropdown ? `${newPatients.length} new patient${newPatients.length > 1 ? 's' : ''} arrived!` : 'Patient Notifications'}
+                  title={
+                    newPatients.length > 0 && !showNotificationDropdown 
+                      ? `${newPatients.length} new patient${newPatients.length > 1 ? 's' : ''} arrived! (${patients.length} total waiting)` 
+                      : `${patients.length} patient${patients.length !== 1 ? 's' : ''} waiting today`
+                  }
                 >
                   <svg 
                     className={`w-6 h-6 transition-transform duration-200 ${
@@ -1915,18 +1919,17 @@ const DoctorDashboard = () => {
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
+                  {/* Patient count badge - always visible when there are patients */}
+                  {patients.length > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-5 w-5 min-w-[20px] items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-purple-700 text-[10px] sm:text-xs font-bold text-white shadow-lg ring-2 ring-white z-10">
+                      {patients.length > 99 ? '99+' : patients.length}
+                    </span>
+                  )}
+                  {/* New patients pulsing indicator - only when there are new patients */}
                   {newPatients.length > 0 && !showNotificationDropdown && (
-                    <>
-                      {/* Red dot indicator */}
-                      <span className="absolute top-1 right-1 h-3 w-3 bg-red-500 rounded-full border-2 border-white shadow-lg animate-pulse"></span>
-                      {/* Pulsing ring effect with count badge */}
-                      <span className="absolute top-0 right-0 flex h-6 w-6 items-center justify-center">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex h-6 w-6 min-w-[24px] items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white shadow-lg ring-2 ring-white">
-                          {newPatients.length > 99 ? '99+' : newPatients.length}
-                        </span>
-                      </span>
-                    </>
+                    <span className="absolute top-0 right-0 flex h-6 w-6 items-center justify-center pointer-events-none">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                    </span>
                   )}
                 </button>
                 
