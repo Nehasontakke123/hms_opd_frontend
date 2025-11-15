@@ -1838,6 +1838,25 @@ const DoctorDashboard = () => {
   ) : null
 
   return (
+    <>
+      {/* CSS Animations for Modal */}
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95) translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+      `}</style>
+      
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm">
@@ -2312,22 +2331,47 @@ const DoctorDashboard = () => {
                               ? `${patient.sugarLevel} mg/dL`
                               : null
 
+                          // Check if patient is waiting (not completed and not in-progress)
+                          const isWaiting = patient.status !== 'completed' && patient.status !== 'in-progress'
+                          
+                          // Handle row click - open prescription modal for Waiting status, otherwise open medical history
+                          const handleRowClick = (event) => {
+                            // Don't trigger if clicking on buttons or interactive elements
+                            if (event.target.closest('button') || event.target.closest('a')) {
+                              return
+                            }
+                            
+                            if (isWaiting) {
+                              // Open prescription modal for waiting patients
+                              handleOpenPrescriptionModal(patient)
+                            } else {
+                              // Open medical history for completed or in-progress patients
+                              openMedicalHistory(patient)
+                            }
+                          }
+
                           return (
                             <div
                               key={patient._id}
                               role="button"
                               tabIndex={0}
-                              aria-label={`View medical history for ${patient.fullName}`}
-                              onClick={() => openMedicalHistory(patient)}
+                              aria-label={isWaiting ? `Add prescription for ${patient.fullName}` : `View medical history for ${patient.fullName}`}
+                              onClick={handleRowClick}
                               onKeyDown={(event) => {
                                 if (event.key === 'Enter' || event.key === ' ') {
                                   event.preventDefault()
-                                  openMedicalHistory(patient)
+                                  if (isWaiting) {
+                                    handleOpenPrescriptionModal(patient)
+                                  } else {
+                                    openMedicalHistory(patient)
+                                  }
                                 }
                               }}
                               className={`relative rounded-2xl border ${
                                 hasPendingFees ? 'border-orange-200 bg-orange-50/40' : 'border-purple-100 bg-white'
-                              } shadow-sm transition-all duration-200 hover:shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-400/60`}
+                              } shadow-sm transition-all duration-200 hover:shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-400/60 ${
+                                isWaiting ? 'hover:border-purple-300' : ''
+                              }`}
                             >
                               <div
                                 className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-2xl ${
@@ -3677,12 +3721,34 @@ const DoctorDashboard = () => {
 
       {/* Prescription Modal */}
       {showPrescriptionModal && selectedPatient && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
-            <h3 className="text-2xl font-bold mb-4">
-              Create Prescription - {selectedPatient.fullName}
-            </h3>
-
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-[fadeIn_0.2s_ease-out]"
+          onClick={handleClosePrescriptionModal}
+        >
+          <div 
+            className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-[slideIn_0.2s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header with Close Button */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-5 rounded-t-2xl z-10">
+              <div className="flex items-center justify-between">
+                <h3 className="text-2xl font-bold text-gray-900">
+                  Create Prescription - {selectedPatient.fullName}
+                </h3>
+                <button
+                  onClick={handleClosePrescriptionModal}
+                  className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 flex items-center justify-center transition-all duration-200 shadow-sm hover:shadow-md"
+                  aria-label="Close modal"
+                  type="button"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6">
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -4138,6 +4204,7 @@ const DoctorDashboard = () => {
                 Cancel
               </button>
             </div>
+            </div>
           </div>
         </div>
       )}
@@ -4521,6 +4588,7 @@ const DoctorDashboard = () => {
         </div>
       )}
     </div>
+    </>
   )
 }
 

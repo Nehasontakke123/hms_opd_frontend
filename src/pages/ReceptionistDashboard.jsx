@@ -4,7 +4,6 @@ import api from '../utils/api'
 import toast from 'react-hot-toast'
 import PatientLimitModal from '../components/PatientLimitModal'
 import MedicalHistoryModal from '../components/MedicalHistoryModal'
-import EditVisitingHoursModal from '../components/EditVisitingHoursModal'
 import CreatableSelect from 'react-select/creatable'
 import generatePatientHistoryPDF from '../utils/generatePatientHistoryPDF'
 import { Html5Qrcode } from 'html5-qrcode'
@@ -33,9 +32,7 @@ const REQUIRED_FIELDS = [
   { name: 'doctor', label: 'Select Doctor' },
   { name: 'visitDate', label: 'Visit Date' },
   { name: 'visitTime', label: 'Visit Time' },
-  { name: 'disease', label: 'Disease/Health Issue' },
-  { name: 'bloodPressure', label: 'Blood Pressure' },
-  { name: 'sugarLevel', label: 'Sugar Level' }
+  { name: 'disease', label: 'Disease/Health Issue' }
 ]
 
 const getInitialFormData = () => ({
@@ -250,6 +247,67 @@ const isTimeAvailable = (timeString, doctor, selectedDate) => {
   })
 }
 
+// Get next available date and time slots for a doctor
+const getNextAvailableDate = (doctor) => {
+  if (!doctor) return null
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  // Start from tomorrow
+  let currentDate = new Date(today)
+  currentDate.setDate(currentDate.getDate() + 1)
+  
+  let checkedDays = 0
+  const maxDaysToCheck = 60 // Check up to 60 days ahead
+
+  while (checkedDays < maxDaysToCheck) {
+    const dateString = currentDate.toISOString().split('T')[0]
+    
+    if (isDateAvailable(dateString, doctor)) {
+      // Get time slots for this date
+      const timeSlots = getAvailableTimeSlots(doctor, dateString)
+      
+      // Get visiting hours to show time range
+      const visitingHours = doctor.visitingHours || {}
+      let timeRange = ''
+      
+      // Find first enabled period and its time range
+      const periods = ['morning', 'afternoon', 'evening']
+      for (const period of periods) {
+        const periodHours = visitingHours[period]
+        if (periodHours?.enabled && periodHours.start && periodHours.end) {
+          timeRange = `${formatTime12Hour(periodHours.start)} – ${formatTime12Hour(periodHours.end)}`
+          break
+        }
+      }
+      
+      // If multiple periods, combine them
+      if (!timeRange) {
+        const enabledPeriods = periods
+          .filter(p => visitingHours[p]?.enabled && visitingHours[p]?.start && visitingHours[p]?.end)
+          .map(p => `${formatTime12Hour(visitingHours[p].start)} – ${formatTime12Hour(visitingHours[p].end)}`)
+        
+        if (enabledPeriods.length > 0) {
+          timeRange = enabledPeriods[0] // Use first period, or combine all if needed
+        }
+      }
+
+      return {
+        date: dateString,
+        dateObj: new Date(currentDate),
+        timeSlots,
+        timeRange
+      }
+    }
+    
+    currentDate.setDate(currentDate.getDate() + 1)
+    checkedDays++
+  }
+
+  return null // No availability found
+}
+
 const getInitialAppointmentForm = () => ({
   patientName: '',
   mobileNumber: '',
@@ -266,11 +324,17 @@ const ReceptionistDashboard = () => {
   const [activeTab, setActiveTab] = useState('doctors') // 'doctors', 'registration', 'emergency', or 'appointments'
   const [appointmentsView, setAppointmentsView] = useState('today') // 'today' or 'upcoming'
   const [patientsRegisterView, setPatientsRegisterView] = useState('today') // 'today', 'recheck', or 'history'
+  // Doctor Availability filters
+  const [availabilityFilterSpecialty, setAvailabilityFilterSpecialty] = useState('all')
+  const [availabilityFilterDoctor, setAvailabilityFilterDoctor] = useState('all')
+  const [availabilityFilterDate, setAvailabilityFilterDate] = useState('')
+  const [selectedDoctorForAppointment, setSelectedDoctorForAppointment] = useState(null)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [showCancelSuccessModal, setShowCancelSuccessModal] = useState(false)
   const [patientToCancel, setPatientToCancel] = useState(null)
   const [cancelledPatientName, setCancelledPatientName] = useState(null)
-  const [doctors, setDoctors] = useState([])
+  const [doctors, setDoctors] = useState([]) // Paginated doctors for Doctors Overview
+  const [allDoctors, setAllDoctors] = useState([]) // All doctors for dropdown
   const [doctorStats, setDoctorStats] = useState({})
   const [todayPatients, setTodayPatients] = useState([])
   const [patientHistory, setPatientHistory] = useState([])
@@ -284,6 +348,17 @@ const ReceptionistDashboard = () => {
   const [appointmentsSearch, setAppointmentsSearch] = useState('')
   const [appointmentsSearchDebounced, setAppointmentsSearchDebounced] = useState('')
   const [doctorsSearch, setDoctorsSearch] = useState('')
+  
+  // Pagination for doctors (server-side)
+  const [doctorsPage, setDoctorsPage] = useState(1)
+  const [doctorsLimit] = useState(8) // 8 doctors per page as requested
+  const [doctorsPagination, setDoctorsPagination] = useState({
+    total: 0,
+    pages: 1,
+    page: 1,
+    limit: 8
+  })
+  const [loadingDoctors, setLoadingDoctors] = useState(false)
   
   // Constants
   const todayPatientsPerPage = 10
@@ -338,13 +413,6 @@ const ReceptionistDashboard = () => {
   const [medicalHistoryPatientName, setMedicalHistoryPatientName] = useState(null)
   const [medicalHistoryPatientMobile, setMedicalHistoryPatientMobile] = useState(null)
   const [downloadingReport, setDownloadingReport] = useState(null) // Track which patient's report is being downloaded
-  const [showEditVisitingHoursModal, setShowEditVisitingHoursModal] = useState(false)
-  const [selectedDoctorForSchedule, setSelectedDoctorForSchedule] = useState(null)
-  
-  // Appointment Dashboard Filters
-  const [dashboardFilterSpecialty, setDashboardFilterSpecialty] = useState('')
-  const [dashboardFilterDoctor, setDashboardFilterDoctor] = useState('')
-  const [dashboardFilterDate, setDashboardFilterDate] = useState('')
   
   // Scanner states
   const [showScanner, setShowScanner] = useState(false)
@@ -359,15 +427,15 @@ const ReceptionistDashboard = () => {
   const pdfFileInputRef = useRef(null)
 
   const selectedDoctor = useMemo(
-    () => doctors.find((doc) => doc._id === formData.doctor),
-    [doctors, formData.doctor]
+    () => allDoctors.find((doc) => doc._id === formData.doctor),
+    [allDoctors, formData.doctor]
   )
   const consultationFee = selectedDoctor?.fees || 0
   
   // Get selected doctor for appointment form
   const selectedAppointmentDoctor = useMemo(
-    () => doctors.find((doc) => doc._id === appointmentForm.doctor),
-    [doctors, appointmentForm.doctor]
+    () => allDoctors.find((doc) => doc._id === appointmentForm.doctor),
+    [allDoctors, appointmentForm.doctor]
   )
   
   // Get available weekdays for the selected doctor
@@ -427,6 +495,49 @@ const ReceptionistDashboard = () => {
     }
     
     return getAvailableTimeSlots(selectedAppointmentDoctor, appointmentForm.appointmentDate)
+  }, [selectedAppointmentDoctor, appointmentForm.appointmentDate])
+
+  // Get next available dates when selected date is unavailable
+  const nextAvailableDates = useMemo(() => {
+    if (!selectedAppointmentDoctor || !appointmentForm.appointmentDate) {
+      return []
+    }
+
+    // If the selected date is available, return empty
+    if (isDateAvailable(appointmentForm.appointmentDate, selectedAppointmentDoctor)) {
+      return []
+    }
+
+    // Get the next 3 available dates starting from tomorrow
+    const dates = []
+    const today = new Date()
+    const selectedDate = new Date(appointmentForm.appointmentDate)
+    
+    // Start from tomorrow if selected date is today, otherwise start from day after selected date
+    let startDate = new Date(selectedDate)
+    startDate.setDate(startDate.getDate() + 1)
+    
+    // If start date is today, move to tomorrow
+    if (startDate <= today) {
+      startDate = new Date(today)
+      startDate.setDate(startDate.getDate() + 1)
+    }
+
+    // Find next 3 available dates (max 60 days ahead)
+    let currentDate = new Date(startDate)
+    let checkedDays = 0
+    const maxDaysToCheck = 60
+
+    while (dates.length < 3 && checkedDays < maxDaysToCheck) {
+      const dateString = currentDate.toISOString().split('T')[0]
+      if (isDateAvailable(dateString, selectedAppointmentDoctor)) {
+        dates.push(dateString)
+      }
+      currentDate.setDate(currentDate.getDate() + 1)
+      checkedDays++
+    }
+
+    return dates
   }, [selectedAppointmentDoctor, appointmentForm.appointmentDate])
   const selectedDoctorStats = useMemo(() => {
     if (!selectedDoctor) return null
@@ -533,7 +644,60 @@ const ReceptionistDashboard = () => {
 
   useEffect(() => {
     fetchDoctors()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctorsPage, doctorsSearch])
+
+  // Fetch all doctors for dropdown on mount and when registration tab is active
+  useEffect(() => {
+    fetchAllDoctors()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  // Auto-update appointment date dynamically when doctor is selected or availability changes
+  useEffect(() => {
+    if (appointmentForm.doctor && selectedAppointmentDoctor && appointmentForm.appointmentDate) {
+      const currentDate = appointmentForm.appointmentDate
+      
+      // Check if current date is available for the selected doctor
+      if (!isDateAvailable(currentDate, selectedAppointmentDoctor)) {
+        // Current date is not available - find next available date
+        const nextAvailable = getNextAvailableDate(selectedAppointmentDoctor)
+        
+        if (nextAvailable && nextAvailable.date !== currentDate) {
+          let appointmentTime = appointmentForm.appointmentTime
+          
+          // Set time to first available slot for the new date
+          if (nextAvailable.timeSlots && nextAvailable.timeSlots.length > 0) {
+            appointmentTime = nextAvailable.timeSlots[0]
+          } else {
+            // Fallback to first enabled period's start time
+            const visitingHours = selectedAppointmentDoctor.visitingHours || {}
+            const periods = ['morning', 'afternoon', 'evening']
+            for (const period of periods) {
+              const periodHours = visitingHours[period]
+              if (periodHours?.enabled && periodHours.start) {
+                appointmentTime = periodHours.start
+                break
+              }
+            }
+          }
+          
+          setAppointmentForm(prev => ({
+            ...prev,
+            appointmentDate: nextAvailable.date,
+            appointmentTime: appointmentTime || prev.appointmentTime
+          }))
+          
+          const dayName = nextAvailable.dateObj.toLocaleDateString('en-US', { weekday: 'long' })
+          const formattedDate = nextAvailable.dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
+          toast.info(`Date auto-updated to next available: ${dayName}, ${formattedDate}`, {
+            duration: 2500
+          })
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointmentForm.doctor, appointmentForm.appointmentDate, selectedAppointmentDoctor, doctorStats])
 
   useEffect(() => {
     if (activeTab === 'registration' && doctors.length > 0) {
@@ -544,29 +708,96 @@ const ReceptionistDashboard = () => {
     }
   }, [activeTab, doctors])
 
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setDoctorsPage(1)
+  }, [doctorsSearch])
+
+  // Fetch all doctors for dropdown (no pagination)
+  const fetchAllDoctors = async () => {
+    try {
+      const response = await api.get('/doctor', { 
+        params: { 
+          page: 1, 
+          limit: 1000 // Large limit to get all doctors
+        } 
+      })
+      
+      if (response.data.success) {
+        const allDoctorsData = response.data.data || []
+        setAllDoctors(allDoctorsData)
+        
+        // Fetch stats for all doctors
+        const statsPromises = allDoctorsData.map(doctor =>
+          api.get(`/doctor/${doctor._id}/stats`)
+            .then(res => ({ [doctor._id]: res.data.data }))
+            .catch(() => ({ [doctor._id]: null }))
+        )
+        
+        const statsArray = await Promise.all(statsPromises)
+        const stats = Object.assign({}, ...statsArray)
+        // Merge with existing stats
+        setDoctorStats(prevStats => ({ ...prevStats, ...stats }))
+      }
+    } catch (error) {
+      console.error('Error fetching all doctors:', error)
+      // Don't show error toast for this, as it's a background fetch
+    }
+  }
+
   const fetchDoctors = async () => {
     try {
-      const response = await api.get('/doctor')
-      console.log('Doctors fetched:', response.data.data)
-      setDoctors(response.data.data)
+      setLoadingDoctors(true)
+      const params = {
+        page: doctorsPage,
+        limit: doctorsLimit,
+        ...(doctorsSearch.trim() && { search: doctorsSearch.trim() })
+      }
       
-      // Fetch stats for each doctor
-      const statsPromises = response.data.data.map(doctor =>
-        api.get(`/doctor/${doctor._id}/stats`)
-          .then(res => ({ [doctor._id]: res.data.data }))
-          .catch(() => ({ [doctor._id]: null }))
-      )
+      const response = await api.get('/doctor', { params })
       
-      const statsArray = await Promise.all(statsPromises)
-      const stats = Object.assign({}, ...statsArray)
-      setDoctorStats(stats)
-      
-      if (response.data.data.length === 0) {
-        toast.error('No doctors available. Please contact admin.')
+      if (response.data.success) {
+        setDoctors(response.data.data || [])
+        
+        // Update pagination metadata
+        if (response.data.total !== undefined) {
+          setDoctorsPagination({
+            total: response.data.total || 0,
+            pages: response.data.pages || 1,
+            page: response.data.page || 1,
+            limit: response.data.limit || doctorsLimit
+          })
+        }
+        
+        // Fetch stats for each doctor
+        const statsPromises = (response.data.data || []).map(doctor =>
+          api.get(`/doctor/${doctor._id}/stats`)
+            .then(res => ({ [doctor._id]: res.data.data }))
+            .catch(() => ({ [doctor._id]: null }))
+        )
+        
+        const statsArray = await Promise.all(statsPromises)
+        const stats = Object.assign({}, ...statsArray)
+        setDoctorStats(prevStats => ({ ...prevStats, ...stats }))
+        
+        if (response.data.data.length === 0 && doctorsPage === 1) {
+          // Only show error on first page
+          if (doctorsSearch.trim()) {
+            // Don't show error for empty search results
+          } else {
+            toast.error('No doctors available. Please contact admin.')
+          }
+        }
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch doctors')
       }
     } catch (error) {
       console.error('Error fetching doctors:', error)
       toast.error(error.response?.data?.message || 'Failed to fetch doctors')
+      setDoctors([])
+      setDoctorsPagination({ total: 0, pages: 1, page: 1, limit: doctorsLimit })
+    } finally {
+      setLoadingDoctors(false)
     }
   }
 
@@ -1163,7 +1394,7 @@ const ReceptionistDashboard = () => {
     if (name === 'doctor') {
       // Check if selected doctor is available
       if (value) {
-        const selectedDoctor = doctors.find(doc => doc._id === value)
+        const selectedDoctor = allDoctors.find(doc => doc._id === value)
         if (selectedDoctor) {
           const stats = doctorStats[selectedDoctor._id] || {}
           const isAvailable = stats.isAvailable !== undefined 
@@ -1261,17 +1492,21 @@ const ReceptionistDashboard = () => {
       }
     }
 
-    if (!errors.bloodPressure && formData.bloodPressure.trim()) {
-      const bpPattern = /^\d{2,3}(\/\d{2,3})?$/
-      if (!bpPattern.test(formData.bloodPressure.trim())) {
+    // Validate BP format only if a value is provided (optional field)
+    if (formData.bloodPressure && formData.bloodPressure.trim()) {
+      const bpPattern = /^\d{2,3}\/\d{2,3}$/
+      const trimmedBP = formData.bloodPressure.trim()
+      if (!bpPattern.test(trimmedBP)) {
         errors.bloodPressure = 'Enter BP as systolic/diastolic (e.g. 120/80)'
       }
     }
 
-    if (!errors.sugarLevel && formData.sugarLevel !== '') {
-      const sugarValue = Number(formData.sugarLevel)
-      if (!Number.isFinite(sugarValue) || sugarValue <= 0) {
-        errors.sugarLevel = 'Enter a valid sugar level in mg/dL'
+    // Validate sugar level format only if a value is provided (optional field)
+    const sugarLevelValue = formData.sugarLevel
+    if (sugarLevelValue !== '' && sugarLevelValue !== null && sugarLevelValue !== undefined && String(sugarLevelValue).trim() !== '' && String(sugarLevelValue).trim() !== '0') {
+      const sugarValue = Number(sugarLevelValue)
+      if (!Number.isFinite(sugarValue) || sugarValue < 0.1) {
+        errors.sugarLevel = 'Enter a valid sugar level in mg/dL (must be at least 0.1)'
       }
     }
 
@@ -1391,8 +1626,8 @@ const ReceptionistDashboard = () => {
     try {
       const payloadBase = {
         ...formData,
-        bloodPressure: formData.bloodPressure.trim(),
-        sugarLevel: Number(formData.sugarLevel)
+        bloodPressure: formData.bloodPressure && formData.bloodPressure.trim() ? formData.bloodPressure.trim() : '',
+        sugarLevel: formData.sugarLevel && formData.sugarLevel !== '' ? Number(formData.sugarLevel) : 0
       }
 
       const response = await api.post('/patient/register', {
@@ -1432,7 +1667,7 @@ const ReceptionistDashboard = () => {
 
     // Check if selected doctor is available before proceeding
     if (formData.doctor) {
-      const selectedDoctor = doctors.find(doc => doc._id === formData.doctor)
+      const selectedDoctor = allDoctors.find(doc => doc._id === formData.doctor)
       if (selectedDoctor) {
         const stats = doctorStats[selectedDoctor._id] || {}
         const isAvailable = stats.isAvailable !== undefined 
@@ -1461,8 +1696,8 @@ const ReceptionistDashboard = () => {
 
     const payloadBase = {
       ...formData,
-      bloodPressure: formData.bloodPressure ? String(formData.bloodPressure).trim() : '',
-      sugarLevel: formData.sugarLevel ? Number(formData.sugarLevel) : 0
+      bloodPressure: formData.bloodPressure && formData.bloodPressure.trim() ? String(formData.bloodPressure).trim() : '',
+      sugarLevel: formData.sugarLevel && formData.sugarLevel !== '' ? Number(formData.sugarLevel) : 0
     }
     
     // For recheck-up visits, register directly without payment
@@ -1696,7 +1931,7 @@ const ReceptionistDashboard = () => {
       today.setHours(0, 0, 0, 0)
       
       // Fetch patients for all doctors today
-      const patientPromises = doctors.map(doctor =>
+      const patientPromises = allDoctors.map(doctor =>
         api.get(`/patient/today/${doctor._id}`)
           .then(res => res.data.data)
           .catch(() => [])
@@ -2103,39 +2338,82 @@ const ReceptionistDashboard = () => {
   const handleAppointmentChange = (e) => {
     const { name, value } = e.target
     
-    // If doctor changes, reset date and time to defaults
+    // If doctor changes, dynamically set date and time based on availability
     if (name === 'doctor') {
-      const newDoctor = doctors.find((doc) => doc._id === value)
-      const defaultDate = getDefaultAppointmentDate()
-      // Find first available date for the new doctor
-      let firstAvailableDate = defaultDate
+      const newDoctor = allDoctors.find((doc) => doc._id === value)
+      let appointmentDate = null
+      let appointmentTime = null
+      
       if (newDoctor) {
-        const today = new Date()
-        for (let i = 1; i <= 30; i++) {
-          const date = new Date(today)
-          date.setDate(date.getDate() + i)
-          const dateString = date.toISOString().split('T')[0]
-          if (isDateAvailable(dateString, newDoctor)) {
-            firstAvailableDate = dateString
-            break
+        // Check if doctor is unavailable
+        const stats = doctorStats[newDoctor._id] || {}
+        const isAvailable = stats.isAvailable !== undefined ? stats.isAvailable : newDoctor.isAvailable !== undefined ? newDoctor.isAvailable : true
+        
+        if (!isAvailable) {
+          // For unavailable doctors, use next available date
+          const nextAvailable = getNextAvailableDate(newDoctor)
+          if (nextAvailable) {
+            appointmentDate = nextAvailable.date
+            // Set time to first available slot
+            if (nextAvailable.timeSlots && nextAvailable.timeSlots.length > 0) {
+              appointmentTime = nextAvailable.timeSlots[0]
+            } else {
+              // Fallback to first enabled period's start time
+              const visitingHours = newDoctor.visitingHours || {}
+              const periods = ['morning', 'afternoon', 'evening']
+              for (const period of periods) {
+                const periodHours = visitingHours[period]
+                if (periodHours?.enabled && periodHours.start) {
+                  appointmentTime = periodHours.start
+                  break
+                }
+              }
+            }
+            
+            if (appointmentTime) {
+              const dayName = nextAvailable.dateObj.toLocaleDateString('en-US', { weekday: 'long' })
+              const formattedDate = nextAvailable.dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
+              toast.info(`Date set to next available: ${dayName}, ${formattedDate}`, {
+                duration: 2000
+              })
+            }
+          }
+        } else {
+          // For available doctors, find first available date from tomorrow
+          const today = new Date()
+          for (let i = 1; i <= 30; i++) {
+            const date = new Date(today)
+            date.setDate(date.getDate() + i)
+            const dateString = date.toISOString().split('T')[0]
+            if (isDateAvailable(dateString, newDoctor)) {
+              appointmentDate = dateString
+              break
+            }
+          }
+          
+          // Get first available time slot for the new date
+          if (appointmentDate) {
+            const slots = getAvailableTimeSlots(newDoctor, appointmentDate)
+            if (slots.length > 0) {
+              appointmentTime = slots[0]
+            }
           }
         }
       }
       
-      // Get first available time slot for the new date
-      let firstAvailableTime = getDefaultAppointmentTime()
-      if (newDoctor && firstAvailableDate) {
-        const slots = getAvailableTimeSlots(newDoctor, firstAvailableDate)
-        if (slots.length > 0) {
-          firstAvailableTime = slots[0]
-        }
+      // Fallback to defaults if no date/time found
+      if (!appointmentDate) {
+        appointmentDate = getDefaultAppointmentDate()
+      }
+      if (!appointmentTime) {
+        appointmentTime = getDefaultAppointmentTime()
       }
       
       setAppointmentForm({
         ...appointmentForm,
         doctor: value,
-        appointmentDate: firstAvailableDate,
-        appointmentTime: firstAvailableTime
+        appointmentDate: appointmentDate,
+        appointmentTime: appointmentTime
       })
       return
     }
@@ -2143,11 +2421,46 @@ const ReceptionistDashboard = () => {
     // If date changes, validate and update time if needed
     if (name === 'appointmentDate') {
       const newDate = value
-      const currentDoctor = doctors.find((doc) => doc._id === appointmentForm.doctor)
+      const currentDoctor = allDoctors.find((doc) => doc._id === appointmentForm.doctor)
       
-      // Check if new date is available
+      // Check if new date is available - auto-update to next available if not
       if (currentDoctor && !isDateAvailable(newDate, currentDoctor)) {
-        // Get available weekdays for error message
+        // Auto-update to next available date instead of showing error
+        const nextAvailable = getNextAvailableDate(currentDoctor)
+        if (nextAvailable) {
+          let appointmentTime = appointmentForm.appointmentTime
+          
+          // Set time to first available slot for the new date
+          if (nextAvailable.timeSlots && nextAvailable.timeSlots.length > 0) {
+            appointmentTime = nextAvailable.timeSlots[0]
+          } else {
+            // Fallback to first enabled period's start time
+            const visitingHours = currentDoctor.visitingHours || {}
+            const periods = ['morning', 'afternoon', 'evening']
+            for (const period of periods) {
+              const periodHours = visitingHours[period]
+              if (periodHours?.enabled && periodHours.start) {
+                appointmentTime = periodHours.start
+                break
+              }
+            }
+          }
+          
+          setAppointmentForm({
+            ...appointmentForm,
+            appointmentDate: nextAvailable.date,
+            appointmentTime: appointmentTime || appointmentForm.appointmentTime || getDefaultAppointmentTime()
+          })
+          
+          const dayName = nextAvailable.dateObj.toLocaleDateString('en-US', { weekday: 'long' })
+          const formattedDate = nextAvailable.dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
+          toast.info(`Date auto-updated to next available: ${dayName}, ${formattedDate}`, {
+            duration: 2500
+          })
+          return
+        }
+        
+        // If no next available date found, show error with available days
         const schedule = currentDoctor.weeklySchedule || {}
         const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
         const dayLabels = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -2156,23 +2469,7 @@ const ReceptionistDashboard = () => {
           .filter(d => d.available)
           .map(d => d.label)
         
-        toast.error(`Selected date is not available. This doctor is only available on: ${availableDays.join(', ')}`)
-        // Reset to first available date
-        const today = new Date()
-        for (let i = 1; i <= 30; i++) {
-          const date = new Date(today)
-          date.setDate(date.getDate() + i)
-          const dateString = date.toISOString().split('T')[0]
-          if (isDateAvailable(dateString, currentDoctor)) {
-            const slots = getAvailableTimeSlots(currentDoctor, dateString)
-            setAppointmentForm({
-              ...appointmentForm,
-              appointmentDate: dateString,
-              appointmentTime: slots.length > 0 ? slots[0] : getDefaultAppointmentTime()
-            })
-            return
-          }
-        }
+        toast.error(`No available dates found. This doctor is only available on: ${availableDays.join(', ')}`)
         return
       }
       
@@ -2202,7 +2499,7 @@ const ReceptionistDashboard = () => {
     
     // If time changes, validate it
     if (name === 'appointmentTime') {
-      const currentDoctor = doctors.find((doc) => doc._id === appointmentForm.doctor)
+      const currentDoctor = allDoctors.find((doc) => doc._id === appointmentForm.doctor)
       if (currentDoctor && appointmentForm.appointmentDate) {
         if (!isTimeAvailable(value, currentDoctor, appointmentForm.appointmentDate)) {
           toast.error('Selected time is not available for this doctor on the chosen date. Please select an available time slot.')
@@ -2226,7 +2523,7 @@ const ReceptionistDashboard = () => {
     }
 
     // Validate doctor availability
-    const selectedDoctor = doctors.find((doc) => doc._id === appointmentForm.doctor)
+    const selectedDoctor = allDoctors.find((doc) => doc._id === appointmentForm.doctor)
     if (selectedDoctor) {
       if (!isDateAvailable(appointmentForm.appointmentDate, selectedDoctor)) {
         toast.error('Selected date is not available for this doctor. Please choose another date.')
@@ -2407,6 +2704,20 @@ const ReceptionistDashboard = () => {
         </div>
       </div>
 
+      {/* Pagination Animation Styles */}
+      <style>{`
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
+
       {/* Tab Content */}
       <div className="max-w-7xl mx-auto px-4 py-6" style={{ backgroundColor: '#f9fafb' }}>
         {/* Doctors Overview Tab */}
@@ -2443,25 +2754,25 @@ const ReceptionistDashboard = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {doctors
-                .filter((doctor) => {
-                  if (!doctorsSearch.trim()) return true
-                  
-                  const stats = doctorStats[doctor._id] || {}
-                  const isAvailable = stats.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
-                  const availabilityStatus = isAvailable ? 'available' : 'unavailable'
-                  
-                  const searchLower = doctorsSearch.toLowerCase().trim()
-                  const nameMatch = doctor.fullName?.toLowerCase().includes(searchLower) || false
-                  const specializationMatch = doctor.specialization?.toLowerCase().includes(searchLower) || false
-                  const availabilityMatch = availabilityStatus.includes(searchLower) || 
-                                           (isAvailable && 'available'.includes(searchLower)) ||
-                                           (!isAvailable && 'unavailable'.includes(searchLower))
-                  
-                  return nameMatch || specializationMatch || availabilityMatch
-                })
-                .map((doctor, index) => {
+            {/* Loading State */}
+            {loadingDoctors ? (
+              <div className="flex justify-center items-center py-20">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600"></div>
+                  <p className="text-gray-600" style={{ fontFamily: 'Poppins, sans-serif' }}>Loading doctors...</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Doctors Grid */}
+                <div 
+                  key={`page-${doctorsPage}`}
+                  className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 transition-all duration-300 ease-in-out"
+                  style={{
+                    animation: 'fadeInUp 0.3s ease-in-out'
+                  }}
+                >
+                  {doctors.map((doctor, index) => {
                 const stats = doctorStats[doctor._id] || {}
                 const dailyLimit = stats.dailyPatientLimit ?? doctor.dailyPatientLimit ?? 0
                 const todayCount = stats.todayPatientCount ?? 0
@@ -2476,7 +2787,7 @@ const ReceptionistDashboard = () => {
                     onClick={() => handleDoctorCardClick(doctor)}
                     className="relative overflow-hidden bg-white rounded-xl border border-gray-200 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer mx-auto shadow-md"
                     style={{
-                      width: '280px',
+                      width: '260px',
                       maxWidth: '100%',
                       fontFamily: 'Poppins, sans-serif',
                       fontSize: '14px'
@@ -2554,23 +2865,23 @@ const ReceptionistDashboard = () => {
                       <div className="border-t border-gray-200 my-2"></div>
 
 
-                      {/* Visiting Time Section */}
+                      {/* Visiting Time Section - Horizontal Layout */}
                       <div className={`mb-2 transition-opacity duration-300 ${!isAvailable ? 'opacity-60' : 'opacity-100'}`}>
-                        <div className="space-y-1">
+                        <div className="flex flex-wrap gap-1.5 items-stretch">
                           {/* Morning Slot */}
                           {(() => {
                             const morningStart = doctor.visitingHours?.morning?.start || '09:00'
                             const morningEnd = doctor.visitingHours?.morning?.end || '12:00'
                             return (
-                              <div className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-amber-50/50 border border-amber-100">
-                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                                  <span className="text-xs flex-shrink-0" role="img" aria-label="Morning">☀️</span>
-                                  <span className="text-xs font-medium text-gray-700" style={{ fontSize: '11px', fontWeight: 500 }}>
+                              <div className="flex-1 min-w-[78px] sm:min-w-0 flex flex-col items-center justify-center px-1.5 py-1.5 rounded-lg bg-gradient-to-br from-amber-50 to-amber-50/70 border border-amber-200/60 hover:border-amber-300 hover:shadow-sm transition-all duration-200 overflow-hidden" style={{ minHeight: '58px' }}>
+                                <div className="flex items-center justify-center gap-0.5 mb-0.5 w-full">
+                                  <span className="text-[10px] flex-shrink-0" role="img" aria-label="Morning" style={{ fontSize: '10px', lineHeight: '1' }}>☀️</span>
+                                  <span className="text-[9px] font-bold text-amber-900 uppercase tracking-tight text-center leading-tight" style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.01em' }}>
                                     Morning
                                   </span>
                                 </div>
-                                <span className="text-xs font-mono text-gray-600 flex-shrink-0" style={{ fontSize: '10px' }}>
-                                  {formatTime12Hour(morningStart)} – {formatTime12Hour(morningEnd)}
+                                <span className="text-[8px] font-mono text-amber-800 text-center leading-tight font-medium" style={{ fontSize: '8px', lineHeight: '1.2' }}>
+                                  {formatTime12Hour(morningStart)}<br />{formatTime12Hour(morningEnd)}
                                 </span>
                               </div>
                             )
@@ -2581,15 +2892,15 @@ const ReceptionistDashboard = () => {
                             const afternoonStart = doctor.visitingHours?.afternoon?.start || '13:00'
                             const afternoonEnd = doctor.visitingHours?.afternoon?.end || '16:00'
                             return (
-                              <div className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-orange-50/50 border border-orange-100">
-                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                                  <span className="text-xs flex-shrink-0" role="img" aria-label="Afternoon">🌤️</span>
-                                  <span className="text-xs font-medium text-gray-700" style={{ fontSize: '11px', fontWeight: 500 }}>
+                              <div className="flex-1 min-w-[78px] sm:min-w-0 flex flex-col items-center justify-center px-1.5 py-1.5 rounded-lg bg-gradient-to-br from-orange-50 to-orange-50/70 border border-orange-200/60 hover:border-orange-300 hover:shadow-sm transition-all duration-200 overflow-hidden" style={{ minHeight: '58px' }}>
+                                <div className="flex items-center justify-center gap-0.5 mb-0.5 w-full">
+                                  <span className="text-[10px] flex-shrink-0" role="img" aria-label="Afternoon" style={{ fontSize: '10px', lineHeight: '1' }}>🌤️</span>
+                                  <span className="text-[9px] font-bold text-orange-900 uppercase tracking-tight text-center leading-tight" style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.01em', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                                     Afternoon
                                   </span>
                                 </div>
-                                <span className="text-xs font-mono text-gray-600 flex-shrink-0" style={{ fontSize: '10px' }}>
-                                  {formatTime12Hour(afternoonStart)} – {formatTime12Hour(afternoonEnd)}
+                                <span className="text-[8px] font-mono text-orange-800 text-center leading-tight font-medium" style={{ fontSize: '8px', lineHeight: '1.2' }}>
+                                  {formatTime12Hour(afternoonStart)}<br />{formatTime12Hour(afternoonEnd)}
                                 </span>
                               </div>
                             )
@@ -2600,15 +2911,15 @@ const ReceptionistDashboard = () => {
                             const eveningStart = doctor.visitingHours?.evening?.start || '18:00'
                             const eveningEnd = doctor.visitingHours?.evening?.end || '21:00'
                             return (
-                              <div className="flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-blue-50/50 border border-blue-100">
-                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                                  <span className="text-xs flex-shrink-0" role="img" aria-label="Evening">🌙</span>
-                                  <span className="text-xs font-medium text-gray-700" style={{ fontSize: '11px', fontWeight: 500 }}>
+                              <div className="flex-1 min-w-[78px] sm:min-w-0 flex flex-col items-center justify-center px-1.5 py-1.5 rounded-lg bg-gradient-to-br from-blue-50 to-blue-50/70 border border-blue-200/60 hover:border-blue-300 hover:shadow-sm transition-all duration-200 overflow-hidden" style={{ minHeight: '58px' }}>
+                                <div className="flex items-center justify-center gap-0.5 mb-0.5 w-full">
+                                  <span className="text-[10px] flex-shrink-0" role="img" aria-label="Evening" style={{ fontSize: '10px', lineHeight: '1' }}>🌙</span>
+                                  <span className="text-[9px] font-bold text-blue-900 uppercase tracking-tight text-center leading-tight" style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.01em' }}>
                                     Evening
                                   </span>
                                 </div>
-                                <span className="text-xs font-mono text-gray-600 flex-shrink-0" style={{ fontSize: '10px' }}>
-                                  {formatTime12Hour(eveningStart)} – {formatTime12Hour(eveningEnd)}
+                                <span className="text-[8px] font-mono text-blue-800 text-center leading-tight font-medium" style={{ fontSize: '8px', lineHeight: '1.2' }}>
+                                  {formatTime12Hour(eveningStart)}<br />{formatTime12Hour(eveningEnd)}
                                 </span>
                               </div>
                             )
@@ -2718,8 +3029,81 @@ const ReceptionistDashboard = () => {
                     </div>
                   </div>
                 )
-              })}
-            </div>
+                  })}
+                </div>
+
+                {/* Pagination Controls */}
+                {doctorsPagination.pages > 1 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-6 border-t border-gray-200 transition-all duration-300">
+                    {/* Pagination Info */}
+                    <div className="text-sm text-gray-600" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                      Showing <span className="font-semibold text-gray-900">
+                        {doctors.length > 0 ? ((doctorsPage - 1) * doctorsLimit + 1) : 0}
+                      </span> to{' '}
+                      <span className="font-semibold text-gray-900">
+                        {Math.min(doctorsPage * doctorsLimit, doctorsPagination.total)}
+                      </span> of{' '}
+                      <span className="font-semibold text-gray-900">{doctorsPagination.total}</span> doctors
+                    </div>
+
+                    {/* Pagination Controls */}
+                    <div className="flex items-center gap-2">
+                      {/* Previous Button */}
+                      <button
+                        onClick={() => setDoctorsPage(prev => Math.max(1, prev - 1))}
+                        disabled={doctorsPage === 1 || loadingDoctors}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                          doctorsPage === 1 || loadingDoctors
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 hover:border-gray-400 shadow-sm hover:shadow-md'
+                        }`}
+                        style={{ fontFamily: 'Poppins, sans-serif' }}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                        </svg>
+                        Previous
+                      </button>
+
+                      {/* Page Info */}
+                      <div className="px-4 py-2 text-sm font-medium text-gray-700" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                        Page {doctorsPage} of {doctorsPagination.pages}
+                      </div>
+
+                      {/* Next Button */}
+                      <button
+                        onClick={() => setDoctorsPage(prev => Math.min(doctorsPagination.pages, prev + 1))}
+                        disabled={doctorsPage >= doctorsPagination.pages || loadingDoctors}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                          doctorsPage >= doctorsPagination.pages || loadingDoctors
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 hover:border-gray-400 shadow-sm hover:shadow-md'
+                        }`}
+                        style={{ fontFamily: 'Poppins, sans-serif' }}
+                      >
+                        Next
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty State */}
+                {!loadingDoctors && doctors.length === 0 && (
+                  <div className="text-center py-12 transition-all duration-300">
+                    <div className="text-gray-400 text-4xl mb-4">🔍</div>
+                    <p className="text-gray-600 text-lg font-medium" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                      {doctorsSearch.trim() ? 'No doctors found' : 'No doctors available'}
+                    </p>
+                    <p className="text-gray-500 text-sm mt-2" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                      {doctorsSearch.trim() ? 'Try adjusting your search criteria' : 'Please contact admin'}
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -2856,7 +3240,7 @@ const ReceptionistDashboard = () => {
                   className={`${getFieldClasses('doctor')} appearance-none pr-10`}
                 >
                   <option value="">Select a doctor</option>
-                  {doctors.map((doctor) => {
+                  {allDoctors.map((doctor) => {
                     const stats = doctorStats[doctor._id]
                     const slotsInfo = stats ? ` [${stats.remainingSlots} slots left]` : ''
                     const isLimitReached = stats?.isLimitReached
@@ -2980,12 +3364,12 @@ const ReceptionistDashboard = () => {
 
               <div className="space-y-2">
                 <label className={getLabelClasses('bloodPressure')}>
-                  Blood Pressure (BP) <span className="text-red-500">*</span>
+                  Blood Pressure (BP)
                 </label>
                 <input
                   type="text"
                   name="bloodPressure"
-                  placeholder="e.g. 120/80"
+                  placeholder="e.g. 120/80 (Optional)"
                   ref={(el) => (inputRefs.current.bloodPressure = el)}
                   value={formData.bloodPressure}
                   onChange={handleChange}
@@ -3000,16 +3384,16 @@ const ReceptionistDashboard = () => {
 
               <div className="space-y-2">
                 <label className={getLabelClasses('sugarLevel')}>
-                  Sugar Level (mg/dL) <span className="text-red-500">*</span>
+                  Sugar Level (mg/dL)
                 </label>
                 <input
                   type="number"
                   name="sugarLevel"
-                  placeholder="e.g. 95"
+                  placeholder="e.g. 95 (Optional)"
                   ref={(el) => (inputRefs.current.sugarLevel = el)}
                   value={formData.sugarLevel}
                   onChange={handleChange}
-                  min="1"
+                  min="0"
                   step="0.1"
                   onFocus={() => handleFieldFocus('sugarLevel')}
                   onBlur={handleFieldBlur}
@@ -4154,7 +4538,7 @@ const ReceptionistDashboard = () => {
                       name="doctor"
                       value={emergencyFormData.doctor}
                       onChange={(e) => {
-                        const selectedDoc = doctors.find(d => d._id === e.target.value)
+                        const selectedDoc = allDoctors.find(d => d._id === e.target.value)
                         setEmergencyFormData(prev => ({
                           ...prev,
                           doctor: e.target.value,
@@ -4165,7 +4549,7 @@ const ReceptionistDashboard = () => {
                       required
                     >
                       <option value="">Select a doctor</option>
-                      {doctors.map((doctor) => (
+                      {allDoctors.map((doctor) => (
                         <option key={doctor._id} value={doctor._id}>
                           {doctor.fullName} {doctor.specialization ? `- ${doctor.specialization}` : ''} {doctor.fees ? `(₹${doctor.fees})` : ''}
                         </option>
@@ -4228,308 +4612,338 @@ const ReceptionistDashboard = () => {
 
         {activeTab === 'appointments' && (
           <div className="space-y-8">
-            {/* Doctor Availability Dashboard */}
-            <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-2">Doctor Availability</h2>
-                  <p className="text-sm text-gray-600">View real-time availability and schedule appointments</p>
-                </div>
+            {/* Doctor Availability Section */}
+            <div className="bg-white rounded-lg shadow-lg border border-gray-100 overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-6 border-b border-green-100">
+                <h2 className="text-3xl font-bold text-gray-900 mb-2">Doctor Availability</h2>
+                <p className="text-gray-600">View real-time availability and schedule appointments</p>
               </div>
 
               {/* Filters */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Filter by Specialty</label>
-                  <select
-                    value={dashboardFilterSpecialty}
-                    onChange={(e) => setDashboardFilterSpecialty(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                  >
-                    <option value="">All Specialties</option>
-                    {[...new Set(doctors.map(d => d.specialization).filter(Boolean))].map(spec => (
-                      <option key={spec} value={spec}>{spec}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Filter by Doctor</label>
-                  <select
-                    value={dashboardFilterDoctor}
-                    onChange={(e) => setDashboardFilterDoctor(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                  >
-                    <option value="">All Doctors</option>
-                    {doctors.map(doctor => (
-                      <option key={doctor._id} value={doctor._id}>{doctor.fullName}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Filter by Date</label>
-                  <input
-                    type="date"
-                    value={dashboardFilterDate}
-                    onChange={(e) => setDashboardFilterDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
-                  />
+              <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Filter by Specialty */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Filter by Specialty
+                    </label>
+                    <select
+                      value={availabilityFilterSpecialty}
+                      onChange={(e) => setAvailabilityFilterSpecialty(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-white"
+                    >
+                      <option value="all">All Specialties</option>
+                      {[...new Set(allDoctors.map(doc => doc.specialization).filter(Boolean))].sort().map(spec => (
+                        <option key={spec} value={spec}>{spec}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Filter by Doctor */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Filter by Doctor
+                    </label>
+                    <select
+                      value={availabilityFilterDoctor}
+                      onChange={(e) => setAvailabilityFilterDoctor(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-white"
+                    >
+                      <option value="all">All Doctors</option>
+                      {allDoctors.map(doctor => (
+                        <option key={doctor._id} value={doctor._id}>
+                          {doctor.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Filter by Date */}
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Filter by Date
+                    </label>
+                    <input
+                      type="date"
+                      value={availabilityFilterDate}
+                      onChange={(e) => setAvailabilityFilterDate(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none bg-white"
+                      placeholder="dd-mm-yyyy"
+                    />
+                  </div>
                 </div>
               </div>
 
               {/* Doctor Cards Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {doctors
-                  .filter(doctor => {
-                    if (dashboardFilterSpecialty && doctor.specialization !== dashboardFilterSpecialty) return false
-                    if (dashboardFilterDoctor && doctor._id !== dashboardFilterDoctor) return false
-                    if (dashboardFilterDate && !isDateAvailable(dashboardFilterDate, doctor)) return false
+              <div className="p-6">
+                {(() => {
+                  // Filter doctors based on selected filters
+                  let filteredDoctors = allDoctors.filter(doctor => {
+                    const stats = doctorStats[doctor._id] || {}
+                    const isAvailable = stats.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
+                    
+                    // Specialty filter
+                    if (availabilityFilterSpecialty !== 'all' && doctor.specialization !== availabilityFilterSpecialty) {
+                      return false
+                    }
+                    
+                    // Doctor filter
+                    if (availabilityFilterDoctor !== 'all' && doctor._id !== availabilityFilterDoctor) {
+                      return false
+                    }
+                    
+                    // Date filter (check if doctor is available on selected date)
+                    if (availabilityFilterDate) {
+                      if (!isDateAvailable(availabilityFilterDate, doctor)) {
+                        return false
+                      }
+                    }
+                    
                     return true
                   })
-                  .map(doctor => {
-                    // Calculate availability status
-                    const today = new Date().toISOString().split('T')[0]
-                    const isAvailableToday = isDateAvailable(today, doctor) && doctor.isAvailable !== false
-                    
-                    // Find next available day
-                    let nextAvailableDay = null
-                    for (let i = 1; i <= 30; i++) {
-                      const checkDate = new Date()
-                      checkDate.setDate(checkDate.getDate() + i)
-                      const dateString = checkDate.toISOString().split('T')[0]
-                      if (isDateAvailable(dateString, doctor)) {
-                        nextAvailableDay = checkDate
-                        break
-                      }
-                    }
 
-                    // Get available days
-                    const schedule = doctor.weeklySchedule || {}
-                    const availableDays = []
-                    const dayMap = {
-                      monday: 'Mon',
-                      tuesday: 'Tue',
-                      wednesday: 'Wed',
-                      thursday: 'Thu',
-                      friday: 'Fri',
-                      saturday: 'Sat',
-                      sunday: 'Sun'
-                    }
-                    Object.entries(dayMap).forEach(([key, label]) => {
-                      if (schedule[key] !== false) {
-                        availableDays.push(label)
-                      }
-                    })
+                  // Get unique specializations for filtering
+                  const specializations = [...new Set(allDoctors.map(doc => doc.specialization).filter(Boolean))]
 
-                    // Get time slots summary
-                    const visitingHours = doctor.visitingHours || {}
-                    const timeSlots = []
-                    const formatTime12 = (timeStr) => {
-                      if (!timeStr) return ''
-                      const [hours, minutes] = timeStr.split(':')
-                      const hour = parseInt(hours, 10)
-                      const ampm = hour >= 12 ? 'PM' : 'AM'
-                      const hour12 = hour % 12 || 12
-                      return `${hour12}:${minutes || '00'} ${ampm}`
-                    }
-                    if (visitingHours.morning?.enabled) {
-                      timeSlots.push(`${formatTime12(visitingHours.morning.start)} - ${formatTime12(visitingHours.morning.end)}`)
-                    }
-                    if (visitingHours.afternoon?.enabled) {
-                      timeSlots.push(`${formatTime12(visitingHours.afternoon.start)} - ${formatTime12(visitingHours.afternoon.end)}`)
-                    }
-                    if (visitingHours.evening?.enabled) {
-                      timeSlots.push(`${formatTime12(visitingHours.evening.start)} - ${formatTime12(visitingHours.evening.end)}`)
-                    }
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {filteredDoctors.map((doctor) => {
+                        const stats = doctorStats[doctor._id] || {}
+                        const isAvailable = stats.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
+                        const schedule = doctor.weeklySchedule || {}
+                        const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+                        const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+                        const availableDays = dayNames
+                          .map((day, index) => ({ day, label: dayLabels[index], available: schedule[day] !== false }))
+                          .filter(d => d.available)
+                          .map(d => d.label)
 
-                    // Determine status
-                    let status = 'not-available'
-                    let statusColor = 'bg-gray-100 text-gray-600'
-                    let statusText = 'Not Available'
-                    let statusIcon = '●'
+                        const visitingHours = doctor.visitingHours || {}
+                        const hasTimeSlots = Object.values(visitingHours).some(period => period?.enabled)
 
-                    if (isAvailableToday) {
-                      status = 'available-today'
-                      statusColor = 'bg-green-100 text-green-700'
-                      statusText = 'Available Today'
-                      statusIcon = '●'
-                    } else if (nextAvailableDay) {
-                      status = 'next-available'
-                      statusColor = 'bg-yellow-100 text-yellow-700'
-                      statusText = `Next: ${nextAvailableDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                      statusIcon = '●'
-                    }
+                        return (
+                          <div
+                            key={doctor._id}
+                            className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow"
+                          >
+                            {/* Profile Picture */}
+                            <div className="flex justify-center mb-4">
+                              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg border-4 border-white">
+                                {doctor.profileImage ? (
+                                  <img
+                                    src={doctor.profileImage}
+                                    alt={doctor.fullName}
+                                    className="w-full h-full rounded-full object-cover"
+                                  />
+                                ) : (
+                                  doctor.fullName.charAt(0).toUpperCase()
+                                )}
+                              </div>
+                            </div>
 
-                    return (
-                      <div
-                        key={doctor._id}
-                        className="bg-white border-2 border-gray-200 rounded-xl p-5 shadow-md hover:shadow-lg transition-all duration-200 hover:border-blue-300"
-                      >
-                        {/* Doctor Header */}
-                        <div className="flex items-start gap-4 mb-4">
-                          {/* Profile Photo */}
-                          <div className="flex-shrink-0">
-                            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-green-500 flex items-center justify-center shadow-md border-3 border-white overflow-hidden">
-                              {doctor.profileImage ? (
-                                <img
-                                  src={doctor.profileImage}
-                                  alt={doctor.fullName}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <span className="text-2xl font-bold text-white">
-                                  {(doctor.fullName || 'D').charAt(0).toUpperCase()}
-                                </span>
+                            {/* Doctor Info */}
+                            <div className="text-center mb-4">
+                              <h3 className="text-lg font-bold text-gray-900 mb-1">{doctor.fullName}</h3>
+                              {doctor.specialization && (
+                                <p className="text-sm font-medium text-blue-600 mb-1">{doctor.specialization}</p>
+                              )}
+                              {doctor.qualification && (
+                                <p className="text-xs text-gray-500">{doctor.qualification}</p>
                               )}
                             </div>
-                          </div>
 
-                          {/* Doctor Info */}
-                          <div className="flex-1 min-w-0">
-                            <h3 className="text-lg font-bold text-gray-800 mb-1 truncate">
-                              Dr. {doctor.fullName}
-                            </h3>
-                            {doctor.specialization && (
-                              <p className="text-sm font-medium text-blue-600 mb-2">
-                                {doctor.specialization}
-                              </p>
-                            )}
-                            {doctor.qualification && (
-                              <p className="text-xs text-gray-600">{doctor.qualification}</p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Status Badge */}
-                        <div className="mb-4">
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${statusColor}`}>
-                            <span className="text-base">{statusIcon}</span>
-                            {statusText}
-                          </span>
-                        </div>
-
-                        {/* Available Days */}
-                        {availableDays.length > 0 ? (
-                          <div className="mb-3">
-                            <p className="text-xs font-semibold text-gray-600 mb-1.5">Available Days:</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {availableDays.map((day, idx) => (
-                                <span
-                                  key={idx}
-                                  className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200"
-                                >
-                                  {day}
-                                </span>
-                              ))}
+                            {/* Availability Status */}
+                            <div className="flex items-center justify-center gap-2 mb-3">
+                              <span className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                              <span className={`text-sm font-semibold ${isAvailable ? 'text-green-700' : 'text-red-700'}`}>
+                                {isAvailable ? 'Available Today' : 'Not Available'}
+                              </span>
                             </div>
-                          </div>
-                        ) : (
-                          <div className="mb-3">
-                            <p className="text-xs text-gray-500 italic">No days configured</p>
-                          </div>
-                        )}
 
-                        {/* Time Slots */}
-                        {timeSlots.length > 0 ? (
-                          <div className="mb-4">
-                            <p className="text-xs font-semibold text-gray-600 mb-1.5">Time Slots:</p>
-                            <div className="space-y-1">
-                              {timeSlots.map((slot, idx) => (
-                                <div
-                                  key={idx}
-                                  className="flex items-center gap-2 text-xs text-gray-700 bg-gray-50 px-2 py-1 rounded"
-                                >
-                                  <svg className="w-3 h-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  <span>{slot}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="mb-4">
-                            <p className="text-xs text-orange-600 italic">No time slots configured</p>
-                          </div>
-                        )}
-
-                        {/* Action Button */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            // Set the doctor in the appointment form
-                            setAppointmentForm(prev => {
-                              const newForm = {
-                                ...prev,
-                                doctor: doctor._id
-                              }
+                            {/* Next Available Date/Time for Unavailable Doctors */}
+                            {!isAvailable && (() => {
+                              const nextAvailable = getNextAvailableDate(doctor)
                               
-                              // If date is not set or not available for this doctor, set first available date
-                              if (!newForm.appointmentDate || !isDateAvailable(newForm.appointmentDate, doctor)) {
-                                const today = new Date()
-                                for (let i = 1; i <= 30; i++) {
-                                  const date = new Date(today)
-                                  date.setDate(date.getDate() + i)
-                                  const dateString = date.toISOString().split('T')[0]
-                                  if (isDateAvailable(dateString, doctor)) {
-                                    newForm.appointmentDate = dateString
-                                    break
+                              if (nextAvailable) {
+                                const dayName = nextAvailable.dateObj.toLocaleDateString('en-US', { weekday: 'long' })
+                                const formattedDate = nextAvailable.dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
+                                
+                                // Get first available time slot
+                                let appointmentTime = null
+                                if (nextAvailable.timeSlots && nextAvailable.timeSlots.length > 0) {
+                                  appointmentTime = nextAvailable.timeSlots[0]
+                                } else {
+                                  // Fallback to first enabled period's start time
+                                  const visitingHours = doctor.visitingHours || {}
+                                  const periods = ['morning', 'afternoon', 'evening']
+                                  for (const period of periods) {
+                                    const periodHours = visitingHours[period]
+                                    if (periodHours?.enabled && periodHours.start) {
+                                      appointmentTime = periodHours.start
+                                      break
+                                    }
                                   }
                                 }
+                                
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedDoctorForAppointment(doctor)
+                                      
+                                      // Pre-fill with next available date and time
+                                      setAppointmentForm(prev => ({
+                                        ...prev,
+                                        doctor: doctor._id,
+                                        appointmentDate: nextAvailable.date,
+                                        appointmentTime: appointmentTime || prev.appointmentTime || getDefaultAppointmentTime()
+                                      }))
+                                      
+                                      toast.success(`Appointment pre-filled for ${dayName}, ${formattedDate}${appointmentTime ? ` at ${formatTime12Hour(appointmentTime)}` : ''}`, {
+                                        duration: 3000
+                                      })
+                                      
+                                      // Scroll to appointment form
+                                      setTimeout(() => {
+                                        document.getElementById('schedule-appointment-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                                      }, 100)
+                                    }}
+                                    className="mb-3 w-full p-2.5 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-all cursor-pointer text-left group"
+                                  >
+                                    <p className="text-xs font-semibold text-blue-900 mb-1">Next Available:</p>
+                                    <p className="text-xs text-blue-700 font-medium group-hover:text-blue-900">
+                                      {dayName}, {formattedDate}
+                                      {nextAvailable.timeRange && ` | ${nextAvailable.timeRange}`}
+                                    </p>
+                                    <p className="text-[10px] text-blue-600 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      Click to book for this date
+                                    </p>
+                                  </button>
+                                )
+                              } else {
+                                return (
+                                  <div className="mb-3 p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
+                                    <p className="text-xs text-orange-700 font-medium">
+                                      No upcoming availability found. Please check schedule settings.
+                                    </p>
+                                  </div>
+                                )
                               }
-                              
-                              // Set first available time slot for the selected date
-                              if (newForm.appointmentDate) {
-                                const slots = getAvailableTimeSlots(doctor, newForm.appointmentDate)
-                                if (slots.length > 0) {
-                                  newForm.appointmentTime = slots[0]
-                                }
-                              }
-                              
-                              return newForm
-                            })
-                            
-                            // Scroll to appointment form after state update
-                            setTimeout(() => {
-                              const formElement = document.getElementById('appointment-form')
-                              if (formElement) {
-                                formElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                                // Add a slight highlight effect
-                                formElement.style.transition = 'box-shadow 0.3s'
-                                formElement.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.3)'
-                                setTimeout(() => {
-                                  formElement.style.boxShadow = ''
-                                }, 2000)
-                              }
-                            }, 150)
-                          }}
-                          className="w-full mt-4 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-green-600 text-white text-sm font-semibold rounded-lg hover:from-blue-700 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md transform hover:scale-[1.02]"
-                        >
-                          Book Appointment
-                        </button>
-                      </div>
-                    )
-                  })}
-              </div>
+                            })()}
 
-              {doctors.filter(doctor => {
-                if (dashboardFilterSpecialty && doctor.specialization !== dashboardFilterSpecialty) return false
-                if (dashboardFilterDoctor && doctor._id !== dashboardFilterDoctor) return false
-                if (dashboardFilterDate && !isDateAvailable(dashboardFilterDate, doctor)) return false
-                return true
-              }).length === 0 && (
-                <div className="text-center py-12">
-                  <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-gray-600 font-medium">No doctors match your filters</p>
-                  <p className="text-sm text-gray-500 mt-1">Try adjusting your filter criteria</p>
-                </div>
-              )}
+                            {/* Available Days */}
+                            {availableDays.length > 0 && (
+                              <div className="mb-3 text-center">
+                                <p className="text-xs text-gray-600 mb-1">Available Days:</p>
+                                <div className="flex flex-wrap justify-center gap-1">
+                                  {availableDays.map(day => (
+                                    <span key={day} className="text-xs font-medium text-blue-600 px-1">
+                                      {day}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Time Slots Message */}
+                            {!hasTimeSlots && isAvailable && (
+                              <p className="text-xs text-orange-600 text-center mb-3">No time slots configured</p>
+                            )}
+
+                            {/* Book Appointment Button */}
+                            <button
+                              onClick={() => {
+                                setSelectedDoctorForAppointment(doctor)
+                                
+                                // Always get next available date and time for unavailable doctors
+                                let appointmentDate = null
+                                let appointmentTime = null
+                                
+                                if (!isAvailable) {
+                                  // For unavailable doctors, always use next available date
+                                  const nextAvailable = getNextAvailableDate(doctor)
+                                  if (nextAvailable) {
+                                    // Always set to next available date (format: YYYY-MM-DD)
+                                    appointmentDate = nextAvailable.date
+                                    
+                                    // Set time to first available slot of that day (format: HH:MM)
+                                    if (nextAvailable.timeSlots && nextAvailable.timeSlots.length > 0) {
+                                      // Use first time slot from available slots
+                                      appointmentTime = nextAvailable.timeSlots[0]
+                                    } else {
+                                      // Fallback: Use first enabled period's start time
+                                      const visitingHours = doctor.visitingHours || {}
+                                      const periods = ['morning', 'afternoon', 'evening']
+                                      for (const period of periods) {
+                                        const periodHours = visitingHours[period]
+                                        if (periodHours?.enabled && periodHours.start) {
+                                          appointmentTime = periodHours.start // Format: HH:MM
+                                          break
+                                        }
+                                      }
+                                    }
+                                    
+                                    const dayName = nextAvailable.dateObj.toLocaleDateString('en-US', { weekday: 'long' })
+                                    const formattedDate = nextAvailable.dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
+                                    const timeDisplay = appointmentTime ? formatTime12Hour(appointmentTime) : 'available time'
+                                    
+                                    toast.success(`Appointment pre-filled for ${dayName}, ${formattedDate} at ${timeDisplay}`, {
+                                      duration: 3000
+                                    })
+                                  } else {
+                                    toast.error('No available dates found for this doctor. Please contact admin.', {
+                                      duration: 4000
+                                    })
+                                    return // Don't proceed if no availability found
+                                  }
+                                } else {
+                                  // For available doctors, use default date if no date selected
+                                  if (!appointmentForm.appointmentDate) {
+                                    appointmentDate = getDefaultAppointmentDate()
+                                  }
+                                  // If no time selected, use default
+                                  if (!appointmentForm.appointmentTime) {
+                                    appointmentTime = getDefaultAppointmentTime()
+                                  }
+                                }
+                                
+                                // Update form with pre-filled values (editable fields)
+                                // Date format: YYYY-MM-DD (required by HTML date input)
+                                // Time format: HH:MM (required by HTML time input/select)
+                                setAppointmentForm(prev => ({ 
+                                  ...prev, 
+                                  doctor: doctor._id, // Pre-select doctor
+                                  appointmentDate: appointmentDate || prev.appointmentDate || getDefaultAppointmentDate(), // Auto-fill date (editable)
+                                  appointmentTime: appointmentTime || prev.appointmentTime || getDefaultAppointmentTime() // Auto-fill time (editable)
+                                }))
+                                
+                                // Scroll to appointment form
+                                setTimeout(() => {
+                                  document.getElementById('schedule-appointment-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                                }, 100)
+                              }}
+                              className="w-full py-2.5 rounded-lg font-semibold text-sm transition bg-green-600 text-white hover:bg-green-700 shadow-md hover:shadow-lg"
+                            >
+                              Book Appointment
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+
+                {allDoctors.length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No doctors available</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Schedule Appointment Form */}
-            <div id="appointment-form" className="bg-white rounded-xl shadow-lg p-6 sm:p-8">
+            <div id="schedule-appointment-form" className="bg-white rounded-lg shadow p-4 sm:p-8">
               <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-6">Schedule Appointment</h2>
 
               <form onSubmit={handleScheduleAppointment} className="space-y-6">
@@ -4587,7 +5001,7 @@ const ReceptionistDashboard = () => {
                       required
                     >
                       <option value="">Select a doctor</option>
-                      {doctors.map((doctor) => (
+                      {allDoctors.map((doctor) => (
                         <option key={doctor._id} value={doctor._id}>
                           {doctor.fullName} {doctor.specialization ? `- ${doctor.specialization}` : ''}
                         </option>
@@ -4613,77 +5027,74 @@ const ReceptionistDashboard = () => {
                       required
                     />
                     {selectedAppointmentDoctor && (
-                      <div className="mt-2 space-y-2">
-                        {/* Editable Available Days Section */}
-                        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-semibold text-gray-700">Available Days:</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedDoctorForSchedule(selectedAppointmentDoctor)
-                                setShowEditVisitingHoursModal(true)
-                              }}
-                              className="text-xs text-blue-600 hover:text-blue-700 font-medium underline"
-                            >
-                              Edit Schedule
-                            </button>
-                          </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => {
-                              const dayLabels = {
-                                monday: 'Mon',
-                                tuesday: 'Tue',
-                                wednesday: 'Wed',
-                                thursday: 'Thu',
-                                friday: 'Fri',
-                                saturday: 'Sat',
-                                sunday: 'Sun'
-                              }
-                              const isAvailable = selectedAppointmentDoctor.weeklySchedule?.[day] !== false
-                              return (
-                                <label
+                      <div className="mt-2 space-y-1">
+                        {availableWeekdays.length > 0 ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold text-green-700">Available on:</span>
+                            <div className="flex flex-wrap gap-1">
+                              {availableWeekdays.map((day, index) => (
+                                <span
                                   key={day}
-                                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium cursor-pointer transition-all border ${
-                                    isAvailable
-                                      ? 'bg-green-100 text-green-800 border-green-300'
-                                      : 'bg-gray-100 text-gray-500 border-gray-300'
-                                  }`}
+                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200"
                                 >
-                                  <input
-                                    type="checkbox"
-                                    checked={isAvailable}
-                                    onChange={async (e) => {
-                                      try {
-                                        await api.put(`/doctor/${selectedAppointmentDoctor._id}/schedule`, {
-                                          weeklySchedule: {
-                                            [day]: e.target.checked
-                                          }
-                                        })
-                                        // Refresh doctors list to get updated schedule
-                                        await fetchDoctors()
-                                        toast.success(`${dayLabels[day]} ${e.target.checked ? 'enabled' : 'disabled'}`)
-                                      } catch (error) {
-                                        toast.error(error.response?.data?.message || 'Failed to update schedule')
-                                      }
-                                    }}
-                                    className="w-3 h-3 text-green-600 border-gray-300 rounded focus:ring-green-500"
-                                  />
-                                  <span>{dayLabels[day]}</span>
-                                </label>
-                              )
-                            })}
+                                  {day}
+                                </span>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <p className="text-xs text-red-600 font-medium">
+                            ⚠️ No available days configured for this doctor
+                          </p>
+                        )}
                         <p className="text-xs text-gray-500">
                           {availableDates.length > 0 
                             ? `${availableDates.length} available date${availableDates.length !== 1 ? 's' : ''} in the next 30 days`
                             : 'No available dates in the next 30 days'}
                         </p>
                         {appointmentForm.appointmentDate && !isDateAvailable(appointmentForm.appointmentDate, selectedAppointmentDoctor) && (
-                          <p className="text-xs text-red-600 font-medium">
-                            ⚠️ Selected date is not available. Please choose an available day.
-                          </p>
+                          <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                            <p className="text-xs text-red-600 font-medium mb-2">
+                              ⚠️ Selected date is not available for this doctor.
+                            </p>
+                            {nextAvailableDates.length > 0 ? (
+                              <div className="space-y-2">
+                                <p className="text-xs text-gray-700 font-medium">
+                                  Next available on:
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  {nextAvailableDates.map((dateStr) => {
+                                    const date = new Date(dateStr)
+                                    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' })
+                                    const formattedDate = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
+                                    return (
+                                      <button
+                                        key={dateStr}
+                                        type="button"
+                                        onClick={() => {
+                                          setAppointmentForm(prev => ({ ...prev, appointmentDate: dateStr }))
+                                          toast.success(`Appointment date updated to ${dayName}, ${formattedDate}`)
+                                        }}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                        </svg>
+                                        {dayName}, {formattedDate}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                                <p className="text-xs text-gray-500 italic">
+                                  Click a date above to update the appointment
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-gray-600">
+                                No available dates found in the next 60 days. Please contact the doctor or admin.
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
@@ -4730,24 +5141,9 @@ const ReceptionistDashboard = () => {
                                 required
                                 disabled
                               />
-                              <div className="space-y-2">
-                                <p className="text-xs text-red-600 font-medium">
-                                  ⚠️ No time slots configured for this doctor on the selected date.
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedDoctorForSchedule(selectedAppointmentDoctor)
-                                    setShowEditVisitingHoursModal(true)
-                                  }}
-                                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition shadow-sm"
-                                >
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                  </svg>
-                                  Configure Visiting Hours
-                                </button>
-                              </div>
+                              <p className="mt-1 text-xs text-red-600 font-medium">
+                                ⚠️ No time slots configured for this doctor on the selected date. Please configure visiting hours or select another date.
+                              </p>
                             </>
                           )
                         ) : (
@@ -5662,29 +6058,6 @@ const ReceptionistDashboard = () => {
         patientName={medicalHistoryPatientName}
         patientMobile={medicalHistoryPatientMobile}
       />
-
-      {/* Edit Visiting Hours Modal */}
-      {selectedDoctorForSchedule && (
-        <EditVisitingHoursModal
-          doctor={selectedDoctorForSchedule}
-          isOpen={showEditVisitingHoursModal}
-          onClose={() => {
-            setShowEditVisitingHoursModal(false)
-            setSelectedDoctorForSchedule(null)
-          }}
-          onUpdate={async () => {
-            await fetchDoctors()
-            // Refresh appointment form to reflect updated schedule
-            if (selectedAppointmentDoctor) {
-              const updatedDoctor = doctors.find(d => d._id === selectedAppointmentDoctor._id)
-              if (updatedDoctor) {
-                // Trigger re-calculation of available dates and time slots
-                setAppointmentForm(prev => ({ ...prev }))
-              }
-            }
-          }}
-        />
-      )}
 
       {/* Scanner Modal */}
       {showScanner && (
