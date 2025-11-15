@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
@@ -321,13 +321,15 @@ const getInitialAppointmentForm = () => ({
 
 const ReceptionistDashboard = () => {
   const { user, logout } = useAuth()
-  const [activeTab, setActiveTab] = useState('doctors') // 'doctors', 'registration', 'emergency', or 'appointments'
+  const [activeTab, setActiveTab] = useState('doctors') // 'doctors', 'registration', 'emergency', 'appointments', or 'prescriptions'
   const [appointmentsView, setAppointmentsView] = useState('today') // 'today' or 'upcoming'
   const [patientsRegisterView, setPatientsRegisterView] = useState('today') // 'today', 'recheck', or 'history'
   // Doctor Availability filters
   const [availabilityFilterSpecialty, setAvailabilityFilterSpecialty] = useState('all')
   const [availabilityFilterDoctor, setAvailabilityFilterDoctor] = useState('all')
   const [availabilityFilterDate, setAvailabilityFilterDate] = useState('')
+  const [availabilityPage, setAvailabilityPage] = useState(1)
+  const availabilityPerPage = 8 // 8 doctors per page
   const [selectedDoctorForAppointment, setSelectedDoctorForAppointment] = useState(null)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [showCancelSuccessModal, setShowCancelSuccessModal] = useState(false)
@@ -425,12 +427,67 @@ const ReceptionistDashboard = () => {
   const [uploadedPDF, setUploadedPDF] = useState(null)
   const [uploadingPDF, setUploadingPDF] = useState(false)
   const pdfFileInputRef = useRef(null)
+  
+  // Prescription Records states
+  const [prescriptions, setPrescriptions] = useState([])
+  const [loadingPrescriptions, setLoadingPrescriptions] = useState(false)
+  const [prescriptionsSearch, setPrescriptionsSearch] = useState('')
+  const [prescriptionsPage, setPrescriptionsPage] = useState(1)
+  const [prescriptionsPagination, setPrescriptionsPagination] = useState({
+    total: 0,
+    pages: 1,
+    page: 1,
+    limit: 10
+  })
+  const prescriptionPollIntervalRef = useRef(null)
+  const prescriptionsPerPage = 10
 
   const selectedDoctor = useMemo(
     () => allDoctors.find((doc) => doc._id === formData.doctor),
     [allDoctors, formData.doctor]
   )
   const consultationFee = selectedDoctor?.fees || 0
+
+  // Fetch all prescriptions with pagination - MUST be defined before useEffect hooks
+  const fetchPrescriptions = useCallback(async (page, search, isBackgroundPoll = false) => {
+    if (!isBackgroundPoll) {
+      setLoadingPrescriptions(true)
+    }
+    
+    try {
+      const response = await api.get('/patient', {
+        params: {
+          withPrescriptions: 'true',
+          page: page || prescriptionsPage,
+          limit: prescriptionsPerPage,
+          ...(search?.trim() && { search: search.trim() })
+        }
+      })
+      
+      if (response.data.success) {
+        const patientsWithPrescriptions = response.data.data || []
+        setPrescriptions(patientsWithPrescriptions)
+        
+        // Update pagination info
+        if (response.data.pagination) {
+          setPrescriptionsPagination(response.data.pagination)
+        }
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch prescriptions')
+      }
+    } catch (error) {
+      console.error('Error fetching prescriptions:', error)
+      // Only show error toast if not a background poll
+      if (!isBackgroundPoll) {
+        toast.error(error.response?.data?.message || 'Failed to fetch prescriptions')
+      }
+      setPrescriptions([])
+    } finally {
+      if (!isBackgroundPoll) {
+        setLoadingPrescriptions(false)
+      }
+    }
+  }, [prescriptionsPage, prescriptionsPerPage])
   
   // Get selected doctor for appointment form
   const selectedAppointmentDoctor = useMemo(
@@ -705,13 +762,53 @@ const ReceptionistDashboard = () => {
       fetchPatientHistory()
     } else if (activeTab === 'appointments') {
       fetchAppointments()
+    } else if (activeTab === 'prescriptions') {
+      // Initial fetch - will be handled by the page change effect
+      // Set up polling for real-time updates (every 30 seconds - less frequent)
+      // Only poll if not currently loading to avoid overlapping requests
+      prescriptionPollIntervalRef.current = setInterval(() => {
+        if (!loadingPrescriptions) {
+          fetchPrescriptions(prescriptionsPage, prescriptionsSearch, true) // true = background poll
+        }
+      }, 30000) // 30 seconds instead of 10
+    }
+    
+    // Cleanup: Clear polling interval when switching tabs or unmounting
+    return () => {
+      if (prescriptionPollIntervalRef.current) {
+        clearInterval(prescriptionPollIntervalRef.current)
+        prescriptionPollIntervalRef.current = null
+      }
     }
   }, [activeTab, doctors])
+  
+  // Debounce search for prescriptions and reset to page 1
+  useEffect(() => {
+    if (activeTab === 'prescriptions') {
+      const searchTimer = setTimeout(() => {
+        setPrescriptionsPage(1) // Reset to page 1 on search change
+      }, 500) // 500ms debounce
+
+      return () => clearTimeout(searchTimer)
+    }
+  }, [prescriptionsSearch, activeTab])
+
+  // Separate effect for page changes and initial load to avoid infinite loops
+  useEffect(() => {
+    if (activeTab === 'prescriptions' && prescriptionsPage > 0) {
+      fetchPrescriptions(prescriptionsPage, prescriptionsSearch, false)
+    }
+  }, [prescriptionsPage, activeTab, fetchPrescriptions, prescriptionsSearch])
 
   // Reset to page 1 when search changes
   useEffect(() => {
     setDoctorsPage(1)
   }, [doctorsSearch])
+
+  // Reset to page 1 when availability filters change
+  useEffect(() => {
+    setAvailabilityPage(1)
+  }, [availabilityFilterSpecialty, availabilityFilterDoctor, availabilityFilterDate])
 
   // Fetch all doctors for dropdown (no pagination)
   const fetchAllDoctors = async () => {
@@ -2335,6 +2432,241 @@ const ReceptionistDashboard = () => {
     }
   }
 
+  // PDF utility functions
+  const getPDFUrl = (pdfPath) => {
+    if (!pdfPath) return null
+    
+    // If pdfPath is already a full URL (starts with http:// or https://), return it as is
+    if (pdfPath.startsWith('http://') || pdfPath.startsWith('https://')) {
+      return pdfPath
+    }
+    
+    // Otherwise, prepend the base URL
+    const baseURL = import.meta.env.VITE_API_BASE_URL || 
+      (window.location.hostname === 'localhost' 
+        ? 'http://localhost:7000/api' 
+        : 'https://hms-opd-backend.vercel.app/api')
+    return `${baseURL}${pdfPath}`
+  }
+
+  const downloadPdf = async (pdfUrl, fileName) => {
+    try {
+      // Get token for authenticated requests if needed
+      const token = localStorage.getItem('token')
+      
+      console.log('Downloading PDF from:', pdfUrl)
+      
+      const response = await fetch(pdfUrl, {
+        credentials: pdfUrl.startsWith('http') ? 'omit' : 'include',
+        headers: {
+          ...(token && { 'Authorization': `Bearer ${token}` })
+        }
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '')
+        console.error('PDF fetch failed:', response.status, response.statusText, errorText)
+        throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`)
+      }
+
+      // Check content type from headers
+      const contentType = response.headers.get('content-type') || ''
+      console.log('PDF Content-Type:', contentType)
+      
+      const blob = await response.blob()
+      console.log('Blob type:', blob.type, 'Blob size:', blob.size)
+      
+      // Check if blob is actually a PDF or if it's an error page
+      if (blob.type !== 'application/pdf' && !blob.type.includes('pdf') && !contentType.includes('pdf')) {
+        // Clone the blob to read as text without consuming the original
+        const textBlob = blob.slice(0, 1000) // Only read first 1000 bytes for checking
+        const text = await textBlob.text()
+        console.log('Response text preview:', text.substring(0, 200))
+        
+        // Check if it's an HTML error page
+        if (text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('404') || text.includes('Not Found') || text.includes('error')) {
+          throw new Error('PDF file not found on server')
+        }
+        
+        // If it's not HTML and not PDF, but we got a 200 response, try to download anyway
+        // Some servers don't set content-type correctly, especially Cloudinary
+        if (blob.size > 0) {
+          console.warn('Blob type not detected as PDF, but attempting download anyway (size:', blob.size, 'bytes)')
+          // Continue with download - might be a valid PDF with wrong content-type
+        } else {
+          throw new Error('PDF file is empty or invalid')
+        }
+      }
+      
+      // Ensure we have a valid blob
+      if (blob.size === 0) {
+        throw new Error('PDF file is empty')
+      }
+      
+      const url = window.URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `${fileName}.pdf`
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      window.URL.revokeObjectURL(url)
+      
+      toast.success('Prescription downloaded successfully!')
+    } catch (error) {
+      console.error('PDF download failed:', error)
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        pdfUrl: pdfUrl
+      })
+      toast.error(error.message || 'Failed to download PDF. Please check if the file exists.')
+    }
+  }
+
+  const viewPdf = async (pdfUrl, fileName = 'prescription') => {
+    try {
+      // Get token for authenticated request
+      const token = localStorage.getItem('token')
+      
+      console.log('Viewing PDF from:', pdfUrl)
+      
+      const response = await fetch(pdfUrl, {
+        credentials: pdfUrl.startsWith('http') ? 'omit' : 'include',
+        headers: {
+          'Accept': 'application/pdf',
+          ...(token && { 'Authorization': `Bearer ${token}` })
+        }
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '')
+        console.error('PDF fetch failed:', response.status, response.statusText, errorText)
+        throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`)
+      }
+
+      // Check content type from headers
+      const contentType = response.headers.get('content-type') || ''
+      console.log('PDF Content-Type:', contentType)
+      
+      const blob = await response.blob()
+      console.log('Blob type:', blob.type, 'Blob size:', blob.size)
+      
+      // Check if blob is actually a PDF or if it's an error page
+      if (blob.type !== 'application/pdf' && !blob.type.includes('pdf') && !contentType.includes('pdf')) {
+        // Clone the blob to read as text without consuming the original
+        const textBlob = blob.slice(0, 1000) // Only read first 1000 bytes for checking
+        const text = await textBlob.text()
+        console.log('Response text preview:', text.substring(0, 200))
+        
+        // Check if it's an HTML error page
+        if (text.includes('<!DOCTYPE') || text.includes('<html') || text.includes('404') || text.includes('Not Found') || text.includes('error')) {
+          throw new Error('PDF file not found on server')
+        }
+        
+        // If it's not HTML and not PDF, but we got a 200 response, try to view anyway
+        // Some servers don't set content-type correctly, especially Cloudinary
+        if (blob.size === 0) {
+          throw new Error('PDF file is empty or invalid')
+        }
+        console.warn('Blob type not detected as PDF, but attempting to view anyway (size:', blob.size, 'bytes)')
+      }
+      
+      // Ensure we have a valid blob
+      if (blob.size === 0) {
+        throw new Error('PDF file is empty')
+      }
+      
+      // Create a blob URL with proper PDF type
+      const pdfBlob = new Blob([blob], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(pdfBlob)
+      
+      // Open PDF in new tab with proper extension
+      const newWindow = window.open(url, '_blank')
+      
+      if (!newWindow) {
+        window.URL.revokeObjectURL(url)
+        toast.error('Please allow pop-ups to view PDF')
+        return
+      }
+      
+      // Set the window location to the blob URL
+      // The browser will handle displaying the PDF
+      newWindow.location.href = url
+      
+      // Clean up the URL after a delay (give time for PDF to load)
+      setTimeout(() => {
+        // Don't revoke immediately - let the PDF load first
+        // The browser will keep the blob URL alive while the tab is open
+      }, 1000)
+      
+      toast.success('Opening PDF in new tab...')
+    } catch (error) {
+      console.error('PDF view failed:', error)
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        pdfUrl: pdfUrl
+      })
+      toast.error('Failed to view PDF: ' + (error.message || 'Please try downloading instead.'))
+    }
+  }
+
+  const handleDownloadPrescription = async (patient) => {
+    try {
+      if (!patient?.prescription) {
+        toast.error('No prescription available to download')
+        return
+      }
+
+      if (!patient.prescription.pdfPath) {
+        toast.error('PDF path not found for this prescription')
+        return
+      }
+
+      const pdfUrl = getPDFUrl(patient.prescription.pdfPath)
+      console.log('Patient prescription PDF path:', patient.prescription.pdfPath)
+      console.log('Generated PDF URL:', pdfUrl)
+      
+      if (pdfUrl) {
+        await downloadPdf(pdfUrl, `prescription_${patient.fullName.replace(/\s/g, '_')}_${patient.tokenNumber || patient._id}`)
+      } else {
+        toast.error('PDF URL could not be generated')
+      }
+    } catch (error) {
+      console.error('Download failed:', error)
+      toast.error('Failed to download prescription: ' + (error.message || 'Unknown error'))
+    }
+  }
+
+  const handleViewPrescription = async (patient) => {
+    try {
+      if (!patient?.prescription) {
+        toast.error('No prescription available')
+        return
+      }
+
+      if (!patient.prescription.pdfPath) {
+        toast.error('PDF path not found for this prescription')
+        return
+      }
+
+      const pdfUrl = getPDFUrl(patient.prescription.pdfPath)
+      console.log('Patient prescription PDF path:', patient.prescription.pdfPath)
+      console.log('Generated PDF URL:', pdfUrl)
+      
+      if (pdfUrl) {
+        const fileName = `prescription_${patient.fullName.replace(/\s/g, '_')}_${patient.tokenNumber || patient._id}`
+        await viewPdf(pdfUrl, fileName)
+      } else {
+        toast.error('PDF URL could not be generated')
+      }
+    } catch (error) {
+      console.error('View failed:', error)
+      toast.error('Failed to view prescription: ' + (error.message || 'Unknown error'))
+    }
+  }
+
   const handleAppointmentChange = (e) => {
     const { name, value } = e.target
     
@@ -2700,6 +3032,16 @@ const ReceptionistDashboard = () => {
             >
               Appointments
             </button>
+            <button
+              onClick={() => setActiveTab('prescriptions')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'prescriptions'
+                  ? 'border-purple-600 text-purple-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Prescription Records
+            </button>
           </nav>
         </div>
       </div>
@@ -2715,6 +3057,68 @@ const ReceptionistDashboard = () => {
             opacity: 1;
             transform: translateY(0);
           }
+        }
+        
+        /* Card Entry Animation */
+        @keyframes cardSlideUp {
+          from {
+            opacity: 0;
+            transform: translateY(15px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        /* Pulsing Glow for Available Status */
+        @keyframes pulseGlow {
+          0%, 100% {
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+          }
+          50% {
+            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0);
+          }
+        }
+        
+        /* Fade In for Unavailable Status */
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+        
+        /* Ripple Effect */
+        @keyframes ripple {
+          0% {
+            transform: scale(0);
+            opacity: 1;
+          }
+          100% {
+            transform: scale(4);
+            opacity: 0;
+          }
+        }
+        
+        /* Slide In from Left */
+        @keyframes slideInLeft {
+          from {
+            opacity: 0;
+            transform: translateX(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        
+        /* Apply GPU acceleration */
+        .gpu-accelerated {
+          transform: translateZ(0);
+          will-change: transform;
         }
       `}</style>
 
@@ -2767,7 +3171,7 @@ const ReceptionistDashboard = () => {
                 {/* Doctors Grid */}
                 <div 
                   key={`page-${doctorsPage}`}
-                  className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 transition-all duration-300 ease-in-out"
+                  className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 transition-all duration-300 ease-in-out"
                   style={{
                     animation: 'fadeInUp 0.3s ease-in-out'
                   }}
@@ -2785,18 +3189,30 @@ const ReceptionistDashboard = () => {
                   <div
                     key={doctor._id}
                     onClick={() => handleDoctorCardClick(doctor)}
-                    className="relative overflow-hidden bg-white rounded-xl border border-gray-200 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer mx-auto shadow-md"
+                    className="relative overflow-hidden bg-white rounded-xl border border-gray-200 cursor-pointer w-full shadow-md gpu-accelerated"
                     style={{
-                      width: '260px',
-                      maxWidth: '100%',
                       fontFamily: 'Poppins, sans-serif',
-                      fontSize: '14px'
+                      fontSize: '14px',
+                      animation: `cardSlideUp 0.4s ease-out ${index * 0.1}s both`,
+                      transition: 'transform 0.25s ease-out, box-shadow 0.25s ease-out'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (window.innerWidth > 640) { // Only on non-touch devices
+                        e.currentTarget.style.transform = 'translateY(-6px) translateZ(0)'
+                        e.currentTarget.style.boxShadow = '0 12px 24px rgba(0, 0, 0, 0.15)'
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0) translateZ(0)'
+                      e.currentTarget.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)'
                     }}
                   >
                     {/* Profile Image - Top Right Corner */}
-                    <div className="absolute top-4 right-4 z-10">
-                      <div className="relative">
-                        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center shadow-lg border-2 border-white overflow-hidden">
+                    <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10">
+                      <div className="relative group">
+                        <div 
+                          className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center shadow-lg border-2 border-white overflow-hidden"
+                        >
                           {doctor.profileImage ? (
                             <img 
                               src={doctor.profileImage} 
@@ -2811,8 +3227,8 @@ const ReceptionistDashboard = () => {
                             />
                           ) : null}
                           <span 
-                            className={`profile-fallback text-xl font-bold text-white ${doctor.profileImage ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}
-                            style={{ fontSize: '20px', fontWeight: 700 }}
+                            className={`profile-fallback font-bold text-white ${doctor.profileImage ? 'hidden' : 'flex'} items-center justify-center w-full h-full text-sm sm:text-base md:text-xl`}
+                            style={{ fontWeight: 700 }}
                           >
                             {(doctor.fullName || 'D').charAt(0).toUpperCase()}
                           </span>
@@ -2825,36 +3241,36 @@ const ReceptionistDashboard = () => {
                             setProfileImagePreview(doctor.profileImage || null)
                             setShowProfileModal(true)
                           }}
-                          className="absolute bottom-0 right-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-blue-700 transition-all duration-200 border-2 border-white"
+                          className="absolute bottom-0 right-0 w-5 h-5 sm:w-6 sm:h-6 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-blue-700 active:bg-blue-800 transition-all duration-200 border-2 border-white touch-manipulation"
                           title="Upload Profile Photo"
                         >
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                           </svg>
                         </button>
                       </div>
                     </div>
 
-                    <div className="p-3">
+                    <div className="p-2.5 sm:p-3">
                       {/* Doctor Name */}
-                      <div className="mb-2 pr-20">
-                        <h3 className="text-base font-bold text-gray-900 leading-tight mb-1" style={{ fontSize: '16px', fontWeight: 700 }}>
+                      <div className="mb-2 pr-14 sm:pr-16 md:pr-20">
+                        <h3 className="text-sm sm:text-base font-bold text-gray-900 leading-tight mb-1" style={{ fontWeight: 700 }}>
                           {doctor.fullName}
                         </h3>
                         
                         {/* Specialization */}
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className="text-sm flex-shrink-0" role="img" aria-label="Specialization">🩺</span>
-                          <p className="text-xs font-semibold capitalize" style={{ fontSize: '12px', fontWeight: 600, color: '#3b82f6' }}>
+                        <div className="flex items-center gap-1 sm:gap-1.5 mb-0.5">
+                          <span className="text-xs sm:text-sm flex-shrink-0" role="img" aria-label="Specialization">🩺</span>
+                          <p className="text-xs font-semibold capitalize truncate" style={{ fontWeight: 600, color: '#3b82f6' }}>
                             {doctor.specialization || 'General Physician'}
                           </p>
                         </div>
                         
                         {/* Education/Qualification */}
                         {doctor.qualification && (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1 sm:gap-1.5">
                             <span className="text-xs flex-shrink-0" role="img" aria-label="Education">🎓</span>
-                            <p className="text-xs text-gray-600 italic" style={{ fontSize: '11px', fontStyle: 'italic' }}>
+                            <p className="text-xs text-gray-600 italic truncate" style={{ fontStyle: 'italic' }}>
                               {doctor.qualification}
                             </p>
                           </div>
@@ -2867,13 +3283,31 @@ const ReceptionistDashboard = () => {
 
                       {/* Visiting Time Section - Horizontal Layout */}
                       <div className={`mb-2 transition-opacity duration-300 ${!isAvailable ? 'opacity-60' : 'opacity-100'}`}>
-                        <div className="flex flex-wrap gap-1.5 items-stretch">
+                        <div className="flex flex-wrap gap-1 sm:gap-1.5 items-stretch">
                           {/* Morning Slot */}
                           {(() => {
                             const morningStart = doctor.visitingHours?.morning?.start || '09:00'
                             const morningEnd = doctor.visitingHours?.morning?.end || '12:00'
                             return (
-                              <div className="flex-1 min-w-[78px] sm:min-w-0 flex flex-col items-center justify-center px-1.5 py-1.5 rounded-lg bg-gradient-to-br from-amber-50 to-amber-50/70 border border-amber-200/60 hover:border-amber-300 hover:shadow-sm transition-all duration-200 overflow-hidden" style={{ minHeight: '58px' }}>
+                              <div 
+                                className="flex-1 min-w-[calc(33.333%-0.5rem)] sm:min-w-0 flex flex-col items-center justify-center px-1 sm:px-1.5 py-1 sm:py-1.5 rounded-lg bg-gradient-to-br from-amber-50 to-amber-50/70 border border-amber-200/60 overflow-hidden gpu-accelerated" 
+                                style={{ 
+                                  minHeight: '50px',
+                                  transition: 'all 0.2s ease-out'
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (window.innerWidth > 640) {
+                                    e.currentTarget.style.background = 'linear-gradient(to bottom right, #fef3c7, #fde68a)'
+                                    e.currentTarget.style.borderColor = '#fbbf24'
+                                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(251, 191, 36, 0.2)'
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'linear-gradient(to bottom right, #fffbeb, #fef3c7)'
+                                  e.currentTarget.style.borderColor = '#fde68a'
+                                  e.currentTarget.style.boxShadow = 'none'
+                                }}
+                              >
                                 <div className="flex items-center justify-center gap-0.5 mb-0.5 w-full">
                                   <span className="text-[10px] flex-shrink-0" role="img" aria-label="Morning" style={{ fontSize: '10px', lineHeight: '1' }}>☀️</span>
                                   <span className="text-[9px] font-bold text-amber-900 uppercase tracking-tight text-center leading-tight" style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.01em' }}>
@@ -2892,7 +3326,25 @@ const ReceptionistDashboard = () => {
                             const afternoonStart = doctor.visitingHours?.afternoon?.start || '13:00'
                             const afternoonEnd = doctor.visitingHours?.afternoon?.end || '16:00'
                             return (
-                              <div className="flex-1 min-w-[78px] sm:min-w-0 flex flex-col items-center justify-center px-1.5 py-1.5 rounded-lg bg-gradient-to-br from-orange-50 to-orange-50/70 border border-orange-200/60 hover:border-orange-300 hover:shadow-sm transition-all duration-200 overflow-hidden" style={{ minHeight: '58px' }}>
+                              <div 
+                                className="flex-1 min-w-[calc(33.333%-0.5rem)] sm:min-w-0 flex flex-col items-center justify-center px-1 sm:px-1.5 py-1 sm:py-1.5 rounded-lg bg-gradient-to-br from-orange-50 to-orange-50/70 border border-orange-200/60 overflow-hidden gpu-accelerated" 
+                                style={{ 
+                                  minHeight: '50px',
+                                  transition: 'all 0.2s ease-out'
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (window.innerWidth > 640) {
+                                    e.currentTarget.style.background = 'linear-gradient(to bottom right, #fed7aa, #fdba74)'
+                                    e.currentTarget.style.borderColor = '#fb923c'
+                                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(251, 146, 60, 0.2)'
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'linear-gradient(to bottom right, #fff7ed, #ffedd5)'
+                                  e.currentTarget.style.borderColor = '#fed7aa'
+                                  e.currentTarget.style.boxShadow = 'none'
+                                }}
+                              >
                                 <div className="flex items-center justify-center gap-0.5 mb-0.5 w-full">
                                   <span className="text-[10px] flex-shrink-0" role="img" aria-label="Afternoon" style={{ fontSize: '10px', lineHeight: '1' }}>🌤️</span>
                                   <span className="text-[9px] font-bold text-orange-900 uppercase tracking-tight text-center leading-tight" style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.01em', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
@@ -2911,7 +3363,25 @@ const ReceptionistDashboard = () => {
                             const eveningStart = doctor.visitingHours?.evening?.start || '18:00'
                             const eveningEnd = doctor.visitingHours?.evening?.end || '21:00'
                             return (
-                              <div className="flex-1 min-w-[78px] sm:min-w-0 flex flex-col items-center justify-center px-1.5 py-1.5 rounded-lg bg-gradient-to-br from-blue-50 to-blue-50/70 border border-blue-200/60 hover:border-blue-300 hover:shadow-sm transition-all duration-200 overflow-hidden" style={{ minHeight: '58px' }}>
+                              <div 
+                                className="flex-1 min-w-[calc(33.333%-0.5rem)] sm:min-w-0 flex flex-col items-center justify-center px-1 sm:px-1.5 py-1 sm:py-1.5 rounded-lg bg-gradient-to-br from-blue-50 to-blue-50/70 border border-blue-200/60 overflow-hidden gpu-accelerated" 
+                                style={{ 
+                                  minHeight: '50px',
+                                  transition: 'all 0.2s ease-out'
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (window.innerWidth > 640) {
+                                    e.currentTarget.style.background = 'linear-gradient(to bottom right, #dbeafe, #bfdbfe)'
+                                    e.currentTarget.style.borderColor = '#60a5fa'
+                                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(96, 165, 250, 0.2)'
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'linear-gradient(to bottom right, #eff6ff, #dbeafe)'
+                                  e.currentTarget.style.borderColor = '#bfdbfe'
+                                  e.currentTarget.style.boxShadow = 'none'
+                                }}
+                              >
                                 <div className="flex items-center justify-center gap-0.5 mb-0.5 w-full">
                                   <span className="text-[10px] flex-shrink-0" role="img" aria-label="Evening" style={{ fontSize: '10px', lineHeight: '1' }}>🌙</span>
                                   <span className="text-[9px] font-bold text-blue-900 uppercase tracking-tight text-center leading-tight" style={{ fontSize: '9px', fontWeight: 700, letterSpacing: '0.01em' }}>
@@ -2931,24 +3401,24 @@ const ReceptionistDashboard = () => {
                       <div className="border-t border-gray-200 my-2"></div>
 
                       {/* Daily Stats - Inline Row */}
-                      <div className="flex items-center justify-between gap-2 mb-2 px-2 py-1.5 bg-gray-50 rounded-lg">
-                        <div className="flex-1 text-center">
-                          <p className="text-[9px] text-gray-500 font-medium mb-0.5" style={{ fontSize: '9px' }}>Daily Limit</p>
-                          <p className="text-sm font-bold text-gray-900" style={{ fontSize: '14px', fontWeight: 700 }}>{dailyLimit}</p>
+                      <div className="flex items-center justify-between gap-1 sm:gap-2 mb-2 px-1.5 sm:px-2 py-1 sm:py-1.5 bg-gray-50 rounded-lg">
+                        <div className="flex-1 text-center min-w-0">
+                          <p className="text-[8px] sm:text-[9px] text-gray-500 font-medium mb-0.5">Daily Limit</p>
+                          <p className="text-xs sm:text-sm font-bold text-gray-900" style={{ fontWeight: 700 }}>{dailyLimit}</p>
                         </div>
-                        <div className="w-px h-6 bg-gray-200"></div>
-                        <div className="flex-1 text-center">
-                          <p className="text-[9px] text-gray-500 font-medium mb-0.5" style={{ fontSize: '9px' }}>Today</p>
-                          <p className="text-sm font-bold text-gray-900" style={{ fontSize: '14px', fontWeight: 700 }}>{todayCount}</p>
+                        <div className="w-px h-5 sm:h-6 bg-gray-200"></div>
+                        <div className="flex-1 text-center min-w-0">
+                          <p className="text-[8px] sm:text-[9px] text-gray-500 font-medium mb-0.5">Today</p>
+                          <p className="text-xs sm:text-sm font-bold text-gray-900" style={{ fontWeight: 700 }}>{todayCount}</p>
                         </div>
-                        <div className="w-px h-6 bg-gray-200"></div>
-                        <div className="flex-1 text-center">
-                          <p className={`text-[9px] font-medium mb-0.5 ${
+                        <div className="w-px h-5 sm:h-6 bg-gray-200"></div>
+                        <div className="flex-1 text-center min-w-0">
+                          <p className={`text-[8px] sm:text-[9px] font-medium mb-0.5 ${
                             limitReached ? 'text-red-600' : 'text-green-600'
-                          }`} style={{ fontSize: '9px' }}>Remaining</p>
-                          <p className={`text-sm font-bold ${
+                          }`}>Remaining</p>
+                          <p className={`text-xs sm:text-sm font-bold ${
                             limitReached ? 'text-red-600' : 'text-green-600'
-                          }`} style={{ fontSize: '14px', fontWeight: 700 }}>{remainingSlots}</p>
+                          }`} style={{ fontWeight: 700 }}>{remainingSlots}</p>
                         </div>
                       </div>
                       
@@ -2956,17 +3426,53 @@ const ReceptionistDashboard = () => {
                       <div className="border-t border-gray-200 my-2"></div>
                       
                       {/* Action Buttons */}
-                      <div className="flex gap-2 mb-2">
+                      <div className="flex gap-1.5 sm:gap-2 mb-2">
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
+                            // Ripple effect
+                            const button = e.currentTarget
+                            const ripple = document.createElement('span')
+                            const rect = button.getBoundingClientRect()
+                            const size = Math.max(rect.width, rect.height)
+                            const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left - size / 2
+                            const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top - size / 2
+                            
+                            ripple.style.width = ripple.style.height = size + 'px'
+                            ripple.style.left = x + 'px'
+                            ripple.style.top = y + 'px'
+                            ripple.style.position = 'absolute'
+                            ripple.style.borderRadius = '50%'
+                            ripple.style.background = 'rgba(255, 255, 255, 0.5)'
+                            ripple.style.transform = 'scale(0)'
+                            ripple.style.animation = 'ripple 0.6s ease-out'
+                            ripple.style.pointerEvents = 'none'
+                            
+                            button.style.position = 'relative'
+                            button.style.overflow = 'hidden'
+                            button.appendChild(ripple)
+                            
+                            setTimeout(() => ripple.remove(), 600)
+                            
                             handleToggleAvailability(doctor)
                           }}
-                          className={`flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                          className={`flex-1 inline-flex items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold gpu-accelerated touch-manipulation ${
                             isAvailable
-                              ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
-                              : 'bg-green-600 text-white hover:bg-green-700 border border-green-600'
+                              ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 active:bg-amber-200 border border-amber-200'
+                              : 'bg-green-600 text-white hover:bg-green-700 active:bg-green-800 border border-green-600'
                           }`}
+                          style={{
+                            transition: 'transform 0.2s ease-out, background-color 0.2s ease-out',
+                            WebkitTapHighlightColor: 'transparent'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (window.innerWidth > 640) {
+                              e.currentTarget.style.transform = 'scale(1.02) translateZ(0)'
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1) translateZ(0)'
+                          }}
                         >
                           {isAvailable ? (
                             <>
@@ -2987,9 +3493,45 @@ const ReceptionistDashboard = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
+                            // Ripple effect
+                            const button = e.currentTarget
+                            const ripple = document.createElement('span')
+                            const rect = button.getBoundingClientRect()
+                            const size = Math.max(rect.width, rect.height)
+                            const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left - size / 2
+                            const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top - size / 2
+                            
+                            ripple.style.width = ripple.style.height = size + 'px'
+                            ripple.style.left = x + 'px'
+                            ripple.style.top = y + 'px'
+                            ripple.style.position = 'absolute'
+                            ripple.style.borderRadius = '50%'
+                            ripple.style.background = 'rgba(59, 130, 246, 0.3)'
+                            ripple.style.transform = 'scale(0)'
+                            ripple.style.animation = 'ripple 0.6s ease-out'
+                            ripple.style.pointerEvents = 'none'
+                            
+                            button.style.position = 'relative'
+                            button.style.overflow = 'hidden'
+                            button.appendChild(ripple)
+                            
+                            setTimeout(() => ripple.remove(), 600)
+                            
                             handleSetLimitClick(doctor)
                           }}
-                          className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-all duration-200"
+                          className="inline-flex items-center justify-center gap-0.5 sm:gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 border border-blue-200 gpu-accelerated touch-manipulation"
+                          style={{
+                            transition: 'transform 0.2s ease-out, background-color 0.2s ease-out',
+                            WebkitTapHighlightColor: 'transparent'
+                          }}
+                          onMouseEnter={(e) => {
+                            if (window.innerWidth > 640) {
+                              e.currentTarget.style.transform = 'scale(1.02) translateZ(0)'
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1) translateZ(0)'
+                          }}
                         >
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
@@ -3003,23 +3545,36 @@ const ReceptionistDashboard = () => {
 
                       {/* Availability Status Bar */}
                       <div 
-                        className={`w-full rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 transition-all duration-300 ${
+                        className={`w-full rounded-lg px-2 sm:px-2.5 py-1 sm:py-1.5 flex items-center gap-1 sm:gap-1.5 gpu-accelerated ${
                           isAvailable 
                             ? 'bg-green-50 border border-green-200' 
                             : 'bg-orange-50 border border-orange-200'
                         }`}
+                        style={{
+                          animation: isAvailable ? 'slideInLeft 0.3s ease-out' : 'fadeIn 0.3s ease-out'
+                        }}
                       >
                         {isAvailable ? (
                           <>
-                            <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                            <span className="text-xs text-green-700 font-medium flex-1" style={{ fontSize: '11px', fontWeight: 500 }}>
+                            <div 
+                              className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-green-500 gpu-accelerated"
+                              style={{
+                                animation: 'pulseGlow 2.5s ease-in-out infinite'
+                              }}
+                            ></div>
+                            <span className="text-[10px] sm:text-xs text-green-700 font-medium flex-1 leading-tight" style={{ fontWeight: 500 }}>
                               Doctor is available and accepting patients.
                             </span>
                           </>
                         ) : (
                           <>
-                            <div className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-orange-500"></div>
-                            <span className="text-xs text-orange-700 font-medium flex-1" style={{ fontSize: '11px', fontWeight: 500 }}>
+                            <div 
+                              className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-orange-500 gpu-accelerated"
+                              style={{
+                                animation: 'fadeIn 0.3s ease-out'
+                              }}
+                            ></div>
+                            <span className="text-[10px] sm:text-xs text-orange-700 font-medium flex-1 leading-tight" style={{ fontWeight: 500 }}>
                               Doctor is not available.
                             </span>
                           </>
@@ -4703,12 +5258,20 @@ const ReceptionistDashboard = () => {
                     return true
                   })
 
+                  // Calculate pagination
+                  const totalDoctors = filteredDoctors.length
+                  const totalPages = Math.ceil(totalDoctors / availabilityPerPage)
+                  const startIndex = (availabilityPage - 1) * availabilityPerPage
+                  const endIndex = startIndex + availabilityPerPage
+                  const paginatedDoctors = filteredDoctors.slice(startIndex, endIndex)
+
                   // Get unique specializations for filtering
                   const specializations = [...new Set(allDoctors.map(doc => doc.specialization).filter(Boolean))]
 
                   return (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                      {filteredDoctors.map((doctor) => {
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        {paginatedDoctors.map((doctor) => {
                         const stats = doctorStats[doctor._id] || {}
                         const isAvailable = stats.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
                         const schedule = doctor.weeklySchedule || {}
@@ -4725,11 +5288,11 @@ const ReceptionistDashboard = () => {
                         return (
                           <div
                             key={doctor._id}
-                            className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow"
+                            className="bg-white border border-gray-200 rounded-xl p-3 shadow-md hover:shadow-lg transition-all duration-200 flex flex-col h-full"
                           >
-                            {/* Profile Picture */}
-                            <div className="flex justify-center mb-4">
-                              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg border-4 border-white">
+                            {/* Profile Image - Centered, Circular, Medium Size, Soft Shadow */}
+                            <div className="flex justify-center mb-2">
+                              <div className="relative w-16 h-16 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white text-xl font-bold shadow-lg border-4 border-white overflow-hidden">
                                 {doctor.profileImage ? (
                                   <img
                                     src={doctor.profileImage}
@@ -4742,26 +5305,30 @@ const ReceptionistDashboard = () => {
                               </div>
                             </div>
 
-                            {/* Doctor Info */}
-                            <div className="text-center mb-4">
-                              <h3 className="text-lg font-bold text-gray-900 mb-1">{doctor.fullName}</h3>
+                            {/* Doctor Name - Bold, Centered, Larger Font */}
+                            <div className="text-center mb-1.5">
+                              <h3 className="text-base font-bold text-gray-900 leading-tight">{doctor.fullName}</h3>
+                            </div>
+
+                            {/* Specialty & Degree - Centered, Clear Hierarchy */}
+                            <div className="text-center mb-2">
                               {doctor.specialization && (
-                                <p className="text-sm font-medium text-blue-600 mb-1">{doctor.specialization}</p>
+                                <p className="text-xs font-semibold text-blue-600">{doctor.specialization}</p>
                               )}
                               {doctor.qualification && (
-                                <p className="text-xs text-gray-500">{doctor.qualification}</p>
+                                <p className="text-xs font-medium text-gray-500">{doctor.qualification}</p>
                               )}
                             </div>
 
-                            {/* Availability Status */}
-                            <div className="flex items-center justify-center gap-2 mb-3">
+                            {/* Availability Indicator */}
+                            <div className="flex items-center justify-center gap-1.5 mb-2">
                               <span className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                              <span className={`text-sm font-semibold ${isAvailable ? 'text-green-700' : 'text-red-700'}`}>
+                              <span className={`text-xs font-semibold ${isAvailable ? 'text-green-700' : 'text-red-700'}`}>
                                 {isAvailable ? 'Available Today' : 'Not Available'}
                               </span>
                             </div>
 
-                            {/* Next Available Date/Time for Unavailable Doctors */}
+                            {/* Next Available Date/Time for Unavailable Doctors - Highlighted Box */}
                             {!isAvailable && (() => {
                               const nextAvailable = getNextAvailableDate(doctor)
                               
@@ -4769,76 +5336,54 @@ const ReceptionistDashboard = () => {
                                 const dayName = nextAvailable.dateObj.toLocaleDateString('en-US', { weekday: 'long' })
                                 const formattedDate = nextAvailable.dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
                                 
-                                // Get first available time slot
-                                let appointmentTime = null
+                                // Get time range
+                                let timeRange = ''
                                 if (nextAvailable.timeSlots && nextAvailable.timeSlots.length > 0) {
-                                  appointmentTime = nextAvailable.timeSlots[0]
+                                  const firstSlot = formatTime12Hour(nextAvailable.timeSlots[0])
+                                  const lastSlot = formatTime12Hour(nextAvailable.timeSlots[nextAvailable.timeSlots.length - 1])
+                                  timeRange = `${firstSlot} – ${lastSlot}`
                                 } else {
-                                  // Fallback to first enabled period's start time
+                                  // Fallback to first enabled period's time range
                                   const visitingHours = doctor.visitingHours || {}
                                   const periods = ['morning', 'afternoon', 'evening']
                                   for (const period of periods) {
                                     const periodHours = visitingHours[period]
-                                    if (periodHours?.enabled && periodHours.start) {
-                                      appointmentTime = periodHours.start
+                                    if (periodHours?.enabled && periodHours.start && periodHours.end) {
+                                      timeRange = `${formatTime12Hour(periodHours.start)} – ${formatTime12Hour(periodHours.end)}`
                                       break
                                     }
                                   }
                                 }
                                 
                                 return (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedDoctorForAppointment(doctor)
-                                      
-                                      // Pre-fill with next available date and time
-                                      setAppointmentForm(prev => ({
-                                        ...prev,
-                                        doctor: doctor._id,
-                                        appointmentDate: nextAvailable.date,
-                                        appointmentTime: appointmentTime || prev.appointmentTime || getDefaultAppointmentTime()
-                                      }))
-                                      
-                                      toast.success(`Appointment pre-filled for ${dayName}, ${formattedDate}${appointmentTime ? ` at ${formatTime12Hour(appointmentTime)}` : ''}`, {
-                                        duration: 3000
-                                      })
-                                      
-                                      // Scroll to appointment form
-                                      setTimeout(() => {
-                                        document.getElementById('schedule-appointment-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                                      }, 100)
-                                    }}
-                                    className="mb-3 w-full p-2.5 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 transition-all cursor-pointer text-left group"
-                                  >
-                                    <p className="text-xs font-semibold text-blue-900 mb-1">Next Available:</p>
-                                    <p className="text-xs text-blue-700 font-medium group-hover:text-blue-900">
+                                  <div className="mb-2 p-1.5 bg-blue-50 border-2 border-blue-200 rounded-lg">
+                                    <p className="text-xs font-bold text-blue-900 mb-0.5">Next Available:</p>
+                                    <p className="text-xs font-semibold text-blue-700 leading-tight">
                                       {dayName}, {formattedDate}
-                                      {nextAvailable.timeRange && ` | ${nextAvailable.timeRange}`}
+                                      {timeRange && ` | ${timeRange}`}
                                     </p>
-                                    <p className="text-[10px] text-blue-600 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      Click to book for this date
-                                    </p>
-                                  </button>
+                                  </div>
                                 )
                               } else {
                                 return (
-                                  <div className="mb-3 p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
-                                    <p className="text-xs text-orange-700 font-medium">
-                                      No upcoming availability found. Please check schedule settings.
+                                  <div className="mb-2 p-1.5 bg-orange-50 border-2 border-orange-200 rounded-lg">
+                                    <p className="text-xs font-medium text-orange-700">
+                                      No upcoming availability found
                                     </p>
                                   </div>
                                 )
                               }
                             })()}
 
-                            {/* Available Days */}
+                            {/* Available Days - Small Rounded Tags in Single Row */}
                             {availableDays.length > 0 && (
-                              <div className="mb-3 text-center">
-                                <p className="text-xs text-gray-600 mb-1">Available Days:</p>
+                              <div className="mb-2">
                                 <div className="flex flex-wrap justify-center gap-1">
                                   {availableDays.map(day => (
-                                    <span key={day} className="text-xs font-medium text-blue-600 px-1">
+                                    <span 
+                                      key={day} 
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200"
+                                    >
                                       {day}
                                     </span>
                                   ))}
@@ -4846,12 +5391,12 @@ const ReceptionistDashboard = () => {
                               </div>
                             )}
 
-                            {/* Time Slots Message */}
+                            {/* Warning Text - Subtle Orange */}
                             {!hasTimeSlots && isAvailable && (
-                              <p className="text-xs text-orange-600 text-center mb-3">No time slots configured</p>
+                              <p className="text-xs text-orange-600 text-center mb-2 font-medium">No time slots configured</p>
                             )}
 
-                            {/* Book Appointment Button */}
+                            {/* Book Appointment Button - Full Width, Rounded, Elevated Shadow */}
                             <button
                               onClick={() => {
                                 setSelectedDoctorForAppointment(doctor)
@@ -4923,14 +5468,85 @@ const ReceptionistDashboard = () => {
                                   document.getElementById('schedule-appointment-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
                                 }, 100)
                               }}
-                              className="w-full py-2.5 rounded-lg font-semibold text-sm transition bg-green-600 text-white hover:bg-green-700 shadow-md hover:shadow-lg"
+                              className="mt-auto w-full py-1.5 rounded-lg font-semibold text-xs transition-all duration-200 bg-green-600 text-white hover:bg-green-700 shadow-md hover:shadow-xl transform hover:scale-[1.02]"
                             >
                               Book Appointment
                             </button>
                           </div>
                         )
                       })}
-                    </div>
+                      </div>
+                      
+                      {/* Pagination */}
+                      {totalPages > 1 && (
+                        <div className="mt-6 bg-gray-50 px-6 py-4 border-t border-gray-200 rounded-lg">
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm text-gray-700">
+                              Showing <span className="font-semibold">{startIndex + 1}</span> to{' '}
+                              <span className="font-semibold">
+                                {Math.min(endIndex, totalDoctors)}
+                              </span>{' '}
+                              of <span className="font-semibold">{totalDoctors}</span> doctors
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  const newPage = availabilityPage - 1
+                                  setAvailabilityPage(newPage)
+                                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                                }}
+                                disabled={availabilityPage === 1}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                Previous
+                              </button>
+                              <div className="flex items-center gap-1">
+                                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                  let pageNum
+                                  if (totalPages <= 5) {
+                                    pageNum = i + 1
+                                  } else if (availabilityPage <= 3) {
+                                    pageNum = i + 1
+                                  } else if (availabilityPage >= totalPages - 2) {
+                                    pageNum = totalPages - 4 + i
+                                  } else {
+                                    pageNum = availabilityPage - 2 + i
+                                  }
+                                  
+                                  return (
+                                    <button
+                                      key={pageNum}
+                                      onClick={() => {
+                                        setAvailabilityPage(pageNum)
+                                        window.scrollTo({ top: 0, behavior: 'smooth' })
+                                      }}
+                                      className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                        availabilityPage === pageNum
+                                          ? 'bg-green-600 text-white'
+                                          : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      {pageNum}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const newPage = availabilityPage + 1
+                                  setAvailabilityPage(newPage)
+                                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                                }}
+                                disabled={availabilityPage >= totalPages}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                              >
+                                Next
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )
                 })()}
 
@@ -5931,6 +6547,261 @@ const ReceptionistDashboard = () => {
           </div>
         </div>
       )}
+
+        {/* Prescription Records Tab */}
+        {activeTab === 'prescriptions' && (
+          <div className="space-y-6 sm:space-y-8">
+            {/* Header - Matching login screen spacing proportions */}
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl shadow-lg border border-purple-100 p-6 sm:p-8">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6">
+                <div className="text-center sm:text-left">
+                  <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-2 flex items-center justify-center sm:justify-start gap-3">
+                    <svg className="w-7 h-7 sm:w-8 sm:h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Prescription Records
+                  </h2>
+                  <p className="text-sm sm:text-base text-gray-600 mt-2">View all prescriptions issued by doctors • Total: {prescriptionsPagination.total || 0} records</p>
+                </div>
+                
+                {/* Search Bar */}
+                <div className="relative max-w-md w-full sm:w-auto mx-auto sm:mx-0">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={prescriptionsSearch}
+                    onChange={(e) => setPrescriptionsSearch(e.target.value)}
+                    placeholder="Search by patient name, doctor, or diagnosis..."
+                    className="block w-full pl-10 pr-3 py-2.5 border border-purple-200 rounded-lg bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent shadow-sm transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Prescriptions Table */}
+            <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+              {loadingPrescriptions ? (
+                <div className="p-16 text-center">
+                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-purple-200 border-t-purple-600"></div>
+                  <p className="mt-4 text-gray-600 font-medium">Loading prescriptions...</p>
+                  <p className="text-sm text-gray-400 mt-2">Please wait while we fetch the data</p>
+                </div>
+              ) : prescriptions.length === 0 ? (
+                <div className="p-16 text-center">
+                  <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-purple-100 mb-4">
+                    <svg className="w-10 h-10 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <p className="mt-4 text-gray-700 font-semibold text-lg">No prescriptions found</p>
+                  <p className="text-sm text-gray-500 mt-2">
+                    {prescriptionsSearch.trim() 
+                      ? 'Try adjusting your search criteria'
+                      : 'Prescriptions will appear here once doctors mark patients as prescribed'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gradient-to-r from-purple-600 to-indigo-600">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Patient</th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Doctor</th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Visit Date</th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Diagnosis</th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Medicines</th>
+                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {prescriptions.map((patient, index) => (
+                          <tr key={patient._id} className={`hover:bg-gradient-to-r hover:from-purple-50 hover:to-indigo-50 transition-all duration-200 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-purple-400 to-indigo-500 flex items-center justify-center text-white font-bold text-sm mr-3">
+                                  {patient.fullName?.charAt(0)?.toUpperCase() || 'P'}
+                                </div>
+                                <div>
+                                  <div className="text-sm font-semibold text-gray-900">{patient.fullName}</div>
+                                  <div className="text-sm text-gray-500">{patient.mobileNumber}</div>
+                                  {patient.tokenNumber && (
+                                    <div className="text-xs text-purple-600 font-medium mt-0.5">Token: {patient.tokenNumber}</div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">
+                                  {patient.doctor?.fullName || 'N/A'}
+                                </div>
+                                {patient.doctor?.specialization && (
+                                  <div className="text-xs font-medium bg-gradient-to-r from-purple-100 to-indigo-100 text-purple-700 px-2.5 py-1 rounded-full inline-block mt-1.5 border border-purple-200 shadow-sm">
+                                    {patient.doctor.specialization}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">
+                                {new Date(patient.prescription?.createdAt || patient.registrationDate).toLocaleDateString('en-US', {
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric'
+                                })}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {new Date(patient.prescription?.createdAt || patient.registrationDate).toLocaleTimeString('en-US', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm font-medium text-gray-900 max-w-xs">
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-indigo-100 to-purple-100 text-indigo-800 border border-indigo-200 shadow-sm">
+                                  {patient.prescription?.diagnosis || 'N/A'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm text-gray-900">
+                                {patient.prescription?.medicines?.length > 0 ? (
+                                  <div className="space-y-1.5">
+                                    {patient.prescription.medicines.slice(0, 2).map((med, idx) => (
+                                      <div key={idx} className="text-xs bg-gray-50 px-2 py-1 rounded border border-gray-200">
+                                        <span className="font-medium text-gray-900">{med.name}</span>
+                                        {med.dosage && <span className="text-gray-600"> - {med.dosage}</span>}
+                                      </div>
+                                    ))}
+                                    {patient.prescription.medicines.length > 2 && (
+                                      <div className="text-xs text-purple-600 font-semibold bg-purple-50 px-2 py-1 rounded">
+                                        +{patient.prescription.medicines.length - 2} more medicine{patient.prescription.medicines.length - 2 > 1 ? 's' : ''}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-gray-400 italic">No medicines</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <div className="flex items-center gap-2">
+                                {patient.prescription?.pdfPath && getPDFUrl(patient.prescription.pdfPath) ? (
+                                  <>
+                                    <button
+                                      onClick={() => handleViewPrescription(patient)}
+                                      className="group relative p-2.5 text-purple-600 hover:text-white hover:bg-gradient-to-r hover:from-purple-600 hover:to-purple-700 rounded-lg transition-all duration-200 shadow-sm hover:shadow-lg transform hover:scale-105"
+                                      title="View PDF"
+                                    >
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                      <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                        View PDF
+                                      </span>
+                                    </button>
+                                    <button
+                                      onClick={() => handleDownloadPrescription(patient)}
+                                      className="group relative p-2.5 text-indigo-600 hover:text-white hover:bg-gradient-to-r hover:from-indigo-600 hover:to-indigo-700 rounded-lg transition-all duration-200 shadow-sm hover:shadow-lg transform hover:scale-105"
+                                      title="Download PDF"
+                                    >
+                                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                      </svg>
+                                      <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                        Download PDF
+                                      </span>
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span className="text-xs text-gray-400 italic px-2 py-1 bg-gray-50 rounded">No PDF</span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  {/* Pagination */}
+                  {prescriptionsPagination.pages > 1 && (
+                    <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-gray-700">
+                          Showing <span className="font-semibold">{(prescriptionsPagination.page - 1) * prescriptionsPagination.limit + 1}</span> to{' '}
+                          <span className="font-semibold">
+                            {Math.min(prescriptionsPagination.page * prescriptionsPagination.limit, prescriptionsPagination.total)}
+                          </span>{' '}
+                          of <span className="font-semibold">{prescriptionsPagination.total}</span> prescriptions
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              const newPage = prescriptionsPage - 1
+                              setPrescriptionsPage(newPage)
+                            }}
+                            disabled={prescriptionsPage === 1 || loadingPrescriptions}
+                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Previous
+                          </button>
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: Math.min(5, prescriptionsPagination.pages) }, (_, i) => {
+                              let pageNum
+                              if (prescriptionsPagination.pages <= 5) {
+                                pageNum = i + 1
+                              } else if (prescriptionsPage <= 3) {
+                                pageNum = i + 1
+                              } else if (prescriptionsPage >= prescriptionsPagination.pages - 2) {
+                                pageNum = prescriptionsPagination.pages - 4 + i
+                              } else {
+                                pageNum = prescriptionsPage - 2 + i
+                              }
+                              
+                              return (
+                                <button
+                                  key={pageNum}
+                                  onClick={() => {
+                                    setPrescriptionsPage(pageNum)
+                                  }}
+                                  className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                    prescriptionsPage === pageNum
+                                      ? 'bg-purple-600 text-white'
+                                      : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {pageNum}
+                                </button>
+                              )
+                            })}
+                          </div>
+                          <button
+                            onClick={() => {
+                              const newPage = prescriptionsPage + 1
+                              setPrescriptionsPage(newPage)
+                            }}
+                            disabled={prescriptionsPage >= prescriptionsPagination.pages || loadingPrescriptions}
+                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
       {/* Cancellation Success Modal */}
       {showCancelSuccess && cancelledAppointmentInfo && (

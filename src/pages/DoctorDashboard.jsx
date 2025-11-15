@@ -3805,11 +3805,19 @@ const DoctorDashboard = () => {
               <div>
                 <div className={`flex flex-col ${showInventoryPanel ? 'lg:flex-row lg:items-start lg:gap-6' : ''}`}>
                   <div className="flex-1">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-                      <label className="block text-sm font-medium text-gray-700">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
+                      <label className="block text-sm font-medium text-gray-700 whitespace-nowrap">
                         Prescribed Medicines *
                       </label>
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={addMedicineField}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm"
+                        >
+                          <span className="text-base">➕</span>
+                          Add Medicine
+                        </button>
                         <button
                           type="button"
                           onClick={() => setShowInventoryPanel((prev) => !prev)}
@@ -3828,14 +3836,6 @@ const DoctorDashboard = () => {
                               {selectedInventoryItems.length}
                             </span>
                           )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={addMedicineField}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm"
-                        >
-                          <span className="text-base">➕</span>
-                          Add Medicine
                         </button>
                       </div>
                     </div>
