@@ -390,6 +390,12 @@ const ReceptionistDashboard = () => {
   const [selectedDoctorForLimit, setSelectedDoctorForLimit] = useState(null)
   const [generatedToken, setGeneratedToken] = useState(null)
   const [formData, setFormData] = useState(getInitialFormData)
+  const [patientIdPreview, setPatientIdPreview] = useState('')
+  const [pidSearch, setPidSearch] = useState('')
+  const [pidResults, setPidResults] = useState([])
+  const [pidLoading, setPidLoading] = useState(false)
+  const [pidOpen, setPidOpen] = useState(false)
+  const pidBoxRef = useRef(null)
   const [emergencyFormData, setEmergencyFormData] = useState({
     fullName: '',
     age: '',
@@ -1303,6 +1309,65 @@ const ReceptionistDashboard = () => {
       return rest
     })
   }
+
+  // Preview Patient ID when name changes
+  useEffect(() => {
+    const controller = new AbortController()
+    const fetchNextId = async () => {
+      try {
+        if (!formData.fullName || formData.fullName.trim().length < 2) {
+          setPatientIdPreview('')
+          return
+        }
+        const res = await api.get('/patient/next-id', { signal: controller.signal })
+        if (res.data?.success && res.data?.patientId) {
+          setPatientIdPreview(res.data.patientId)
+        }
+      } catch {}
+    }
+    fetchNextId()
+    return () => controller.abort()
+  }, [formData.fullName])
+
+  // Debounced patient search for the Unique Patient ID box
+  useEffect(() => {
+    const controller = new AbortController()
+    if (!pidSearch || pidSearch.trim().length < 2) {
+      setPidResults([])
+      setPidLoading(false)
+      return
+    }
+    setPidLoading(true)
+    const t = setTimeout(async () => {
+      try {
+        const res = await api.get('/patient', {
+          params: { search: pidSearch.trim(), limit: 8, page: 1 },
+          signal: controller.signal
+        })
+        setPidResults(res.data?.data || [])
+      } catch {
+        setPidResults([])
+      } finally {
+        setPidLoading(false)
+      }
+    }, 350) // debounce 350ms
+
+    return () => {
+      controller.abort()
+      clearTimeout(t)
+    }
+  }, [pidSearch])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const onClick = (e) => {
+      if (pidBoxRef.current && !pidBoxRef.current.contains(e.target)) {
+        setPidOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [])
 
   // Smooth-scroll helper (350–450ms, ease-in-out)
   const scrollToElementSmooth = useCallback((element, duration = 400) => {
@@ -3797,6 +3862,96 @@ const ReceptionistDashboard = () => {
 
           <form onSubmit={handleSubmit} className="space-y-10">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Patient ID (auto-generated, read-only) - Professional UI */}
+              <div className="md:col-span-2" ref={pidBoxRef}>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50 px-4 sm:px-5 py-4 relative">
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-blue-600 text-white shadow-sm">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-700/80">Unique Patient ID</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            type="text"
+                            placeholder="Type patient name to preview ID"
+                            value={pidSearch}
+                            onChange={(e) => {
+                              setPidSearch(e.target.value)
+                              setPidOpen(true)
+                            }}
+                            onFocus={() => setPidOpen(true)}
+                            className="w-full px-3 py-2 rounded-md border border-blue-200 bg-white outline-none focus:ring-2 focus:ring-blue-400"
+                          />
+                          {/* Dropdown */}
+                          {pidOpen && (
+                            <div className="absolute z-20 mt-1 w-full rounded-md border border-blue-200 bg-white shadow-lg max-h-64 overflow-auto">
+                              {pidLoading && (
+                                <div className="px-3 py-2 text-sm text-slate-600">Searching...</div>
+                              )}
+                              {!pidLoading && pidResults.length === 0 && pidSearch.trim().length >= 2 && (
+                                <div className="px-3 py-2 text-sm text-slate-500">No matching patients. New ID will be assigned.</div>
+                              )}
+                              {!pidLoading && pidResults.map((p) => (
+                                <button
+                                  key={p._id}
+                                  type="button"
+                                  onClick={() => {
+                                    setPidSearch(p.fullName || '')
+                                    setFormData((prev) => ({ ...prev, fullName: p.fullName || '' }))
+                                    if (p.patientId) setPatientIdPreview(p.patientId)
+                                    // Open medical history immediately after selection
+                                    if (p._id) {
+                                      setMedicalHistoryPatientId(p._id)
+                                      setMedicalHistoryPatientName(p.fullName || 'Patient')
+                                      setMedicalHistoryPatientMobile(p.mobileNumber || '')
+                                      setShowMedicalHistoryModal(true)
+                                    }
+                                    setPidOpen(false)
+                                  }}
+                                  className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-sm font-semibold text-gray-800">{p.fullName}</span>
+                                    {p.patientId && (
+                                      <span className="text-xs font-mono px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">{p.patientId}</span>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-slate-500">{p.mobileNumber}</div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {patientIdPreview && (
+                          <div className="inline-flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white text-blue-700 font-mono text-sm font-bold border border-blue-200 shadow-sm">
+                              {patientIdPreview}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => navigator.clipboard?.writeText(patientIdPreview)}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors"
+                              title="Copy Patient ID"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h8a2 2 0 012 2v8m-6 0H7a2 2 0 01-2-2V7m10 10l4-4" />
+                              </svg>
+                              Copy
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    This ID is generated automatically and remains the same across Appointments, Doctor Dashboard, Records, and Prescriptions.
+                  </p>
+                </div>
+              </div>
               <div className="space-y-2">
                 <label className={getLabelClasses('fullName')}>
                   Full Name <span className="text-red-500">*</span>

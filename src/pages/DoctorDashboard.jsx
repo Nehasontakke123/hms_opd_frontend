@@ -475,7 +475,7 @@ const DoctorDashboard = () => {
     }
   }
 
-  const [activeTab, setActiveTab] = useState('today') // 'today', 'active', 'emergency', 'history', 'medical', or 'medicine'
+  const [activeTab, setActiveTab] = useState('active') // default to 'active' per user request
   const [patients, setPatients] = useState([])
   const [emergencyPatients, setEmergencyPatients] = useState([])
   const [patientHistory, setPatientHistory] = useState([])
@@ -1053,8 +1053,9 @@ const DoctorDashboard = () => {
       const nameMatch = patient.fullName?.toLowerCase().includes(q)
       const mobileMatch = patient.mobileNumber?.toLowerCase().includes(q)
       const tokenMatch = patient.tokenNumber?.toString().includes(q)
-      const issueMatch = patient.disease?.toLowerCase().includes(q)
-      return nameMatch || mobileMatch || tokenMatch || issueMatch
+      const patientIdMatch = patient.patientId?.toLowerCase().includes(q)
+      const issueMatch = patient.disease?.toLowerCase().includes(q) || patient?.prescription?.diagnosis?.toLowerCase().includes(q)
+      return nameMatch || mobileMatch || tokenMatch || patientIdMatch || issueMatch
     })
   }
 
@@ -2044,6 +2045,11 @@ const DoctorDashboard = () => {
                                           <p className="font-semibold text-gray-900 group-hover:text-purple-600 transition-colors truncate">
                                             {patient.fullName}
                                           </p>
+                                          {patient.patientId && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-[11px] font-semibold border border-blue-200">
+                                              {patient.patientId}
+                                            </span>
+                                          )}
                                           {isNew && (
                                             <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-bold">
                                               NEW
@@ -2161,6 +2167,35 @@ const DoctorDashboard = () => {
       <div className="max-w-7xl mx-auto px-4 pt-6">
         <div className="border-b border-gray-200">
           <nav className="flex space-x-8">
+            {/* Active Patients first */}
+            <button
+              onClick={() => {
+                setActiveTab('active')
+                // Auto-focus latest registered patient
+                try {
+                  if (patients && patients.length > 0) {
+                    const latest = [...patients].sort((a,b) => new Date(b.registrationDate) - new Date(a.registrationDate))[0]
+                    if (latest?._id) setActivePatientFilter(latest._id)
+                  }
+                } catch {}
+              }}
+              className={`py-4 px-1 border-b-2 font-medium text-sm relative ${
+                activeTab === 'active'
+                  ? 'border-purple-600 text-purple-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Active Patients
+              <span className="ml-2 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
+                {patients.length}
+              </span>
+              {activePatientFilter && (
+                <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-semibold animate-pulse">
+                  Active
+                </span>
+              )}
+            </button>
+            {/* Patients Today after */}
             <button
               onClick={() => {
                 setActiveTab('today')
@@ -2173,21 +2208,6 @@ const DoctorDashboard = () => {
               }`}
             >
               Patients Today
-            </button>
-            <button
-              onClick={() => setActiveTab('active')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm relative ${
-                activeTab === 'active'
-                  ? 'border-purple-600 text-purple-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Active Patients
-              {activePatientFilter && (
-                <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-semibold animate-pulse">
-                  Active
-                </span>
-              )}
             </button>
             <button
               onClick={() => setActiveTab('emergency')}
@@ -2391,9 +2411,14 @@ const DoctorDashboard = () => {
                                   >
                                     {formattedToken}
                                   </div>
-                                  <div className="space-y-2">
-                                    <div className="flex flex-wrap items-center gap-2">
+                                      <div className="space-y-2">
+                                      <div className="flex flex-wrap items-center gap-2">
                                       <p className="text-sm font-semibold text-slate-800">{patient.fullName}</p>
+                                      {patient.patientId && (
+                                        <span className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                          {patient.patientId}
+                                        </span>
+                                      )}
                                       <span className="text-xs text-slate-500">• {patient.age} yrs</span>
                                       <span className="inline-flex items-center gap-1 rounded-full border border-purple-100 bg-purple-50 px-2.5 py-0.5 text-[11px] font-semibold text-purple-600">
                                         Token #{formattedToken}
@@ -2713,7 +2738,17 @@ const DoctorDashboard = () => {
                                   </span>
                                 </div>
                                 <div>
-                                  <h4 className="text-2xl font-bold text-gray-900 mb-2">{patient.fullName}</h4>
+                                  <h4 className="text-2xl font-bold text-gray-900 mb-1">{patient.fullName}</h4>
+                                  {patient.patientId && (
+                                    <div className="mb-2">
+                                      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200">
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+                                        </svg>
+                                        {patient.patientId}
+                                      </span>
+                                    </div>
+                                  )}
                                   <div className="flex items-center gap-3 flex-wrap">
                                     <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 text-sm font-bold shadow-sm border border-purple-200">
                                       <span className="h-2.5 w-2.5 rounded-full bg-purple-500 animate-pulse"></span>
@@ -2973,6 +3008,11 @@ const DoctorDashboard = () => {
                               <div className="space-y-2">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="text-sm font-bold text-slate-800">{patient.fullName}</p>
+                                  {patient.patientId && (
+                                    <span className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                      {patient.patientId}
+                                    </span>
+                                  )}
                                   <span className="text-xs text-slate-500">• {patient.age} yrs</span>
                                   <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-100 px-2.5 py-0.5 text-[11px] font-bold text-red-700">
                                     <span className="h-1.5 w-1.5 rounded-full bg-red-600"></span>
