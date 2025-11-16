@@ -350,6 +350,8 @@ const ReceptionistDashboard = () => {
   const [appointmentsSearch, setAppointmentsSearch] = useState('')
   const [appointmentsSearchDebounced, setAppointmentsSearchDebounced] = useState('')
   const [doctorsSearch, setDoctorsSearch] = useState('')
+  const [showDoctorDrawer, setShowDoctorDrawer] = useState(false)
+  const [doctorForDrawer, setDoctorForDrawer] = useState(null)
   
   // Pagination for doctors (server-side)
   const [doctorsPage, setDoctorsPage] = useState(1)
@@ -512,6 +514,19 @@ const ReceptionistDashboard = () => {
       .filter(d => d.available)
       .map(d => d.label)
   }, [selectedAppointmentDoctor])
+
+  // Resolve doctor object for appointments (some APIs return only partial doctor without image)
+  const resolveAppointmentDoctor = useCallback((appointmentDoctor) => {
+    if (!appointmentDoctor) return null
+    // If string id, find in allDoctors
+    if (typeof appointmentDoctor === 'string') {
+      return allDoctors.find(d => d._id === appointmentDoctor) || null
+    }
+    // Try to enrich partial object with full doctor from cache
+    const doctorId = appointmentDoctor._id || appointmentDoctor.id
+    const full = doctorId ? allDoctors.find(d => d._id === doctorId) : null
+    return full ? { ...appointmentDoctor, ...full } : appointmentDoctor
+  }, [allDoctors])
   
   // Get available dates for the next 30 days based on doctor's weekly schedule
   const availableDates = useMemo(() => {
@@ -553,6 +568,20 @@ const ReceptionistDashboard = () => {
     
     return getAvailableTimeSlots(selectedAppointmentDoctor, appointmentForm.appointmentDate)
   }, [selectedAppointmentDoctor, appointmentForm.appointmentDate])
+
+  // Fallback first time from doctor's visiting hours when explicit slots are not configured
+  const fallbackStartTime = useMemo(() => {
+    if (!selectedAppointmentDoctor) return getDefaultAppointmentTime()
+    const visitingHours = selectedAppointmentDoctor.visitingHours || {}
+    const periods = ['morning', 'afternoon', 'evening']
+    for (const period of periods) {
+      const hours = visitingHours[period]
+      if (hours?.enabled && hours.start) {
+        return hours.start
+      }
+    }
+    return getDefaultAppointmentTime()
+  }, [selectedAppointmentDoctor])
 
   // Get next available dates when selected date is unavailable
   const nextAvailableDates = useMemo(() => {
@@ -1274,6 +1303,77 @@ const ReceptionistDashboard = () => {
       return rest
     })
   }
+
+  // Smooth-scroll helper (350–450ms, ease-in-out)
+  const scrollToElementSmooth = useCallback((element, duration = 400) => {
+    if (!element) return
+    const startY = window.pageYOffset
+    const targetY = element.getBoundingClientRect().top + window.pageYOffset
+    const distance = targetY - startY
+    const startTime = performance.now()
+    const easeInOut = (t) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t)
+    const step = (now) => {
+      const elapsed = now - startTime
+      const progress = Math.min(elapsed / duration, 1)
+      const eased = easeInOut(progress)
+      window.scrollTo(0, startY + distance * eased)
+      if (elapsed < duration) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }, [])
+
+  // Jump to the appointment form with doctor preselected (for 'Next Schedule')
+  const navigateToScheduleForDoctor = useCallback((doctor) => {
+    if (!doctor) return
+    // Ensure the Appointments tab (where the form lives) is visible
+    setActiveTab('appointments')
+    // preselect doctor and suggest reasonable date/time
+    let appointmentDate = null
+    let appointmentTime = null
+    // Always try to use the next available date for the doctor (true "Next Schedule")
+    const next = getNextAvailableDate(doctor)
+    if (next) {
+      appointmentDate = next.date
+      if (next.timeSlots && next.timeSlots.length > 0) {
+        appointmentTime = next.timeSlots[0]
+      } else {
+        const visitingHours = doctor.visitingHours || {}
+        for (const period of ['morning', 'afternoon', 'evening']) {
+          const h = visitingHours[period]
+          if (h?.enabled && h.start) { appointmentTime = h.start; break }
+        }
+      }
+    } else {
+      // Fallback to defaults if no schedule configured
+      appointmentDate = getDefaultAppointmentDate()
+      appointmentTime = getDefaultAppointmentTime()
+    }
+    setAppointmentForm((prev) => ({
+      ...prev,
+      doctor: doctor._id,
+      appointmentDate: appointmentDate || prev.appointmentDate || getDefaultAppointmentDate(),
+      appointmentTime: appointmentTime || prev.appointmentTime || getDefaultAppointmentTime()
+    }))
+
+    // Wait for the form to mount after switching tabs, then scroll
+    const tryScroll = (attempt = 0) => {
+      const formEl = document.getElementById('schedule-appointment-form')
+      if (formEl) {
+        scrollToElementSmooth(formEl, 400)
+        // subtle highlight on arrival
+        formEl.classList.add('ring-2', 'ring-blue-300', 'ring-offset-1')
+        setTimeout(() => {
+          formEl.classList.remove('ring-2', 'ring-blue-300', 'ring-offset-1')
+        }, 1200)
+        return
+      }
+      if (attempt < 10) {
+        requestAnimationFrame(() => tryScroll(attempt + 1))
+      }
+    }
+    // slight delay to allow tab switch render
+    setTimeout(() => tryScroll(), 50)
+  }, [appointmentForm.appointmentDate, appointmentForm.appointmentTime, scrollToElementSmooth, setActiveTab])
 
   // Scanner functions
   const startScanner = async () => {
@@ -2816,9 +2916,16 @@ const ReceptionistDashboard = () => {
           toast.info(`Time updated to ${formatTime12Hour(newTime)} based on doctor's availability`)
         }
       } else {
-        // No slots available, reset to default
-        newTime = getDefaultAppointmentTime()
-        toast.warning('No time slots configured for this date. Please configure visiting hours.')
+        // No slots available, fallback to first enabled visiting-hours start time (allows manual selection)
+        const visitingHours = currentDoctor?.visitingHours || {}
+        const periods = ['morning', 'afternoon', 'evening']
+        let fallback = null
+        for (const period of periods) {
+          const h = visitingHours[period]
+          if (h?.enabled && h.start) { fallback = h.start; break }
+        }
+        newTime = fallback || getDefaultAppointmentTime()
+        toast.warning('No time slots configured for this date. Using clinic start time; you can adjust manually.')
       }
       
       setAppointmentForm({
@@ -3540,6 +3647,25 @@ const ReceptionistDashboard = () => {
                         </button>
                       </div>
                       
+                      {/* Secondary action for unavailable doctors: one‑click scheduling */}
+                      {!isAvailable && (
+                        <div className="mt-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigateToScheduleForDoctor(doctor)
+                            }}
+                            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 border border-blue-200"
+                            title="Next Schedule"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                            </svg>
+                            <span>Next Schedule</span>
+                          </button>
+                        </div>
+                      )}
+
                       {/* Divider */}
                       <div className="border-t border-gray-200 my-2"></div>
 
@@ -5400,73 +5526,8 @@ const ReceptionistDashboard = () => {
                             <button
                               onClick={() => {
                                 setSelectedDoctorForAppointment(doctor)
-                                
-                                // Always get next available date and time for unavailable doctors
-                                let appointmentDate = null
-                                let appointmentTime = null
-                                
-                                if (!isAvailable) {
-                                  // For unavailable doctors, always use next available date
-                                  const nextAvailable = getNextAvailableDate(doctor)
-                                  if (nextAvailable) {
-                                    // Always set to next available date (format: YYYY-MM-DD)
-                                    appointmentDate = nextAvailable.date
-                                    
-                                    // Set time to first available slot of that day (format: HH:MM)
-                                    if (nextAvailable.timeSlots && nextAvailable.timeSlots.length > 0) {
-                                      // Use first time slot from available slots
-                                      appointmentTime = nextAvailable.timeSlots[0]
-                                    } else {
-                                      // Fallback: Use first enabled period's start time
-                                      const visitingHours = doctor.visitingHours || {}
-                                      const periods = ['morning', 'afternoon', 'evening']
-                                      for (const period of periods) {
-                                        const periodHours = visitingHours[period]
-                                        if (periodHours?.enabled && periodHours.start) {
-                                          appointmentTime = periodHours.start // Format: HH:MM
-                                          break
-                                        }
-                                      }
-                                    }
-                                    
-                                    const dayName = nextAvailable.dateObj.toLocaleDateString('en-US', { weekday: 'long' })
-                                    const formattedDate = nextAvailable.dateObj.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
-                                    const timeDisplay = appointmentTime ? formatTime12Hour(appointmentTime) : 'available time'
-                                    
-                                    toast.success(`Appointment pre-filled for ${dayName}, ${formattedDate} at ${timeDisplay}`, {
-                                      duration: 3000
-                                    })
-                                  } else {
-                                    toast.error('No available dates found for this doctor. Please contact admin.', {
-                                      duration: 4000
-                                    })
-                                    return // Don't proceed if no availability found
-                                  }
-                                } else {
-                                  // For available doctors, use default date if no date selected
-                                  if (!appointmentForm.appointmentDate) {
-                                    appointmentDate = getDefaultAppointmentDate()
-                                  }
-                                  // If no time selected, use default
-                                  if (!appointmentForm.appointmentTime) {
-                                    appointmentTime = getDefaultAppointmentTime()
-                                  }
-                                }
-                                
-                                // Update form with pre-filled values (editable fields)
-                                // Date format: YYYY-MM-DD (required by HTML date input)
-                                // Time format: HH:MM (required by HTML time input/select)
-                                setAppointmentForm(prev => ({ 
-                                  ...prev, 
-                                  doctor: doctor._id, // Pre-select doctor
-                                  appointmentDate: appointmentDate || prev.appointmentDate || getDefaultAppointmentDate(), // Auto-fill date (editable)
-                                  appointmentTime: appointmentTime || prev.appointmentTime || getDefaultAppointmentTime() // Auto-fill time (editable)
-                                }))
-                                
-                                // Scroll to appointment form
-                                setTimeout(() => {
-                                  document.getElementById('schedule-appointment-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                                }, 100)
+                                setDoctorForDrawer(doctor)
+                                setShowDoctorDrawer(true)
                               }}
                               className="mt-auto w-full py-1.5 rounded-lg font-semibold text-xs transition-all duration-200 bg-green-600 text-white hover:bg-green-700 shadow-md hover:shadow-xl transform hover:scale-[1.02]"
                             >
@@ -5751,14 +5812,13 @@ const ReceptionistDashboard = () => {
                               <input
                                 type="time"
                                 name="appointmentTime"
-                                value={appointmentForm.appointmentTime}
+                                value={appointmentForm.appointmentTime || fallbackStartTime}
                                 onChange={handleAppointmentChange}
                                 className="w-full px-4 py-2 border border-orange-300 bg-orange-50 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none"
                                 required
-                                disabled
                               />
-                              <p className="mt-1 text-xs text-red-600 font-medium">
-                                ⚠️ No time slots configured for this doctor on the selected date. Please configure visiting hours or select another date.
+                              <p className="mt-1 text-xs text-orange-600 font-medium">
+                                No fixed time slots configured for this date. You can choose any time. Suggested start: {formatTime12Hour(fallbackStartTime)}.
                               </p>
                             </>
                           )
@@ -6000,8 +6060,37 @@ const ReceptionistDashboard = () => {
                                     )}
                                   </td>
                                   <td className="px-6 py-4">
-                                    <div className="text-sm font-semibold text-slate-900">{appointment.doctor?.fullName || 'N/A'}</div>
-                                    <div className="text-xs text-slate-500">{appointment.doctor?.specialization || '—'}</div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (appointment.doctor) {
+                                          setDoctorForDrawer(appointment.doctor)
+                                          setShowDoctorDrawer(true)
+                                        }
+                                      }}
+                                      className="text-left"
+                                      title="View doctor profile"
+                                    >
+                                      {(() => { const doc = resolveAppointmentDoctor(appointment.doctor); return (
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-md border-2 border-white overflow-hidden">
+                                          {doc?.profileImage ? (
+                                            <img src={doc.profileImage} alt={doc?.fullName || 'Doctor'} className="w-full h-full object-cover" />
+                                          ) : (
+                                            <span>{(doc?.fullName || 'D').split(' ').map(p => p[0]).slice(0,2).join('').toUpperCase()}</span>
+                                          )}
+                                        </div>
+                                        <div>
+                                          <div className="text-sm font-semibold text-blue-700 hover:underline">
+                                            {doc?.fullName || 'N/A'}
+                                          </div>
+                                          <div className="text-xs text-slate-500">
+                                            {doc?.specialization || '—'}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      )})()}
+                                    </button>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap">
                                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium border border-emerald-200">
@@ -6152,8 +6241,37 @@ const ReceptionistDashboard = () => {
                                     )}
                                   </td>
                                   <td className="px-6 py-4 border-r border-slate-200">
-                                    <div className="text-sm font-semibold text-slate-900">{appointment.doctor?.fullName || 'N/A'}</div>
-                                    <div className="text-xs text-slate-500">{appointment.doctor?.specialization || '—'}</div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (appointment.doctor) {
+                                          setDoctorForDrawer(appointment.doctor)
+                                          setShowDoctorDrawer(true)
+                                        }
+                                      }}
+                                      className="text-left"
+                                      title="View doctor profile"
+                                    >
+                                      {(() => { const doc = resolveAppointmentDoctor(appointment.doctor); return (
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-md border-2 border-white overflow-hidden">
+                                          {doc?.profileImage ? (
+                                            <img src={doc.profileImage} alt={doc?.fullName || 'Doctor'} className="w-full h-full object-cover" />
+                                          ) : (
+                                            <span>{(doc?.fullName || 'D').split(' ').map(p => p[0]).slice(0,2).join('').toUpperCase()}</span>
+                                          )}
+                                        </div>
+                                        <div>
+                                          <div className="text-sm font-semibold text-blue-700 hover:underline">
+                                            {doc?.fullName || 'N/A'}
+                                          </div>
+                                          <div className="text-xs text-slate-500">
+                                            {doc?.specialization || '—'}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      )})()}
+                                    </button>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
                                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium border border-emerald-200">
@@ -6226,6 +6344,179 @@ const ReceptionistDashboard = () => {
           </div>
         )}
       </div>
+
+      {/* QR Code Payment Modal */}
+      {/* Doctor Profile Drawer (Slide-in from right) */}
+      {showDoctorDrawer && doctorForDrawer && (
+        <div className="fixed inset-0 z-50">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+            onClick={() => {
+              setShowDoctorDrawer(false)
+              setDoctorForDrawer(null)
+            }}
+          />
+          {/* Panel */}
+          <div className="absolute inset-y-0 right-0 w-full sm:w-[420px] md:w-[480px] bg-white shadow-2xl border-l border-slate-200 transform transition-transform duration-[280ms] ease-out translate-x-0">
+            <div className="h-full flex flex-col">
+              {/* Header */}
+              <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                <h3 className="text-xl font-bold text-slate-900">Doctor Profile</h3>
+                <button
+                  onClick={() => {
+                    setShowDoctorDrawer(false)
+                    setDoctorForDrawer(null)
+                  }}
+                  className="p-2 rounded-lg hover:bg-slate-100"
+                  aria-label="Close"
+                >
+                  <svg className="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto">
+                <div className="p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="w-20 h-20 rounded-full overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 text-xl">
+                      {doctorForDrawer.profileImage ? (
+                        <img src={doctorForDrawer.profileImage} alt={doctorForDrawer.fullName || 'Doctor'} className="w-full h-full object-cover" />
+                      ) : (
+                        <span>
+                          {(doctorForDrawer.fullName || 'DR').split(' ').map(p => p[0]).slice(0,2).join('').toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-2xl font-bold text-slate-900 truncate">{doctorForDrawer.fullName || 'Doctor'}</div>
+                      <div className="text-sm text-slate-600">
+                        {doctorForDrawer.specialization || 'Specialist'}
+                        {doctorForDrawer.degree ? ` • ${doctorForDrawer.degree}` : ''}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {doctorForDrawer.experience ? `${doctorForDrawer.experience} yrs experience` : null}
+                        {doctorForDrawer.experience && doctorForDrawer.fees ? ' • ' : ''}
+                        {doctorForDrawer.fees ? `Consultation: ₹${doctorForDrawer.fees}` : null}
+                      </div>
+                      {doctorForDrawer.languages?.length ? (
+                        <div className="mt-1 text-xs text-slate-500">Languages: {doctorForDrawer.languages.join(', ')}</div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* About */}
+                  {doctorForDrawer.bio && (
+                    <div className="mt-5">
+                      <h4 className="text-sm font-semibold text-slate-800 mb-1">About</h4>
+                      <p className="text-sm text-slate-600 leading-relaxed">{doctorForDrawer.bio}</p>
+                    </div>
+                  )}
+
+                  {/* Timings */}
+                  <div className="mt-5">
+                    <h4 className="text-sm font-semibold text-slate-800 mb-2">Clinic Timings</h4>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['morning','afternoon','evening'].map(period => {
+                        const hours = (doctorForDrawer.visitingHours || {})[period]
+                        const label = period.charAt(0).toUpperCase() + period.slice(1)
+                        return (
+                          <div key={period} className={`rounded-lg border p-2 text-center ${hours?.enabled ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
+                            <div className="text-xs font-semibold text-slate-700">{label}</div>
+                            <div className="text-xs text-slate-600">
+                              {hours?.enabled && hours.start && hours.end ? `${hours.start} - ${hours.end}` : '—'}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Weekly availability */}
+                  <div className="mt-5">
+                    <h4 className="text-sm font-semibold text-slate-800 mb-2">Weekly Availability</h4>
+                    <div className="grid grid-cols-7 gap-1">
+                      {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d, idx) => {
+                        const schedule = doctorForDrawer.weeklySchedule || {}
+                        const key = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][idx]
+                        const enabled = schedule[key] !== false
+                        return (
+                          <div key={d} className={`text-center text-xs font-semibold rounded-md px-2 py-1 border ${enabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+                            {d}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Reviews placeholder (optional) */}
+                  <div className="mt-5">
+                    <h4 className="text-sm font-semibold text-slate-800 mb-2">Patient Reviews</h4>
+                    <div className="text-xs text-slate-500">Reviews feature coming soon.</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-5 py-4 border-t border-slate-200 bg-white">
+                <button
+                  onClick={() => {
+                    const doctor = doctorForDrawer
+                    if (!doctor) return
+                    setSelectedDoctorForAppointment(doctor)
+
+                    // Pre-fill date/time similar to previous logic
+                    let appointmentDate = null
+                    let appointmentTime = null
+                    const isAvailable = (doctor.isAvailable !== false)
+
+                    if (!isAvailable) {
+                      const nextAvailable = getNextAvailableDate(doctor)
+                      if (nextAvailable) {
+                        appointmentDate = nextAvailable.date
+                        if (nextAvailable.timeSlots && nextAvailable.timeSlots.length > 0) {
+                          appointmentTime = nextAvailable.timeSlots[0]
+                        } else {
+                          const visitingHours = doctor.visitingHours || {}
+                          const periods = ['morning', 'afternoon', 'evening']
+                          for (const period of periods) {
+                            const periodHours = visitingHours[period]
+                            if (periodHours?.enabled && periodHours.start) {
+                              appointmentTime = periodHours.start
+                              break
+                            }
+                          }
+                        }
+                      }
+                    } else {
+                      if (!appointmentForm.appointmentDate) appointmentDate = getDefaultAppointmentDate()
+                      if (!appointmentForm.appointmentTime) appointmentTime = getDefaultAppointmentTime()
+                    }
+
+                    setAppointmentForm(prev => ({
+                      ...prev,
+                      doctor: doctor._id,
+                      appointmentDate: appointmentDate || prev.appointmentDate || getDefaultAppointmentDate(),
+                      appointmentTime: appointmentTime || prev.appointmentTime || getDefaultAppointmentTime()
+                    }))
+
+                    setShowDoctorDrawer(false)
+                    setDoctorForDrawer(null)
+                    setTimeout(() => {
+                      document.getElementById('schedule-appointment-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    }, 50)
+                  }}
+                  className="w-full bg-green-600 text-white py-2.5 rounded-lg font-semibold hover:bg-green-700 transition-colors duration-200"
+                >
+                  Continue to Appointment
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* QR Code Payment Modal */}
       {showQRModal && qrCodeData && (
