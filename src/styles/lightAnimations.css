@@ -1,0 +1,390 @@
+/* Light Color Animation Keyframes - Professional Medical Theme */
+
+/* Light Gradient Wave Animation */
+@keyframes lightGradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Light Shimmer Effect */
+@keyframes lightShimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+/* Light Pulse */
+@keyframes lightPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.02);
+    opacity: 0.95;
+  }
+}
+
+/* Light Float Animation */
+@keyframes lightFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Light Glow Animation */
+@keyframes lightGlow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(219, 234, 254, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(219, 234, 254, 0.5);
+  }
+}
+
+/* Light Background Blob */
+@keyframes lightBlob {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.1;
+  }
+  33% {
+    transform: translate(30px, -30px) scale(1.1);
+    opacity: 0.15;
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+    opacity: 0.12;
+  }
+}
+
+/* Light Color Wave Animations - Using Specified Light Color Palette */
+.light-gradient-bg {
+  background: linear-gradient(135deg, 
+    #e0f2fe 0%, 
+    #dbeafe 25%, 
+    #e9d5ff 50%, 
+    #f3e8ff 75%, 
+    #f0f9ff 100%);
+  background-size: 400% 400%;
+  animation: lightGradient 15s ease infinite;
+}
+
+.light-header {
+  background: linear-gradient(135deg, 
+    #dbeafe 0%, 
+    #e0f2fe 25%, 
+    #f0f9ff 50%, 
+    #e9d5ff 75%, 
+    #f3e8ff 100%);
+  background-size: 400% 400%;
+  animation: lightGradient 18s ease infinite;
+  position: relative;
+  overflow: hidden;
+}
+
+.light-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: lightShimmer 5s infinite;
+}
+
+.light-card {
+  background: linear-gradient(135deg, 
+    rgba(219, 234, 254, 0.4) 0%, 
+    rgba(224, 242, 254, 0.5) 25%, 
+    rgba(240, 249, 255, 0.5) 50%, 
+    rgba(233, 213, 255, 0.4) 75%, 
+    rgba(243, 232, 255, 0.3) 100%);
+  background-size: 400% 400%;
+  animation: lightGradient 20s ease infinite;
+}
+
+.light-badge {
+  background: linear-gradient(135deg, 
+    #dbeafe 0%, 
+    #e0f2fe 50%, 
+    #e9d5ff 100%);
+  background-size: 200% 200%;
+  animation: lightGradient 12s ease infinite;
+}
+
+.light-button {
+  background: linear-gradient(135deg, 
+    #93c5fd 0%, 
+    #a5b4fc 50%, 
+    #c4b5fd 100%);
+  background-size: 200% 200%;
+  animation: lightGradient 10s ease infinite;
+  transition: all 0.3s ease;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.light-button:hover {
+  animation: lightGradient 5s ease infinite;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(147, 197, 253, 0.4);
+}
+
+.light-button-danger {
+  background: linear-gradient(135deg, 
+    #fca5a5 0%, 
+    #f87171 50%, 
+    #ef4444 100%);
+  background-size: 200% 200%;
+  animation: lightGradient 10s ease infinite;
+  transition: all 0.3s ease;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.light-button-danger:hover {
+  animation: lightGradient 5s ease infinite;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(248, 113, 113, 0.4);
+}
+
+.light-profile {
+  background: linear-gradient(135deg, 
+    #dbeafe 0%, 
+    #e0f2fe 50%, 
+    #e9d5ff 100%);
+  background-size: 200% 200%;
+  animation: lightGradient 14s ease infinite;
+}
+
+.light-bg-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.light-bg-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, 
+    rgba(219, 234, 254, 0.3) 0%, 
+    rgba(224, 242, 254, 0.4) 25%, 
+    rgba(240, 249, 255, 0.4) 50%, 
+    rgba(233, 213, 255, 0.3) 75%, 
+    rgba(243, 232, 255, 0.2) 100%);
+  background-size: 400% 400%;
+  animation: lightGradient 25s ease infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.light-bg-container > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Light background blobs */
+.light-bg-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.15;
+  pointer-events: none;
+  background: linear-gradient(135deg, 
+    #dbeafe 0%, 
+    #e0f2fe 25%, 
+    #e9d5ff 50%, 
+    #f3e8ff 75%, 
+    #f0f9ff 100%);
+  background-size: 400% 400%;
+  animation: lightBlob 15s ease infinite;
+}
+
+/* Light pulse effect */
+.light-pulse {
+  animation: lightPulse 3s ease infinite;
+}
+
+/* Light float effect */
+.light-float {
+  animation: lightFloat 4s ease-in-out infinite;
+}
+
+/* Light glow effect */
+.light-glow {
+  animation: lightGlow 3s ease infinite;
+}
+
+/* Tab-specific light color themes */
+.tab-light-active {
+  background: linear-gradient(135deg, 
+    #dbeafe 0%, 
+    #e0f2fe 25%, 
+    #93c5fd 50%, 
+    #e0f2fe 75%, 
+    #dbeafe 100%);
+  background-size: 300% 300%;
+  animation: lightGradient 8s ease infinite;
+  color: #1e40af;
+  font-weight: 600;
+  position: relative;
+  overflow: hidden;
+}
+
+.tab-light-active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  animation: lightShimmer 3s infinite;
+}
+
+.tab-light-today {
+  background: linear-gradient(135deg, 
+    #e0f2fe 0%, 
+    #dbeafe 25%, 
+    #a5b4fc 50%, 
+    #e9d5ff 75%, 
+    #e0f2fe 100%);
+  background-size: 300% 300%;
+  animation: lightGradient 9s ease infinite;
+  color: #2563eb;
+  font-weight: 600;
+  position: relative;
+  overflow: hidden;
+}
+
+.tab-light-today::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  animation: lightShimmer 3.5s infinite;
+}
+
+.tab-light-emergency {
+  background: linear-gradient(135deg, 
+    #fee2e2 0%, 
+    #fecaca 25%, 
+    #fca5a5 50%, 
+    #f87171 75%, 
+    #fee2e2 100%);
+  background-size: 300% 300%;
+  animation: lightGradient 7s ease infinite;
+  color: #dc2626;
+  font-weight: 600;
+  position: relative;
+  overflow: hidden;
+}
+
+.tab-light-emergency::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: lightShimmer 2.5s infinite;
+}
+
+.tab-light-history {
+  background: linear-gradient(135deg, 
+    #d1fae5 0%, 
+    #a7f3d0 25%, 
+    #6ee7b7 50%, 
+    #34d399 75%, 
+    #d1fae5 100%);
+  background-size: 300% 300%;
+  animation: lightGradient 10s ease infinite;
+  color: #059669;
+  font-weight: 600;
+  position: relative;
+  overflow: hidden;
+}
+
+.tab-light-history::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  animation: lightShimmer 4s infinite;
+}
+
+.tab-light-medical {
+  background: linear-gradient(135deg, 
+    #e0f2fe 0%, 
+    #bae6fd 25%, 
+    #7dd3fc 50%, 
+    #38bdf8 75%, 
+    #e0f2fe 100%);
+  background-size: 300% 300%;
+  animation: lightGradient 9s ease infinite;
+  color: #0284c7;
+  font-weight: 600;
+  position: relative;
+  overflow: hidden;
+}
+
+.tab-light-medical::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  animation: lightShimmer 3.2s infinite;
+}
+
+.tab-light-medicine {
+  background: linear-gradient(135deg, 
+    #f3e8ff 0%, 
+    #e9d5ff 25%, 
+    #d8b4fe 50%, 
+    #c4b5fd 75%, 
+    #f3e8ff 100%);
+  background-size: 300% 300%;
+  animation: lightGradient 8.5s ease infinite;
+  color: #7c3aed;
+  font-weight: 600;
+  position: relative;
+  overflow: hidden;
+}
+
+.tab-light-medicine::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  animation: lightShimmer 3.8s infinite;
+}
+
+

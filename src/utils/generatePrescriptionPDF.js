@@ -14,6 +14,36 @@ const generatePrescriptionPDF = (patient, doctor, prescription) => {
   const TEXT_DARK = [31, 41, 55] // Dark text
   const SECTION_BG = [249, 250, 251] // Section background
   const TABLE_HEADER_BG = [243, 244, 246] // Table header background
+  const DEFAULT_DOCTOR_PHONE = '9359481880'
+
+  // Helper to sanitize printable text
+  const cleanText = (text) => {
+    if (!text) return text
+    let cleaned = String(text)
+    
+    // Remove all emoji ranges comprehensively
+    cleaned = cleaned
+      // Remove all emoji ranges
+      .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Miscellaneous Symbols and Pictographs
+      .replace(/[\u{1F600}-\u{1F64F}]/gu, '') // Emoticons
+      .replace(/[\u{1F680}-\u{1F6FF}]/gu, '') // Transport and Map Symbols
+      .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '') // Flags
+      .replace(/[\u{1F900}-\u{1F9FF}]/gu, '') // Supplemental Symbols and Pictographs
+      .replace(/[\u{2600}-\u{26FF}]/gu, '') // Miscellaneous Symbols
+      .replace(/[\u{2700}-\u{27BF}]/gu, '') // Dingbats
+      .replace(/[\u{FE00}-\u{FE0F}]/gu, '') // Variation Selectors
+      .replace(/[\u{200B}-\u{200D}]/gu, '') // Zero-width spaces and joiners
+      .replace(/[\u{2060}-\u{206F}]/gu, '') // Word joiners
+      .replace(/[\u{FEFF}]/gu, '') // Zero-width no-break space
+      // Remove any remaining non-ASCII characters (keep only ASCII printable)
+      .replace(/[^\x20-\x7E]/g, '')
+      // Remove any corrupted character sequences
+      .replace(/[Ø<B[\]]/g, '')
+      .replace(/[^\x20-\x7E]/g, '') // Final pass to ensure only ASCII
+      .trim()
+    
+    return cleaned
+  }
 
   // Page metrics - clean and compact
   const margin = 14
@@ -48,7 +78,20 @@ const generatePrescriptionPDF = (patient, doctor, prescription) => {
   const doctorCardW = totalCardWidth / 2
   const patientCardY = y
   const patientCardH = 45
-  const doctorCardH = 50 // Increased to accommodate qualification
+  const doctorCardY = patientCardY
+  const doctorFullName = doctor?.fullName ? cleanText(`Dr. ${doctor.fullName}`) : 'Doctor'
+  const doctorQualification = doctor?.qualification ? cleanText(doctor.qualification) : ''
+  const doctorSpecialization = doctor?.specialization ? cleanText(doctor.specialization) : ''
+  const doctorPhone = cleanText(doctor?.mobileNumber || DEFAULT_DOCTOR_PHONE)
+  const clinicAddressValue = doctor?.clinicAddress?.trim()
+    ? cleanText(doctor.clinicAddress)
+    : 'Clinic address not provided'
+  const doctorAddressLines = doc.splitTextToSize(clinicAddressValue, doctorCardW - 16)
+  let doctorCardH = 32 + doctorAddressLines.length * 5
+  if (doctorQualification) doctorCardH += 6
+  if (doctorSpecialization) doctorCardH += 6
+  if (doctorPhone) doctorCardH += 6
+  doctorCardH = Math.max(doctorCardH, 62)
   
   // Patient Details Card - Light Gray Background
   doc.setFillColor(...CARD_BG)
@@ -95,36 +138,51 @@ const generatePrescriptionPDF = (patient, doctor, prescription) => {
   doc.text('Doctor', doctorCardX + 8, patientCardY + 10)
   
   // Doctor information - clean layout
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
+  let doctorTextY = patientCardY + 20
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
   doc.setTextColor(...TEXT_DARK)
+  doc.text(doctorFullName, doctorCardX + 8, doctorTextY)
   
-  // Doctor name
-  doc.text(String(doctor.fullName || 'Doctor'), doctorCardX + 8, patientCardY + 20)
-  
-  // Doctor qualification (if available) - positioned between name and specialization
-  if (doctor?.qualification) {
-    doc.setFontSize(8)
+  if (doctorQualification) {
+    doctorTextY += 6
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
     doc.setTextColor(...TEXT_MEDIUM)
-    doc.text(String(doctor.qualification), doctorCardX + 8, patientCardY + 27)
-    
-    // Specialization below qualification
-    if (doctor?.specialization) {
-      doc.setFontSize(9)
-      doc.setTextColor(...TEXT_DARK)
-      doc.text(String(doctor.specialization), doctorCardX + 8, patientCardY + 35)
-    }
-  } else {
-    // If no qualification, show specialization at original position
-    if (doctor?.specialization) {
-      doc.setFontSize(9)
-      doc.setTextColor(...TEXT_DARK)
-      doc.text(String(doctor.specialization), doctorCardX + 8, patientCardY + 28)
-    }
+    doc.text(doctorQualification, doctorCardX + 8, doctorTextY)
   }
+  
+  if (doctorSpecialization) {
+    doctorTextY += 6
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...TEXT_DARK)
+    doc.text(doctorSpecialization, doctorCardX + 8, doctorTextY)
+  }
+  
+  if (doctorPhone) {
+    doctorTextY += 6
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...TEXT_DARK)
+    doc.text(`Mobile: ${doctorPhone}`, doctorCardX + 8, doctorTextY)
+  }
+  
+  // Clinic address
+  doctorTextY += 8
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8)
+  doc.setTextColor(...TEXT_MEDIUM)
+  doc.text('Clinic Address', doctorCardX + 8, doctorTextY)
+  doctorTextY += 5
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(...TEXT_DARK)
+  doc.text(doctorAddressLines, doctorCardX + 8, doctorTextY)
 
   // Diagnosis Section - Clean Design
-  y = patientCardY + patientCardH + sectionSpacing
+  const cardsBottom = Math.max(patientCardY + patientCardH, doctorCardY + doctorCardH)
+  y = cardsBottom + sectionSpacing
   
   // Exclamation mark icon (square with !)
   const iconSize = 8
@@ -142,35 +200,6 @@ const generatePrescriptionPDF = (patient, doctor, prescription) => {
   doc.setFont('helvetica', 'bold')
   doc.text('Diagnosis', margin + 12, y + 7)
   
-  // Helper function to clean text by removing emojis and problematic characters
-  const cleanText = (text) => {
-    if (!text) return text
-    let cleaned = String(text)
-    
-    // Remove all emoji ranges comprehensively
-    cleaned = cleaned
-      // Remove all emoji ranges
-      .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Miscellaneous Symbols and Pictographs
-      .replace(/[\u{1F600}-\u{1F64F}]/gu, '') // Emoticons
-      .replace(/[\u{1F680}-\u{1F6FF}]/gu, '') // Transport and Map Symbols
-      .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '') // Flags
-      .replace(/[\u{1F900}-\u{1F9FF}]/gu, '') // Supplemental Symbols and Pictographs
-      .replace(/[\u{2600}-\u{26FF}]/gu, '') // Miscellaneous Symbols
-      .replace(/[\u{2700}-\u{27BF}]/gu, '') // Dingbats
-      .replace(/[\u{FE00}-\u{FE0F}]/gu, '') // Variation Selectors
-      .replace(/[\u{200B}-\u{200D}]/gu, '') // Zero-width spaces and joiners
-      .replace(/[\u{2060}-\u{206F}]/gu, '') // Word joiners
-      .replace(/[\u{FEFF}]/gu, '') // Zero-width no-break space
-      // Remove any remaining non-ASCII characters (keep only ASCII printable)
-      .replace(/[^\x20-\x7E]/g, '')
-      // Remove any corrupted character sequences
-      .replace(/[Ø<B[\]]/g, '')
-      .replace(/[^\x20-\x7E]/g, '') // Final pass to ensure only ASCII
-      .trim()
-    
-    return cleaned
-  }
-
   // Diagnosis text
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)

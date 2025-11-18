@@ -19,7 +19,8 @@ const AdminDashboard = () => {
     specialization: '',
     qualification: '',
     fees: '',
-    mobileNumber: ''
+    mobileNumber: '',
+    clinicAddress: ''
   })
   const [viewMode, setViewMode] = useState('table')
   const [userSearch, setUserSearch] = useState('')
@@ -90,7 +91,8 @@ const AdminDashboard = () => {
         specialization: '',
         qualification: '',
         fees: '',
-        mobileNumber: ''
+        mobileNumber: '',
+        clinicAddress: ''
       })
       fetchUsers()
     } catch (error) {
@@ -108,7 +110,8 @@ const AdminDashboard = () => {
       specialization: user.specialization || '',
       qualification: user.qualification || '',
       fees: user.fees || '',
-      mobileNumber: user.mobileNumber || ''
+      mobileNumber: user.mobileNumber || '',
+      clinicAddress: user.clinicAddress || ''
     })
     setShowModal(true)
   }
@@ -903,7 +906,7 @@ const AdminDashboard = () => {
                           <table className="min-w-full">
                             <thead className="bg-slate-50">
                               <tr>
-                                {['Token','Patient','Age','Mobile','Issue','Fees','Status'].map((heading) => (
+                                {['Token','Patient','Patient ID','Age','Mobile','Issue','Fees','Status'].map((heading) => (
                                   <th key={heading} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">
                                     {heading}
                                   </th>
@@ -920,6 +923,18 @@ const AdminDashboard = () => {
                                   </td>
                                   <td className="px-5 py-3 text-sm font-medium text-slate-800">
                                     {patient.fullName}
+                                  </td>
+                                  <td className="px-5 py-3 text-sm">
+                                    {patient.patientId ? (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 text-xs font-bold border border-blue-200 shadow-sm">
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+                                        </svg>
+                                        {patient.patientId}
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-slate-400">—</span>
+                                    )}
                                   </td>
                                   <td className="px-5 py-3 text-sm text-slate-500">{patient.age}</td>
                                   <td className="px-5 py-3 text-sm text-slate-500">{patient.mobileNumber}</td>
@@ -1296,6 +1311,20 @@ const AdminDashboard = () => {
                       placeholder="500"
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Clinic / Hospital Address
+                    </label>
+                    <textarea
+                      name="clinicAddress"
+                      value={formData.clinicAddress}
+                      onChange={handleChange}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm resize-none"
+                      placeholder="Ward No. 3, Near City Hospital, Pune, Maharashtra 411001"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">Appears on patient prescriptions and PDFs.</p>
+                  </div>
                 </>
               )}
               
@@ -1333,7 +1362,8 @@ const AdminDashboard = () => {
                       specialization: '',
                       qualification: '',
                       fees: '',
-                      mobileNumber: ''
+                    mobileNumber: '',
+                    clinicAddress: ''
                     })
                   }}
                   className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition"

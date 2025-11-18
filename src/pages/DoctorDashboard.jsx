@@ -6,6 +6,7 @@ import generatePrescriptionPDF from '../utils/generatePrescriptionPDF'
 import PatientLimitModal from '../components/PatientLimitModal'
 import DoctorStatsNotification from '../components/DoctorStatsNotification'
 import MedicalHistoryModal from '../components/MedicalHistoryModal'
+import useVoiceRecognition from '../hooks/useVoiceRecognition'
 
 // Mapping of doctor specializations to diagnoses
 const SPECIALIZATION_DIAGNOSES = {
@@ -809,10 +810,15 @@ const DoctorDashboard = () => {
     setShowSearchSuggestions(false)
   }
 
-  const handleSuggestionClick = (suggestion) => {
-    setMedicineSearch(suggestion.name)
+  // Select from suggestions → fill input, search immediately, close dropdown
+  const handleSelectSuggestion = (name) => {
+    setMedicineSearch(name)
     setShowSearchSuggestions(false)
-    fetchMedicines(suggestion.name, medicineCategory)
+    fetchMedicines(name, medicineCategory) // bypass debounce for click
+  }
+
+  const handleSuggestionClick = (suggestion) => {
+    handleSelectSuggestion(suggestion.name)
   }
 
   const clearMedicineSearch = () => {
@@ -1170,6 +1176,48 @@ const DoctorDashboard = () => {
     })
   }
 
+  // ---------- Validation Helpers ----------
+  const [medicineErrors, setMedicineErrors] = useState([]) // per index: { name?, duration?, times? }
+
+  const isValidDuration = (value) => {
+    if (!value) return false
+    const v = value.toString().trim().toLowerCase()
+    // Accept "5", "5 days", "5 day"
+    if (/^\d+$/.test(v)) return true
+    if (/^\d+\s*(day|days)$/.test(v)) return true
+    return false
+  }
+
+  const hasAnyTime = (times) => {
+    const t = ensureTimesShape({ times })
+    return !!(t.morning || t.afternoon || t.night)
+  }
+
+  const validateMedicineAt = (index, medOverride) => {
+    const med = medOverride || prescriptionData.medicines[index] || {}
+    const errs = {}
+    if (!med.name || !med.name.trim()) errs.name = 'Medicine name is required.'
+    if (!isValidDuration(med.duration)) errs.duration = 'Enter duration like 5 or 5 days.'
+    if (!hasAnyTime(med.times)) errs.times = 'Select at least one time.'
+    setMedicineErrors((prev) => {
+      const next = [...prev]
+      next[index] = errs
+      return next
+    })
+    return Object.keys(errs).length === 0
+  }
+
+  const isFormValid = useMemo(() => {
+    if (!prescriptionData?.medicines?.length) return false
+    return prescriptionData.medicines.every((m, i) => {
+      const ok =
+        m?.name?.trim() &&
+        isValidDuration(m?.duration) &&
+        hasAnyTime(m?.times)
+      return !!ok
+    })
+  }, [prescriptionData])
+
   const fetchMedicineSuggestions = async (query, index) => {
     if (!query || query.trim().length < 2) {
       updateMedicineSuggestions(index, [])
@@ -1240,6 +1288,8 @@ const DoctorDashboard = () => {
 
     updatedMedicines[index] = target
     setPrescriptionData({ ...prescriptionData, medicines: updatedMedicines })
+    // Re-validate this row on changes
+    validateMedicineAt(index, target)
 
     if (field === 'name') {
       if (suggestionTimers.current[index]) {
@@ -1264,7 +1314,166 @@ const DoctorDashboard = () => {
     target.dosage = formatDosage(target.times, target.dosageNotes, target.dosageInstructions)
     updatedMedicines[index] = target
     setPrescriptionData({ ...prescriptionData, medicines: updatedMedicines })
+    validateMedicineAt(index, target)
   }
+
+  // ---------- Voice Recognition Utilities ----------
+  const [listeningMedicineIndex, setListeningMedicineIndex] = useState(null)
+  const [listeningDosageIndex, setListeningDosageIndex] = useState(null)
+  const [listeningNotesIndex, setListeningNotesIndex] = useState(null)
+  // Refs to avoid stale closures in voice callbacks
+  const listeningMedicineIndexRef = useRef(null)
+  const listeningDosageIndexRef = useRef(null)
+  const listeningNotesIndexRef = useRef(null)
+  useEffect(() => { listeningMedicineIndexRef.current = listeningMedicineIndex }, [listeningMedicineIndex])
+  useEffect(() => { listeningDosageIndexRef.current = listeningDosageIndex }, [listeningDosageIndex])
+  useEffect(() => { listeningNotesIndexRef.current = listeningNotesIndex }, [listeningNotesIndex])
+  const [autoSelectIfSingle, setAutoSelectIfSingle] = useState({})
+
+  const dosageFromSpeech = (spoken) => {
+    const t = (spoken || '').toLowerCase()
+    const hasMorning = t.includes('morning')
+    const hasAfternoon = t.includes('afternoon') || t.includes('noon')
+    const hasNight = t.includes('night') || t.includes('nite')
+    const allThree = t.includes('all three') || (hasMorning && hasAfternoon && hasNight)
+    // If "only" present, treat only mentioned; else select mentioned flags as spoken
+    const only = t.includes('only')
+    const flags = { morning: false, afternoon: false, night: false }
+    if (allThree) return { morning: true, afternoon: true, night: true }
+    if (hasMorning) flags.morning = true
+    if (hasAfternoon) flags.afternoon = true
+    if (hasNight) flags.night = true
+    if (!only && !hasMorning && !hasAfternoon && !hasNight) return flags
+    return flags
+  }
+
+  const applyDosageFlags = (index, flags) => {
+    const updated = [...prescriptionData.medicines]
+    const target = { ...updated[index] }
+    const existing = ensureTimesShape(target)
+    const merged = { ...existing, ...flags }
+    target.times = merged
+    target.dosage = formatDosage(merged, target.dosageNotes, target.dosageInstructions)
+    updated[index] = target
+    setPrescriptionData({ ...prescriptionData, medicines: updated })
+  }
+
+  const {
+    start: startMedicineVoice,
+    stop: stopMedicineVoice,
+    isSupported: isVoiceSupportedMedicine,
+  } = useVoiceRecognition({
+    onStart: () => { toast.dismiss(); toast.success('Listening…'); },
+    onEnd: () => { setListeningMedicineIndex(null); toast.dismiss(); },
+    onResult: (spoken) => {
+      const i = listeningMedicineIndexRef.current
+      if (i === null || i === undefined) return
+      // Clean transcript and insert into input
+      const cleaned = String(spoken || '')
+        .toLowerCase()
+        .replace(/\s+(tablet|tab|capsule|cap|syrup|dose|mg|milligram|ml)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+      // Update input value using the same handler as typing
+      handleMedicineChange(i, 'name', cleaned)
+
+      // Immediately trigger the same search API used by debounced typing
+      // This ensures instant results without waiting for debounce
+      fetchMedicineSuggestions(cleaned, i)
+
+      // Enable auto-select when only one suggestion arrives
+      setAutoSelectIfSingle(prev => ({ ...prev, [i]: true }))
+
+      // Stop listening to remove glow and restore placeholder quickly
+      try { stopMedicineVoice() } catch {}
+      setListeningMedicineIndex(null)
+    }
+  })
+
+  const {
+    start: startDosageVoice,
+    stop: stopDosageVoice,
+    isSupported: isVoiceSupportedDosage,
+  } = useVoiceRecognition({
+    onEnd: () => setListeningDosageIndex(null),
+    onResult: (spoken) => {
+      const i = listeningDosageIndexRef.current
+      if (i === null || i === undefined) return
+      const flags = dosageFromSpeech(spoken)
+      applyDosageFlags(i, flags)
+    }
+  })
+
+  const {
+    start: startNotesVoice,
+    stop: stopNotesVoice,
+    isSupported: isVoiceSupportedNotes,
+  } = useVoiceRecognition({
+    onEnd: () => setListeningNotesIndex(null),
+    onResult: (spoken) => {
+      const i = listeningNotesIndexRef.current
+      if (i === null || i === undefined) return
+      const current = prescriptionData.medicines[i]?.dosageNotes || ''
+      const appended = current ? `${current} ${spoken}` : spoken
+      handleMedicineChange(i, 'dosageNotes', appended)
+    }
+  })
+
+  // Auto-select single suggestion after voice search
+  useEffect(() => {
+    Object.keys(autoSelectIfSingle).forEach(k => {
+      const idx = parseInt(k)
+      if (autoSelectIfSingle[idx] && medicineSuggestions[idx] && medicineSuggestions[idx].length === 1) {
+        const suggestion = medicineSuggestions[idx][0]
+        handleMedicineChange(idx, 'name', suggestion, { skipLookup: true })
+        setAutoSelectIfSingle(prev => ({ ...prev, [idx]: false }))
+      }
+    })
+  }, [medicineSuggestions]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---------- Duration Voice ----------
+  const [listeningDurationIndex, setListeningDurationIndex] = useState(null)
+  const listeningDurationIndexRef = useRef(null)
+  useEffect(() => { listeningDurationIndexRef.current = listeningDurationIndex }, [listeningDurationIndex])
+
+  const wordsToNumber = (text) => {
+    const t = (text || '').toLowerCase().trim()
+    const digitMatch = t.match(/(\d+)/)
+    if (digitMatch) return parseInt(digitMatch[1], 10)
+    const map = {
+      zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
+      ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18, nineteen:19,
+      twenty:20, thirty:30
+    }
+    let total = 0
+    t.split(/[\s-]+/).forEach(w => {
+      if (map[w] !== undefined) total += map[w]
+    })
+    return total > 0 ? total : null
+  }
+
+  const {
+    start: startDurationVoice,
+    stop: stopDurationVoice,
+    isSupported: isVoiceSupportedDuration,
+  } = useVoiceRecognition({
+    onEnd: () => setListeningDurationIndex(null),
+    onResult: (spoken) => {
+      const i = listeningDurationIndexRef.current
+      if (i === null || i === undefined) return
+      const n = wordsToNumber(spoken)
+      if (n && Number.isFinite(n)) {
+        const formatted = `${n} days`
+        handleMedicineChange(i, 'duration', formatted)
+        validateMedicineAt(i)
+      } else {
+        toast.error('Could not detect a duration number')
+      }
+      try { stopDurationVoice() } catch {}
+      setListeningDurationIndex(null)
+    }
+  })
 
   const addMedicineField = () => {
     setPrescriptionData({
@@ -1350,15 +1559,14 @@ const DoctorDashboard = () => {
   }
 
   const handleSubmitPrescription = async () => {
-    // Validate medicines
-    const validMedicines = prescriptionData.medicines.filter(
-      med => med.name.trim() && med.dosage.trim() && med.duration.trim()
-    )
-
-    if (!prescriptionData.diagnosis.trim() || validMedicines.length === 0) {
-      toast.error('Please provide diagnosis and at least one complete medicine')
+    // Run strict validations
+    const results = prescriptionData.medicines.map((_, i) => validateMedicineAt(i))
+    const allValid = results.every(Boolean)
+    if (!allValid || !prescriptionData.diagnosis.trim()) {
+      toast.error('Please fix validation errors before saving.')
       return
     }
+    const validMedicines = prescriptionData.medicines.filter((_, i) => results[i])
 
     try {
       // First, generate PDF to get base64 data
@@ -1382,7 +1590,9 @@ const DoctorDashboard = () => {
         { 
           fullName: user.fullName, 
           specialization: user.specialization,
-          qualification: user.qualification 
+          qualification: user.qualification,
+          mobileNumber: user.mobileNumber,
+          clinicAddress: user.clinicAddress
         },
         tempPrescription
       )
@@ -2259,7 +2469,7 @@ const DoctorDashboard = () => {
               onClick={() => setActiveTab('medicine')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'medicine'
-                  ? 'border-green-600 text-green-600'
+                  ? 'border-purple-600 text-purple-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
@@ -2353,6 +2563,23 @@ const DoctorDashboard = () => {
 
                           // Check if patient is waiting (not completed and not in-progress)
                           const isWaiting = patient.status !== 'completed' && patient.status !== 'in-progress'
+                          const waitingStatusProps = isWaiting
+                            ? {
+                                role: 'button',
+                                tabIndex: 0,
+                                onClick: (event) => {
+                                  event.stopPropagation()
+                                  handleOpenPrescriptionModal(patient)
+                                },
+                                onKeyDown: (event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault()
+                                    event.stopPropagation()
+                                    handleOpenPrescriptionModal(patient)
+                                  }
+                                }
+                              }
+                            : {}
                           
                           // Handle row click - open prescription modal for Waiting status, otherwise open medical history
                           const handleRowClick = (event) => {
@@ -2508,12 +2735,13 @@ const DoctorDashboard = () => {
                                 <div className="md:col-span-1 flex flex-col gap-2">
                                   <span className="text-xs uppercase tracking-wide text-slate-400">Status</span>
                                   <span
+                                    {...waitingStatusProps}
                                     className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${
                                       patient.status === 'completed'
                                         ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
                                         : patient.status === 'in-progress'
                                         ? 'bg-amber-50 text-amber-600 border border-amber-100'
-                                        : 'bg-slate-50 text-slate-600 border border-slate-100'
+                                        : 'bg-slate-50 text-slate-600 border border-slate-100 cursor-pointer hover:border-purple-200 hover:bg-purple-50 focus:outline-none focus:ring-2 focus:ring-purple-200'
                                     }`}
                                   >
                                     {patient.status === 'completed'
@@ -2719,6 +2947,20 @@ const DoctorDashboard = () => {
                         patient.sugarLevel !== undefined && patient.sugarLevel !== null && patient.sugarLevel !== ''
                           ? `${patient.sugarLevel} mg/dL`
                           : 'N/A'
+                      const isWaitingStatus = patient.status !== 'completed' && patient.status !== 'in-progress'
+                      const waitingStatusProps = isWaitingStatus
+                        ? {
+                            role: 'button',
+                            tabIndex: 0,
+                            onClick: () => handleOpenPrescriptionModal(patient),
+                            onKeyDown: (event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                handleOpenPrescriptionModal(patient)
+                              }
+                            }
+                          }
+                        : {}
 
                       return (
                         <div
@@ -2856,12 +3098,14 @@ const DoctorDashboard = () => {
                                   </svg>
                                   Status
                                 </p>
-                                <span className={`inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold shadow-sm ${
+                                <span
+                                  {...waitingStatusProps}
+                                  className={`inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold shadow-sm ${
                                   patient.status === 'completed'
                                     ? 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 border-2 border-green-300'
                                     : patient.status === 'in-progress'
                                     ? 'bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-700 border-2 border-yellow-300'
-                                    : 'bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 border-2 border-purple-300'
+                                    : 'bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 border-2 border-purple-300 cursor-pointer hover:shadow-md focus:outline-none focus:ring-2 focus:ring-purple-300'
                                 }`}>
                                   <span className={`w-3 h-3 rounded-full shadow-sm ${
                                     patient.status === 'completed' ? 'bg-green-500'
@@ -3210,6 +3454,20 @@ const DoctorDashboard = () => {
                             hour: '2-digit',
                             minute: '2-digit'
                           })
+                          const isWaitingStatus = patient.status !== 'completed' && patient.status !== 'in-progress'
+                          const waitingStatusProps = isWaitingStatus
+                            ? {
+                                role: 'button',
+                                tabIndex: 0,
+                                onClick: () => handleOpenPrescriptionModal(patient),
+                                onKeyDown: (event) => {
+                                  if (event.key === 'Enter' || event.key === ' ') {
+                                    event.preventDefault()
+                                    handleOpenPrescriptionModal(patient)
+                                  }
+                                }
+                              }
+                            : {}
 
                           return (
                             <div
@@ -3243,6 +3501,11 @@ const DoctorDashboard = () => {
                                 <div className="md:col-span-3 space-y-2">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <p className="text-sm font-semibold text-slate-800">{patient.fullName}</p>
+                                    {patient.patientId && (
+                                      <span className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                        {patient.patientId}
+                                      </span>
+                                    )}
                                     <span className="text-xs text-slate-500">Age {patient.age}</span>
                                   </div>
                                   <p className="text-xs text-slate-500">Mobile: {patient.mobileNumber || '—'}</p>
@@ -3281,12 +3544,13 @@ const DoctorDashboard = () => {
                                 <div className="md:col-span-1 flex flex-col gap-2">
                                   <span className="text-xs uppercase tracking-wide text-slate-400">Status</span>
                                   <span
+                                    {...waitingStatusProps}
                                     className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold ${
                                       patient.status === 'completed'
                                         ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
                                         : patient.status === 'in-progress'
                                         ? 'bg-amber-50 text-amber-600 border border-amber-100'
-                                        : 'bg-slate-50 text-slate-600 border border-slate-100'
+                                        : 'bg-slate-50 text-slate-600 border border-slate-100 cursor-pointer hover:border-purple-200 hover:bg-purple-50 focus:outline-none focus:ring-2 focus:ring-purple-200'
                                     }`}
                                   >
                                     {patient.status === 'completed'
@@ -3392,7 +3656,7 @@ const DoctorDashboard = () => {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h2 className="text-2xl font-bold text-gray-800 mb-2 flex items-center gap-3">
-                  <span className="px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-semibold uppercase tracking-wide">💊</span>
+                  <span className="px-3 py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-semibold uppercase tracking-wide">💊</span>
                   <span>View Medicine</span>
                 </h2>
                 <p className="text-sm text-gray-500">Search medicines by name or composition in real-time</p>
@@ -3400,7 +3664,7 @@ const DoctorDashboard = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={exportMedicinesToExcel}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2 text-sm font-semibold"
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition flex items-center gap-2 text-sm font-semibold"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -3411,7 +3675,7 @@ const DoctorDashboard = () => {
             </div>
 
             {/* Search Section */}
-            <div className="bg-white rounded-2xl shadow-lg border border-green-100 p-6">
+            <div className="bg-white rounded-2xl shadow-lg border border-purple-100 p-6">
               <div className="space-y-4">
                 {/* Search Bar with Voice Search */}
                 <div className="relative">
@@ -3434,12 +3698,12 @@ const DoctorDashboard = () => {
                           setTimeout(() => setShowSearchSuggestions(false), 200)
                         }}
                         placeholder="Search by medicine name or composition..."
-                        className="w-full pl-12 pr-32 py-3 border-2 border-green-200 rounded-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition text-sm"
+                        className="w-full pl-12 pr-32 py-3 border-2 border-purple-200 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition text-sm"
                       />
                       {medicineSearch && (
                         <button
                           onClick={clearMedicineSearch}
-                          className="absolute right-24 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          className="search-clear-btn top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -3457,8 +3721,8 @@ const DoctorDashboard = () => {
                       onClick={isListening ? stopVoiceSearch : startVoiceSearch}
                       className={`px-4 py-3 rounded-xl font-semibold text-sm transition ${
                         isListening
-                          ? 'bg-red-500 text-white hover:bg-red-600'
-                          : 'bg-green-500 text-white hover:bg-green-600'
+                          ? 'bg-purple-700 text-white hover:bg-purple-800'
+                          : 'bg-purple-500 text-white hover:bg-purple-600'
                       }`}
                       title="Voice Search"
                     >
@@ -3470,15 +3734,15 @@ const DoctorDashboard = () => {
 
                   {/* Auto-suggestions Dropdown */}
                   {showSearchSuggestions && searchMedicineSuggestions.length > 0 && (
-                    <div className="absolute z-50 w-full mt-2 bg-white border-2 border-green-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                    <div className="absolute z-50 w-full mt-2 bg-white border-2 border-purple-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
                       {searchMedicineSuggestions.slice(0, 5).map((suggestion, idx) => (
                         <button
                           key={idx}
-                          onClick={() => handleSuggestionClick(suggestion)}
-                          className="w-full text-left px-4 py-3 hover:bg-green-50 transition border-b border-gray-100 last:border-b-0"
+                          onClick={() => handleSelectSuggestion(suggestion.name)}
+                          className="w-full text-left px-4 py-3 hover:bg-purple-50 transition border-b border-gray-100 last:border-b-0"
                         >
                           <div className="flex items-center gap-3">
-                            <span className="text-green-600">💊</span>
+                            <span className="text-purple-600">💊</span>
                             <div>
                               <p className="font-semibold text-gray-800">{suggestion.name}</p>
                               {suggestion.genericName && (
@@ -3498,7 +3762,7 @@ const DoctorDashboard = () => {
                   <select
                     value={medicineCategory}
                     onChange={(e) => setMedicineCategory(e.target.value)}
-                    className="px-4 py-2 border-2 border-green-200 rounded-lg focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none text-sm"
+                    className="px-4 py-2 border-2 border-purple-200 rounded-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none text-sm"
                   >
                     <option value="">All Categories</option>
                     <option value="Antibiotics">Antibiotics</option>
@@ -3515,12 +3779,12 @@ const DoctorDashboard = () => {
 
             {/* Results Section */}
             {loadingMedicines ? (
-              <div className="bg-white rounded-2xl shadow-lg border border-green-100 p-12 text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+              <div className="bg-white rounded-2xl shadow-lg border border-purple-100 p-12 text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
                 <p className="text-gray-500">Searching medicines...</p>
               </div>
             ) : medicines.length === 0 ? (
-              <div className="bg-white rounded-2xl shadow-lg border border-green-100 p-12 text-center">
+              <div className="bg-white rounded-2xl shadow-lg border border-purple-100 p-12 text-center">
                 <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -3532,10 +3796,10 @@ const DoctorDashboard = () => {
                 </p>
               </div>
             ) : (
-              <div className="bg-white rounded-2xl shadow-lg border border-green-100 overflow-hidden">
+              <div className="bg-white rounded-2xl shadow-lg border border-purple-100 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-gradient-to-r from-green-50 to-green-100">
+                    <thead className="bg-gradient-to-r from-purple-50 to-purple-100">
                       <tr>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">💊 Medicine</th>
                         <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">🧪 Composition</th>
@@ -3548,7 +3812,7 @@ const DoctorDashboard = () => {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                       {medicines.map((medicine) => (
-                        <tr key={medicine._id} className="hover:bg-green-50 transition">
+                        <tr key={medicine._id} className="hover:bg-purple-50 transition">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
                               <p className="text-sm font-semibold text-gray-900">{medicine.name}</p>
@@ -3561,7 +3825,7 @@ const DoctorDashboard = () => {
                             <p className="text-sm text-gray-700">{medicine.genericName || 'N/A'}</p>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <p className="text-sm font-semibold text-green-600">₹{medicine.price || 0}</p>
+                            <p className="text-sm font-semibold text-purple-600">₹{medicine.price || 0}</p>
                             {medicine.unit && (
                               <p className="text-xs text-gray-500">per {medicine.unit}</p>
                             )}
@@ -3579,7 +3843,7 @@ const DoctorDashboard = () => {
                               (medicine.stockQuantity || 0) <= (medicine.minStockLevel || 10)
                                 ? 'bg-red-100 text-red-800'
                                 : (medicine.stockQuantity || 0) > 0
-                                ? 'bg-green-100 text-green-800'
+                                ? 'bg-purple-100 text-purple-800'
                                 : 'bg-gray-100 text-gray-800'
                             }`}>
                               {medicine.stockQuantity || 0} {medicine.unit || 'units'}
@@ -3588,7 +3852,7 @@ const DoctorDashboard = () => {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <button
                               onClick={() => handleMedicineSelect(medicine)}
-                              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-semibold"
+                              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold"
                             >
                               View Details
                             </button>
@@ -3649,7 +3913,17 @@ const DoctorDashboard = () => {
                             ✓ Prescribed
                           </span>
                         </div>
-                        <h3 className="text-lg font-bold text-gray-800">{patient.fullName}</h3>
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <h3 className="text-lg font-bold text-gray-800">{patient.fullName}</h3>
+                          {patient.patientId && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200">
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+                              </svg>
+                              {patient.patientId}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-gray-600">
                           {patient.age} years • {patient.mobileNumber} • {patient.disease}
                         </p>
@@ -3885,14 +4159,38 @@ const DoctorDashboard = () => {
                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
                           <div className="lg:col-span-4">
                             <label className="block text-xs font-semibold text-gray-600 mb-1">Medicine</label>
-                            <div className="relative">
+                            <div className={`relative ${listeningMedicineIndex === index ? 'ring-2 ring-purple-300 rounded-lg' : ''}`}>
                               <input
                                 type="text"
-                                placeholder="Start typing to search..."
+                                placeholder={listeningMedicineIndex === index ? 'Listening…' : 'Start typing to search...'}
                                 value={medicine.name}
                                 onChange={(e) => handleMedicineChange(index, 'name', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
+                                className="w-full px-3 pr-11 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
                               />
+                              <button
+                                type="button"
+                                aria-label="Voice search medicine"
+                                onClick={() => {
+                                  if (!isVoiceSupportedMedicine) {
+                                    toast.error('Voice recognition not supported on this device.')
+                                    return
+                                  }
+                                  if (listeningMedicineIndex === index) {
+                                    stopMedicineVoice()
+                                    setListeningMedicineIndex(null)
+                                  } else {
+                                    // set state and ref before start to avoid stale index
+                                    setListeningMedicineIndex(index)
+                                    listeningMedicineIndexRef.current = index
+                                    startMedicineVoice()
+                                  }
+                                }}
+                                className={`mic-btn absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-full text-purple-600 hover:text-purple-700 hover:bg-purple-50 transition-colors ${listeningMedicineIndex === index ? 'bg-purple-100 pulsing' : 'bg-transparent'}`}
+                              >
+                                <svg className={`w-4 h-4 ${listeningMedicineIndex === index ? 'animate-pulse' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M12 14a3 3 0 003-3V7a3 3 0 10-6 0v4a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 0014 0h-2zM11 19.93V22h2v-2.07A8.001 8.001 0 0120 12h-2a6 6 0 11-12 0H4a8.001 8.001 0 017 7.93z"/>
+                                </svg>
+                              </button>
                               {loadingSuggestions[index] && (
                                 <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg p-3">
                                   <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -3917,23 +4215,80 @@ const DoctorDashboard = () => {
                                   ))}
                                 </div>
                               )}
+                              {medicineErrors[index]?.name && (
+                                <p className="text-xs text-red-600 mt-1 animate-fade-in">{medicineErrors[index].name}</p>
+                              )}
                             </div>
                           </div>
 
                           <div className="lg:col-span-3">
                             <label className="block text-xs font-semibold text-gray-600 mb-1">Duration</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. 5 days"
-                              value={medicine.duration}
-                              onChange={(e) => handleMedicineChange(index, 'duration', e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
-                            />
+                            <div className={`relative ${listeningDurationIndex === index ? 'ring-2 ring-purple-300 rounded-lg' : ''}`}>
+                              <input
+                                type="text"
+                                aria-label="Medicine duration"
+                                placeholder="e.g. 5 days"
+                                value={medicine.duration}
+                                onChange={(e) => handleMedicineChange(index, 'duration', e.target.value)}
+                                className={`w-full px-3 pr-11 py-2 border ${medicineErrors[index]?.duration ? 'border-red-400 shake-once' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm`}
+                              />
+                              <button
+                                type="button"
+                                aria-label="Voice input duration"
+                                title="Speak duration, e.g., 'five days'"
+                                onClick={() => {
+                                  if (!isVoiceSupportedDuration) {
+                                    toast.error('Voice recognition not supported on this device.')
+                                    return
+                                  }
+                                  if (listeningDurationIndex === index) {
+                                    stopDurationVoice()
+                                    setListeningDurationIndex(null)
+                                  } else {
+                                    setListeningDurationIndex(index)
+                                    listeningDurationIndexRef.current = index
+                                    startDurationVoice()
+                                  }
+                                }}
+                                className={`mic-btn absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-full text-purple-600 hover:text-purple-700 hover:bg-purple-50 transition-colors ${listeningDurationIndex === index ? 'bg-purple-100 pulsing' : 'bg-transparent'}`}
+                              >
+                                <svg className={`w-4 h-4 ${listeningDurationIndex === index ? 'animate-pulse' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M12 14a3 3 0 003-3V7a3 3 0 10-6 0v4a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 0014 0h-2zM11 19.93V22h2v-2.07A8.001 8.001 0 0120 12h-2a6 6 0 11-12 0H4a8.001 8.001 0 017 7.93z"/>
+                                </svg>
+                              </button>
+                            </div>
+                            {medicineErrors[index]?.duration && (
+                              <p className="text-xs text-red-600 mt-1 animate-fade-in">{medicineErrors[index].duration}</p>
+                            )}
+                            <p className="text-[11px] text-gray-400 mt-1">Speak duration, e.g., ‘five days’</p>
                           </div>
 
                           <div className="lg:col-span-5">
-                            <fieldset className="border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
+                            <fieldset className={`relative border border-gray-200 rounded-lg px-3 py-2 shadow-sm ${listeningDosageIndex === index ? 'ring-2 ring-purple-300' : ''}`}>
                               <legend className="text-xs font-semibold text-gray-500 px-1">Dosage Times</legend>
+                              <button
+                                type="button"
+                                aria-label="Voice select dosage times"
+                                onClick={() => {
+                                  if (!isVoiceSupportedDosage) {
+                                    toast.error('Voice recognition not supported on this device.')
+                                    return
+                                  }
+                                  if (listeningDosageIndex === index) {
+                                    stopDosageVoice()
+                                    setListeningDosageIndex(null)
+                                  } else {
+                                    setListeningDosageIndex(index)
+                                    listeningDosageIndexRef.current = index
+                                    startDosageVoice()
+                                  }
+                                }}
+                                className={`mic-btn absolute top-1.5 right-2 inline-flex items-center justify-center w-7 h-7 rounded-full text-purple-600 hover:text-purple-700 hover:bg-purple-50 transition-colors ${listeningDosageIndex === index ? 'bg-purple-100 pulsing' : 'bg-transparent'}`}
+                              >
+                                <svg className={`w-3.5 h-3.5 ${listeningDosageIndex === index ? 'animate-pulse' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                                  <path d="M12 14a3 3 0 003-3V7a3 3 0 10-6 0v4a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 0014 0h-2zM11 19.93V22h2v-2.07A8.001 8.001 0 0120 12h-2a6 6 0 11-12 0H4a8.001 8.001 0 017 7.93z"/>
+                                </svg>
+                              </button>
                               <div className="flex flex-wrap items-center gap-3 mb-3">
                                 {[
                                   { key: 'morning', label: 'Morning' },
@@ -3974,14 +4329,42 @@ const DoctorDashboard = () => {
                                   </select>
                                 </div>
                               </div>
+                              {medicineErrors[index]?.times && (
+                                <p className="text-xs text-red-600 mt-1 animate-fade-in">{medicineErrors[index].times}</p>
+                              )}
                               {/* Custom Instructions Input (optional) */}
-                              <input
-                                type="text"
-                                placeholder="Custom instructions (optional)"
-                                value={medicine.dosageNotes || ''}
-                                onChange={(e) => handleMedicineChange(index, 'dosageNotes', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm"
-                              />
+                              <div className={`relative ${listeningNotesIndex === index ? 'ring-2 ring-purple-300 rounded-lg' : ''}`}>
+                                <input
+                                  type="text"
+                                  placeholder="Custom instructions (optional)"
+                                  value={medicine.dosageNotes || ''}
+                                  onChange={(e) => handleMedicineChange(index, 'dosageNotes', e.target.value)}
+                                  className="w-full px-3 pr-11 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm"
+                                />
+                                <button
+                                  type="button"
+                                  aria-label="Voice input custom instructions"
+                                  onClick={() => {
+                                    if (!isVoiceSupportedNotes) {
+                                      toast.error('Voice recognition not supported on this device.')
+                                      return
+                                    }
+                                    if (listeningNotesIndex === index) {
+                                      stopNotesVoice()
+                                      setListeningNotesIndex(null)
+                                    } else {
+                                      setListeningNotesIndex(index)
+                                      listeningNotesIndexRef.current = index
+                                      startNotesVoice()
+                                    }
+                                  }}
+                                  className={`mic-btn absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-full text-purple-600 hover:text-purple-700 hover:bg-purple-50 transition-colors ${listeningNotesIndex === index ? 'bg-purple-100 pulsing' : 'bg-transparent'}`}
+                                >
+                                  <svg className={`w-4 h-4 ${listeningNotesIndex === index ? 'animate-pulse' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M12 14a3 3 0 003-3V7a3 3 0 10-6 0v4a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 0014 0h-2zM11 19.93V22h2v-2.07A8.001 8.001 0 0120 12h-2a6 6 0 11-12 0H4a8.001 8.001 0 017 7.93z"/>
+                                  </svg>
+                                </button>
+                              </div>
                             </fieldset>
                           </div>
                         </div>
@@ -4233,7 +4616,8 @@ const DoctorDashboard = () => {
             <div className="flex gap-3 mt-6">
               <button
                 onClick={handleSubmitPrescription}
-                className="flex-1 bg-purple-600 text-white py-3 rounded-lg font-semibold hover:bg-purple-700 transition"
+                disabled={!isFormValid}
+                className={`flex-1 py-3 rounded-lg font-semibold transition ${isFormValid ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-purple-300 text-white cursor-not-allowed'}`}
               >
                 Save & Generate PDF
               </button>
@@ -4473,13 +4857,13 @@ const DoctorDashboard = () => {
       {showMedicineModal && selectedMedicine && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-gradient-to-r from-green-600 to-green-700 text-white p-6 rounded-t-2xl flex items-center justify-between">
+            <div className="sticky top-0 bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-700 text-white p-6 rounded-t-2xl flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span className="text-3xl">💊</span>
                 <div>
                   <h3 className="text-2xl font-bold">{selectedMedicine.name}</h3>
                   {selectedMedicine.brandName && (
-                    <p className="text-green-100 text-sm">Brand: {selectedMedicine.brandName}</p>
+                    <p className="text-purple-100 text-sm">Brand: {selectedMedicine.brandName}</p>
                   )}
                 </div>
               </div>
@@ -4499,31 +4883,31 @@ const DoctorDashboard = () => {
             <div className="p-6 space-y-6">
               {/* Basic Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-green-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">🧪 Composition</p>
+                <div className="bg-purple-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-purple-700 uppercase mb-1">🧪 Composition</p>
                   <p className="text-gray-900 font-medium">{selectedMedicine.genericName || 'N/A'}</p>
                 </div>
-                <div className="bg-green-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">💰 Price</p>
+                <div className="bg-purple-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-purple-700 uppercase mb-1">💰 Price</p>
                   <p className="text-gray-900 font-medium">₹{selectedMedicine.price || 0} per {selectedMedicine.unit || 'unit'}</p>
                 </div>
-                <div className="bg-green-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">🕒 Dosage Frequency</p>
+                <div className="bg-purple-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-purple-700 uppercase mb-1">🕒 Dosage Frequency</p>
                   <p className="text-gray-900 font-medium">
                     {selectedMedicine.strength || 'N/A'} {selectedMedicine.form || ''}
                   </p>
                 </div>
-                <div className="bg-green-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">🏭 Manufacturer</p>
+                <div className="bg-purple-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-purple-700 uppercase mb-1">🏭 Manufacturer</p>
                   <p className="text-gray-900 font-medium">{selectedMedicine.manufacturer || 'N/A'}</p>
                 </div>
-                <div className="bg-green-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">📦 Stock Availability</p>
+                <div className="bg-purple-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-purple-700 uppercase mb-1">📦 Stock Availability</p>
                   <p className={`font-medium ${
                     (selectedMedicine.stockQuantity || 0) <= (selectedMedicine.minStockLevel || 10)
                       ? 'text-red-600'
                       : (selectedMedicine.stockQuantity || 0) > 0
-                      ? 'text-green-600'
+                      ? 'text-purple-600'
                       : 'text-gray-600'
                   }`}>
                     {selectedMedicine.stockQuantity || 0} {selectedMedicine.unit || 'units'}
@@ -4532,8 +4916,8 @@ const DoctorDashboard = () => {
                     )}
                   </p>
                 </div>
-                <div className="bg-green-50 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-green-700 uppercase mb-1">📋 Category</p>
+                <div className="bg-purple-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-purple-700 uppercase mb-1">📋 Category</p>
                   <p className="text-gray-900 font-medium">{selectedMedicine.category || 'N/A'}</p>
                 </div>
               </div>

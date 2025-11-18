@@ -398,7 +398,7 @@ const MedicalDashboard = () => {
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search by patient name or mobile..."
+                    placeholder="Search by name, mobile, or Patient ID (e.g., TH-PT-000245)..."
                     className="w-full sm:w-96 px-4 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-purple-500 outline-none bg-white"
                   />
                 </div>
@@ -409,7 +409,8 @@ const MedicalDashboard = () => {
                   if (!q) return true
                   return (
                     p.fullName?.toLowerCase().includes(q) ||
-                    p.mobileNumber?.toLowerCase().includes(q)
+                    p.mobileNumber?.toLowerCase().includes(q) ||
+                    p.patientId?.toLowerCase().includes(q)
                   )
                 })
                 .map((p, index) => {
@@ -424,6 +425,14 @@ const MedicalDashboard = () => {
                           <div>
                             <div className="flex flex-wrap items-center gap-3">
                               <h3 className="text-lg font-semibold text-gray-900">{p.fullName}</h3>
+                              {p.patientId && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 text-xs font-bold border border-blue-200 shadow-sm">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+                                  </svg>
+                                  {p.patientId}
+                                </span>
+                              )}
                               <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700 font-semibold">Token {p.tokenNumber}</span>
                               <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">Age {p.age}</span>
                             </div>

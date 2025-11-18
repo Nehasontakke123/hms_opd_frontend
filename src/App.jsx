@@ -11,6 +11,7 @@ import DoctorLogin from './pages/DoctorLogin'
 import DoctorDashboard from './pages/DoctorDashboard'
 import MedicalLogin from './pages/MedicalLogin'
 import MedicalDashboard from './pages/MedicalDashboard'
+import './styles/lightAnimations.css'
 
 function App() {
   return (

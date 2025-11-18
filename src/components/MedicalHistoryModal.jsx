@@ -246,7 +246,17 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
               {/* Patient Info Card */}
               {medicalHistory.patientInfo && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <h3 className="font-semibold text-blue-900 mb-2">Patient Information</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-blue-900">Patient Information</h3>
+                    {medicalHistory.patientInfo?.patientId && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 text-xs font-bold border border-blue-200 shadow-sm">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+                        </svg>
+                        {medicalHistory.patientInfo.patientId}
+                      </span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
                       <span className="text-gray-600">Name:</span>
