@@ -4821,15 +4821,19 @@ const ReceptionistDashboard = () => {
                                 </div>
                               </td>
                               <td className="px-6 py-4">
-                                <div className="text-sm font-semibold text-slate-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                                  <span>{patient.fullName}</span>
-                                  {patient.isRecheck && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold uppercase tracking-wide border border-purple-200">
-                                      🔄 Recheck-Up
-                                    </span>
-                                  )}
-                                  <span className="hidden sm:inline text-xs uppercase tracking-wide text-slate-400">•</span>
-                                  <span className="text-sm text-slate-600 font-normal">Age {patient.age}</span>
+                                <div className="text-sm font-semibold text-slate-900 flex flex-col gap-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span>{patient.fullName}</span>
+                                    {patient.isRecheck && (
+                                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-purple-200 bg-purple-50 text-xs font-semibold uppercase tracking-wide text-purple-700 shadow-sm whitespace-nowrap">
+                                        <svg className="w-3.5 h-3.5 text-purple-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 0112.538-5.303M19.5 12a7.5 7.5 0 01-12.538 5.303M16 8l1-3 3 1" />
+                                        </svg>
+                                        RECHECK-UP
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-sm font-normal text-slate-600">Age {patient.age || '—'}</span>
                                 </div>
                                 <p className="text-xs text-slate-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
                                 <div className="flex items-center gap-2 mt-1">
@@ -5130,15 +5134,19 @@ const ReceptionistDashboard = () => {
                                     </div>
                                   </td>
                                   <td className="px-6 py-4 border-r border-slate-200">
-                                    <div className="text-sm font-semibold text-slate-900 flex flex-col sm:flex-row sm:items-center sm:gap-2">
-                                      <span>{patient.fullName}</span>
-                                      {patient.isRecheck && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-xs font-semibold uppercase tracking-wide border border-purple-200">
-                                          🔄 Recheck-Up
-                                        </span>
-                                      )}
-                                      <span className="hidden sm:inline text-xs uppercase tracking-wide text-slate-400">•</span>
-                                      <span className="text-sm text-slate-600 font-normal">Age {patient.age}</span>
+                                    <div className="text-sm font-semibold text-slate-900 flex flex-col gap-1">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <span>{patient.fullName}</span>
+                                        {patient.isRecheck && (
+                                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full border border-purple-200 bg-purple-50 text-xs font-semibold uppercase tracking-wide text-purple-700 shadow-sm whitespace-nowrap">
+                                            <svg className="w-3.5 h-3.5 text-purple-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12a7.5 7.5 0 0112.538-5.303M19.5 12a7.5 7.5 0 01-12.538 5.303M16 8l1-3 3 1" />
+                                            </svg>
+                                            RECHECK-UP
+                                          </span>
+                                        )}
+                                      </div>
+                                      <span className="text-sm font-normal text-slate-600">Age {patient.age || '—'}</span>
                                     </div>
                                     <p className="text-xs text-slate-500 mt-1">Mobile: {patient.mobileNumber || '—'}</p>
                                     <div className="flex items-center gap-2 mt-1">
@@ -7117,61 +7125,68 @@ const ReceptionistDashboard = () => {
 
         {/* Prescription Records Tab */}
         {activeTab === 'prescriptions' && (
-          <div className="space-y-6 sm:space-y-8 max-w-7xl mx-auto">
-            {/* Header - Matching login screen spacing proportions */}
-            <div className="bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 rounded-2xl shadow-xl border border-green-100 ring-1 ring-green-100/50 p-6 sm:p-8">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6">
-                <div className="text-center sm:text-left space-y-2">
-                  <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-black flex items-center justify-center sm:justify-start gap-3">
-                    <span className="inline-flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-green-500 via-green-600 to-emerald-500 text-white shadow-lg shadow-green-200/60">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6">
+            {/* Minimal Header Card */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-lg border border-gray-200/60 shadow-sm p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                {/* Left Section - Title and Description */}
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-sm">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                    </span>
-                    <span>Prescription Records</span>
-                  </h2>
-                  <p className="text-sm sm:text-base text-gray-600">
-                    View all prescriptions issued by doctors • Total: {prescriptionsPagination.total || 0} records
-                  </p>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-0.5">
+                      Prescription Records
+                    </h2>
+                    <p className="text-sm text-gray-600">
+                      View all prescriptions issued by doctors • Total: <span className="text-gray-900 font-semibold">{prescriptionsPagination.total || 0} records</span>
+                    </p>
+                  </div>
                 </div>
                 
-                {/* Search Bar */}
-                <div className="relative max-w-md w-full sm:w-auto mx-auto sm:mx-0">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg className="h-5 w-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
+                {/* Right Section - Search Bar */}
+                <div className="flex-shrink-0 w-full sm:w-auto sm:max-w-xs">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                    <input
+                      type="text"
+                      value={prescriptionsSearch}
+                      onChange={(e) => setPrescriptionsSearch(e.target.value)}
+                      placeholder="Search by patient name..."
+                      className="block w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all duration-200"
+                    />
                   </div>
-                  <input
-                    type="text"
-                    value={prescriptionsSearch}
-                    onChange={(e) => setPrescriptionsSearch(e.target.value)}
-                    placeholder="Search by patient name, doctor, or diagnosis..."
-                    className="block w-full pl-11 pr-4 py-2.5 rounded-xl border border-white/70 bg-white/90 text-gray-900 placeholder-gray-500 shadow-lg shadow-green-200/50 focus:outline-none focus:ring-4 focus:ring-green-200 focus:border-green-400 transition-all"
-                  />
                 </div>
               </div>
             </div>
 
-            {/* Prescriptions Table */}
-            <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
+            {/* Professional Table Container */}
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-200/80 overflow-hidden">
               {loadingPrescriptions ? (
-                <div className="p-16 text-center">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-green-200 border-t-green-600"></div>
-                  <p className="mt-4 text-gray-600 font-medium">Loading prescriptions...</p>
-                  <p className="text-sm text-gray-400 mt-2">Please wait while we fetch the data</p>
+                <div className="p-20 text-center">
+                  <div className="inline-block animate-spin rounded-full h-14 w-14 border-4 border-green-200 border-t-green-600 mb-4"></div>
+                  <p className="text-gray-700 font-semibold text-lg">Loading prescriptions...</p>
+                  <p className="text-sm text-gray-500 mt-2">Please wait while we fetch the data</p>
                 </div>
               ) : prescriptions.length === 0 ? (
-                <div className="p-16 text-center">
-                  <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-4">
-                    <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="p-20 text-center">
+                  <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-gradient-to-br from-green-100 to-emerald-100 mb-6">
+                    <svg className="w-12 h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
-                  <p className="mt-4 text-gray-700 font-semibold text-lg">No prescriptions found</p>
-                  <p className="text-sm text-gray-500 mt-2">
+                  <p className="text-gray-800 font-bold text-xl mb-2">No prescriptions found</p>
+                  <p className="text-sm text-gray-500 max-w-md mx-auto">
                     {prescriptionsSearch.trim() 
-                      ? 'Try adjusting your search criteria'
+                      ? 'Try adjusting your search criteria or clear the search to see all records'
                       : 'Prescriptions will appear here once doctors mark patients as prescribed'}
                   </p>
                 </div>
@@ -7179,120 +7194,142 @@ const ReceptionistDashboard = () => {
                 <>
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gradient-to-r from-green-600 to-emerald-600">
+                      <thead className="bg-gradient-to-r from-green-600 via-green-600 to-emerald-600">
                         <tr>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Patient</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Doctor</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Visit Date</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Diagnosis</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Medicines</th>
-                          <th className="px-6 py-4 text-left text-xs font-bold text-white uppercase tracking-wider">Actions</th>
+                          <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">PATIENT</th>
+                          <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">DOCTOR</th>
+                          <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">VISIT DATE</th>
+                          <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">DIAGNOSIS</th>
+                          <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">MEDICINES</th>
+                          <th className="px-6 py-4 text-left text-xs font-black text-white uppercase tracking-wider">ACTIONS</th>
                         </tr>
                       </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
+                      <tbody className="bg-white divide-y divide-gray-100">
                         {prescriptions.map((patient, index) => (
-                          <tr key={patient._id} className={`hover:bg-gradient-to-r hover:from-green-50 hover:to-emerald-50 transition-all duration-200 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center text-white font-bold text-sm mr-3">
+                          <tr 
+                            key={patient._id} 
+                            className={`group transition-all duration-200 ${
+                              index % 2 === 0 
+                                ? 'bg-white hover:bg-green-50/50' 
+                                : 'bg-gray-50/50 hover:bg-green-50/50'
+                            }`}
+                          >
+                            {/* Patient Column */}
+                            <td className="px-6 py-5 whitespace-nowrap">
+                              <div className="flex items-center gap-3">
+                                <div className="flex-shrink-0 h-12 w-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center text-white font-bold text-base shadow-md ring-2 ring-green-100">
                                   {patient.fullName?.charAt(0)?.toUpperCase() || 'P'}
                                 </div>
-                                <div>
-                                  <div className="text-sm font-semibold text-gray-900">{patient.fullName}</div>
-                                  <div className="text-sm text-gray-500">{patient.mobileNumber}</div>
+                                <div className="min-w-0">
+                                  <div className="text-sm font-bold text-gray-900 truncate">{patient.fullName}</div>
+                                  <div className="text-xs text-gray-600 mt-0.5">{patient.mobileNumber}</div>
                                   {patient.tokenNumber && (
-                                    <div className="text-xs text-green-600 font-medium mt-0.5">Token: {patient.tokenNumber}</div>
+                                    <div className="text-xs text-green-600 font-bold mt-1">Token: {patient.tokenNumber}</div>
                                   )}
                                 </div>
                               </div>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
+                            
+                            {/* Doctor Column */}
+                            <td className="px-6 py-5 whitespace-nowrap">
                               <div>
-                                <div className="text-sm font-semibold text-gray-900">
+                                <div className="text-sm font-bold text-gray-900">
                                   {patient.doctor?.fullName || 'N/A'}
                                 </div>
                                 {patient.doctor?.specialization && (
-                                  <div className="text-xs font-medium bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 px-2.5 py-1 rounded-full inline-block mt-1.5 border border-green-200 shadow-sm">
+                                  <span className="inline-flex items-center px-3 py-1 mt-2 rounded-full text-xs font-bold bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 border border-green-200 shadow-sm">
                                     {patient.doctor.specialization}
-                                  </div>
+                                  </span>
                                 )}
                               </div>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-gray-900">
-                                {new Date(patient.prescription?.createdAt || patient.registrationDate).toLocaleDateString('en-US', {
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric'
-                                })}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {new Date(patient.prescription?.createdAt || patient.registrationDate).toLocaleTimeString('en-US', {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
+                            
+                            {/* Visit Date Column */}
+                            <td className="px-6 py-5 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm font-semibold text-gray-900">
+                                  {new Date(patient.prescription?.createdAt || patient.registrationDate).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric'
+                                  })}
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  {new Date(patient.prescription?.createdAt || patient.registrationDate).toLocaleTimeString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </div>
                               </div>
                             </td>
-                            <td className="px-6 py-4">
-                              <div className="text-sm font-medium text-gray-900 max-w-xs">
-                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 border border-green-200 shadow-sm">
+                            
+                            {/* Diagnosis Column */}
+                            <td className="px-6 py-5">
+                              <div className="max-w-xs">
+                                <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 border border-green-200 shadow-sm">
                                   {patient.prescription?.diagnosis || 'N/A'}
                                 </span>
                               </div>
                             </td>
-                            <td className="px-6 py-4">
-                              <div className="text-sm text-gray-900">
+                            
+                            {/* Medicines Column */}
+                            <td className="px-6 py-5">
+                              <div className="max-w-md">
                                 {patient.prescription?.medicines?.length > 0 ? (
-                                  <div className="space-y-1.5">
-                                    {patient.prescription.medicines.slice(0, 2).map((med, idx) => (
-                                      <div key={idx} className="text-xs bg-gray-50 px-2 py-1 rounded border border-gray-200">
-                                        <span className="font-medium text-gray-900">{med.name}</span>
-                                        {med.dosage && <span className="text-gray-600"> - {med.dosage}</span>}
+                                  <div className="space-y-2">
+                                    {patient.prescription.medicines.map((med, idx) => (
+                                      <div key={idx} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs">
+                                        <div className="font-bold text-gray-900 mb-1">{med.name}</div>
+                                        {med.dosage && (
+                                          <div className="text-gray-700 space-y-0.5">
+                                            <div className="font-medium text-green-700">{med.dosage}</div>
+                                            {med.duration && (
+                                              <div className="text-gray-600">Duration: {med.duration}</div>
+                                            )}
+                                          </div>
+                                        )}
                                       </div>
                                     ))}
-                                    {patient.prescription.medicines.length > 2 && (
-                                      <div className="text-xs text-green-600 font-semibold bg-green-50 px-2 py-1 rounded">
-                                        +{patient.prescription.medicines.length - 2} more medicine{patient.prescription.medicines.length - 2 > 1 ? 's' : ''}
-                                      </div>
-                                    )}
                                   </div>
                                 ) : (
                                   <span className="text-xs text-gray-400 italic">No medicines</span>
                                 )}
                               </div>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            
+                            {/* Actions Column */}
+                            <td className="px-6 py-5 whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 {patient.prescription?.pdfPath && getPDFUrl(patient.prescription.pdfPath) ? (
                                   <>
                                     <button
                                       onClick={() => handleViewPrescription(patient)}
-                                      className="group relative p-2.5 text-green-600 hover:text-white hover:bg-gradient-to-r hover:from-green-600 hover:to-green-700 rounded-lg transition-all duration-200 shadow-sm hover:shadow-lg transform hover:scale-105"
+                                      className="group relative p-3 text-green-600 hover:text-white hover:bg-gradient-to-r hover:from-green-600 hover:to-green-700 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-110 active:scale-95"
                                       title="View PDF"
                                     >
                                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                       </svg>
-                                      <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                      <span className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded-md px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
                                         View PDF
                                       </span>
                                     </button>
                                     <button
                                       onClick={() => handleDownloadPrescription(patient)}
-                                      className="group relative p-2.5 text-emerald-600 hover:text-white hover:bg-gradient-to-r hover:from-emerald-600 hover:to-emerald-700 rounded-lg transition-all duration-200 shadow-sm hover:shadow-lg transform hover:scale-105"
+                                      className="group relative p-3 text-emerald-600 hover:text-white hover:bg-gradient-to-r hover:from-emerald-600 hover:to-emerald-700 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-110 active:scale-95"
                                       title="Download PDF"
                                     >
                                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                       </svg>
-                                      <span className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                      <span className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded-md px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
                                         Download PDF
                                       </span>
                                     </button>
                                   </>
                                 ) : (
-                                  <span className="text-xs text-gray-400 italic px-2 py-1 bg-gray-50 rounded">No PDF</span>
+                                  <span className="text-xs text-gray-400 italic px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">No PDF</span>
                                 )}
                               </div>
                             </td>
@@ -7302,16 +7339,16 @@ const ReceptionistDashboard = () => {
                     </table>
                   </div>
                   
-                  {/* Pagination */}
+                  {/* Enhanced Pagination */}
                   {prescriptionsPagination.pages > 1 && (
-                    <div className="bg-gray-50 px-6 py-4 border-t border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm text-gray-700">
-                          Showing <span className="font-semibold">{(prescriptionsPagination.page - 1) * prescriptionsPagination.limit + 1}</span> to{' '}
-                          <span className="font-semibold">
+                    <div className="bg-gradient-to-r from-gray-50 to-green-50/30 px-6 py-5 border-t border-gray-200">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="text-sm text-gray-700 font-medium">
+                          Showing <span className="font-bold text-gray-900">{(prescriptionsPagination.page - 1) * prescriptionsPagination.limit + 1}</span> to{' '}
+                          <span className="font-bold text-gray-900">
                             {Math.min(prescriptionsPagination.page * prescriptionsPagination.limit, prescriptionsPagination.total)}
                           </span>{' '}
-                          of <span className="font-semibold">{prescriptionsPagination.total}</span> prescriptions
+                          of <span className="font-bold text-green-700">{prescriptionsPagination.total}</span> prescriptions
                         </div>
                         <div className="flex items-center gap-2">
                           <button
@@ -7320,11 +7357,11 @@ const ReceptionistDashboard = () => {
                               setPrescriptionsPage(newPage)
                             }}
                             disabled={prescriptionsPage === 1 || loadingPrescriptions}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="px-4 py-2.5 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 hover:border-green-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
                           >
                             Previous
                           </button>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1.5">
                             {Array.from({ length: Math.min(5, prescriptionsPagination.pages) }, (_, i) => {
                               let pageNum
                               if (prescriptionsPagination.pages <= 5) {
@@ -7343,10 +7380,10 @@ const ReceptionistDashboard = () => {
                                   onClick={() => {
                                     setPrescriptionsPage(pageNum)
                                   }}
-                                  className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                  className={`px-4 py-2.5 text-sm font-bold rounded-lg transition-all duration-200 shadow-sm ${
                                     prescriptionsPage === pageNum
-                                      ? 'bg-purple-600 text-white'
-                                      : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                                      ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white shadow-md scale-105'
+                                      : 'text-gray-700 bg-white border-2 border-gray-300 hover:bg-gray-50 hover:border-green-400 hover:shadow-md'
                                   }`}
                                 >
                                   {pageNum}
@@ -7360,7 +7397,7 @@ const ReceptionistDashboard = () => {
                               setPrescriptionsPage(newPage)
                             }}
                             disabled={prescriptionsPage >= prescriptionsPagination.pages || loadingPrescriptions}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            className="px-4 py-2.5 text-sm font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-lg hover:bg-gray-50 hover:border-green-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md"
                           >
                             Next
                           </button>

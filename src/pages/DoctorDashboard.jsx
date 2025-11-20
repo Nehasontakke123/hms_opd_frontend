@@ -494,6 +494,7 @@ const DoctorDashboard = () => {
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [showStatsNotification, setShowStatsNotification] = useState(true)
+  const [showCompletedPatientsPanel, setShowCompletedPatientsPanel] = useState(false)
   const [doctorStats, setDoctorStats] = useState(null)
   const [searchToday, setSearchToday] = useState('')
   const [searchHistory, setSearchHistory] = useState('')
@@ -521,6 +522,7 @@ const DoctorDashboard = () => {
   const [historyPage, setHistoryPage] = useState(1)
   const [prescriptionData, setPrescriptionData] = useState({
     diagnosis: '',
+    diagnosisNotes: '',
     medicines: [{
       name: '',
       dosage: '',
@@ -530,7 +532,7 @@ const DoctorDashboard = () => {
       dosageInstructions: ''
     }],
     notes: '',
-    selectedTest: ''
+    selectedTests: []
   })
   const [medicineSuggestions, setMedicineSuggestions] = useState([[]])
   const [loadingSuggestions, setLoadingSuggestions] = useState({})
@@ -543,7 +545,186 @@ const DoctorDashboard = () => {
   const [medicalHistoryPatientId, setMedicalHistoryPatientId] = useState(null)
   const [medicalHistoryPatientName, setMedicalHistoryPatientName] = useState(null)
   const [medicalHistoryPatientMobile, setMedicalHistoryPatientMobile] = useState(null)
+  const [medicalHistoryIsRecheck, setMedicalHistoryIsRecheck] = useState(false)
+  const [medicalHistoryCurrentPatient, setMedicalHistoryCurrentPatient] = useState(null)
+  const [patientInlineHistory, setPatientInlineHistory] = useState({})
+  const [patientInlineHistoryLoading, setPatientInlineHistoryLoading] = useState({})
   const todaysPatientsRef = useRef(null)
+  const testInputRef = useRef(null)
+
+  const completedPatients = useMemo(
+    () => patients.filter((patient) => patient.status === 'completed'),
+    [patients]
+  )
+
+  const remainingPatients = useMemo(
+    () => patients.filter((patient) => patient.status !== 'completed'),
+    [patients]
+  )
+
+  const formatConsultationFee = useCallback((fee) => {
+    const amount = Number(fee)
+    if (!Number.isNaN(amount) && amount > 0) {
+      return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: 'INR',
+        maximumFractionDigits: 0
+      }).format(amount)
+    }
+    return '₹500'
+  }, [])
+
+  const normalizeHistoryRecords = (records = []) =>
+    records
+      .filter(Boolean)
+      .sort(
+        (a, b) =>
+          new Date(b.visitDate || b.registrationDate || 0).getTime() -
+          new Date(a.visitDate || a.registrationDate || 0).getTime()
+      )
+
+  const mergeMedicalHistoryData = useCallback((primaryData, fallbackData) => {
+    const combined = []
+    if (primaryData?.medicalHistory) combined.push(...primaryData.medicalHistory)
+    if (fallbackData?.medicalHistory) combined.push(...fallbackData.medicalHistory)
+
+    const uniqueMap = new Map()
+    combined.forEach((record) => {
+      const keyParts = [
+        record.patientId || '',
+        record.visitDate || record.registrationDate || '',
+        record.tokenNumber || ''
+      ]
+      const mapKey = keyParts.join('|')
+      if (!uniqueMap.has(mapKey)) {
+        uniqueMap.set(mapKey, record)
+      }
+    })
+
+    const mergedHistory = normalizeHistoryRecords(Array.from(uniqueMap.values()))
+    const patientInfo = primaryData?.patientInfo || fallbackData?.patientInfo || null
+
+    return {
+      patientInfo,
+      medicalHistory: mergedHistory,
+      totalVisits: mergedHistory.length
+    }
+  }, [])
+
+  const requestMedicalHistory = useCallback(async (params) => {
+    if (!params || Object.keys(params).length === 0) return null
+    try {
+      const response = await api.get('/prescription/medical-history', { params })
+      return response.data.data
+    } catch (error) {
+      if (error.response?.status === 404) {
+        return null
+      }
+      throw error
+    }
+  }, [])
+
+  const deriveFrequencyPattern = (medicine = {}) => {
+    if (!medicine) return '—'
+
+    const normalizePattern = (pattern) => {
+      if (!pattern) return null
+      const cleaned = pattern.replace(/\s+/g, '').replace(/,/g, '-')
+      if (/^[0-9]-[0-9]-[0-9]$/.test(cleaned)) {
+        return cleaned
+      }
+      return null
+    }
+
+    const directPattern =
+      normalizePattern(medicine.frequencyPattern) || normalizePattern(medicine.frequency)
+    if (directPattern) return directPattern
+
+    if (medicine.times) {
+      const morning = medicine.times.morning ? 1 : 0
+      const afternoon = medicine.times.afternoon ? 1 : 0
+      const night = medicine.times.night ? 1 : 0
+      if (morning || afternoon || night) {
+        return `${morning}-${afternoon}-${night}`
+      }
+    }
+
+    if (medicine.dosage) {
+      const text = medicine.dosage.toLowerCase()
+      const hasMorning = text.includes('morning')
+      const hasAfternoon = text.includes('afternoon')
+      const hasNight = text.includes('night')
+      if (hasMorning || hasAfternoon || hasNight) {
+        return `${hasMorning ? 1 : 0}-${hasAfternoon ? 1 : 0}-${hasNight ? 1 : 0}`
+      }
+    }
+
+    return '—'
+  }
+
+  const resolvePatientHistoryKey = useCallback((patient) => {
+    if (!patient) return null
+    if (patient.patientId && String(patient.patientId).trim()) {
+      return String(patient.patientId).trim()
+    }
+    if (patient._id) {
+      return patient._id
+    }
+    return null
+  }, [])
+
+  const fetchInlineHistory = useCallback(
+    async (patient) => {
+      if (!patient) return
+      const patientKey = resolvePatientHistoryKey(patient)
+      const fallbackKey = patient?.mobileNumber ? patient.mobileNumber.trim() : null
+      const storageKey = patientKey || fallbackKey
+      if (!storageKey) return
+
+      setPatientInlineHistoryLoading((prev) => ({
+        ...prev,
+        [storageKey]: true
+      }))
+
+      try {
+        let primaryData = patientKey ? await requestMedicalHistory({ patientId: patientKey }) : null
+        let finalData = primaryData
+
+        if ((!finalData || finalData.totalVisits <= 1) && patient?.mobileNumber) {
+          const fallbackData = await requestMedicalHistory({ mobileNumber: patient.mobileNumber.trim() })
+          if (fallbackData) {
+            finalData = mergeMedicalHistoryData(primaryData, fallbackData)
+          } else if (!finalData) {
+            finalData = fallbackData
+          }
+        }
+
+        if (!finalData) {
+          finalData = { patientInfo: null, medicalHistory: [], totalVisits: 0 }
+        }
+
+        setPatientInlineHistory((prev) => ({
+          ...prev,
+          [storageKey]: finalData
+        }))
+      } catch (error) {
+        console.error('Error fetching inline medical history:', error)
+        if (error.response?.status !== 404) {
+          toast.error('Unable to fetch recent medical history for this patient')
+        }
+        setPatientInlineHistory((prev) => ({
+          ...prev,
+          [storageKey]: { patientInfo: null, medicalHistory: [], totalVisits: 0 }
+        }))
+      } finally {
+        setPatientInlineHistoryLoading((prev) => ({
+          ...prev,
+          [storageKey]: false
+        }))
+      }
+    },
+    [resolvePatientHistoryKey, mergeMedicalHistoryData, requestMedicalHistory]
+  )
 
   const fetchTodayPatients = useCallback(
     async ({ showLoader = false } = {}) => {
@@ -946,11 +1127,337 @@ const DoctorDashboard = () => {
   }
 
   const openMedicalHistory = (patient) => {
-    if (!patient?._id) return
-    setMedicalHistoryPatientId(patient._id)
-    setMedicalHistoryPatientName(patient.fullName)
-    setMedicalHistoryPatientMobile(patient.mobileNumber)
+    const patientKey = resolvePatientHistoryKey(patient)
+    if (!patientKey) return
+    setMedicalHistoryPatientId(patientKey)
+    setMedicalHistoryPatientName(patient?.fullName || null)
+    setMedicalHistoryPatientMobile(patient?.mobileNumber || null)
+    setMedicalHistoryIsRecheck(Boolean(patient?.isRecheck))
+    setMedicalHistoryCurrentPatient(patient || null)
     setShowMedicalHistoryModal(true)
+  }
+
+  const renderInlineHistoryPanel = (patient, meta = {}) => {
+    const { formattedToken, visitDateFormatted, visitTimeFormatted } = meta
+    const historyKey = resolvePatientHistoryKey(patient)
+    const fallbackKey = patient?.mobileNumber ? patient.mobileNumber.trim() : null
+    const storageKey = historyKey || fallbackKey
+    const inlineHistoryData = storageKey ? patientInlineHistory[storageKey] : null
+    const inlineHistoryLoadingState = storageKey ? patientInlineHistoryLoading[storageKey] : false
+    const pastVisits = inlineHistoryData?.medicalHistory || []
+    const pastVisitsToShow = pastVisits.slice(0, 3)
+    const { dateLabel: fallbackDateLabel, timeLabel: fallbackTimeLabel } = formatVisitDateTime(
+      patient.registrationDate || patient.createdAt
+    )
+    const currentVisitDateLabel = visitDateFormatted || fallbackDateLabel
+    const currentVisitTimeLabel = visitTimeFormatted || fallbackTimeLabel
+
+    const timelineVisits = [
+      {
+        id: `today-${patient._id}`,
+        isToday: true,
+        label: "Today's Visit",
+        dateLabel: currentVisitDateLabel,
+        timeLabel: currentVisitTimeLabel,
+        token: formattedToken,
+        consultationType: patient.isRecheck ? 'Recheck-up' : 'New Visit',
+        doctorName: user?.fullName ? `Dr. ${user.fullName}` : 'Current Doctor',
+        status: patient.status || 'waiting',
+        rating: patient.behaviorRating,
+        issue: patient.disease,
+        diagnosis: patient.prescription?.diagnosis,
+        vitals: {
+          bloodPressure: patient.bloodPressure,
+          sugarLevel: patient.sugarLevel,
+          temperature: patient.temperature
+        },
+        medicines: patient.prescription?.medicines || [],
+        inventoryItems: patient.prescription?.inventoryItems || [],
+        notes: patient.prescription?.notes,
+        fees: patient.fees,
+        feeStatus: patient.feeStatus,
+        pdfPath: patient.prescription?.pdfPath || null,
+        selectedTests: patient.prescription?.selectedTests || []
+      },
+      ...pastVisitsToShow.map((visit, idx) => {
+        const { dateLabel, timeLabel } = formatVisitDateTime(visit.visitDate)
+        return {
+          id: `${historyKey || patient._id}-past-${idx}`,
+          isToday: false,
+          label: `Past Visit ${idx + 1}`,
+          dateLabel,
+          timeLabel,
+          token: (visit.tokenNumber ?? '-').toString().padStart(2, '0'),
+          consultationType: visit.visitDetails?.isRecheck ? 'Recheck-up' : 'New Visit',
+          doctorName: visit.doctor?.name ? `Dr. ${visit.doctor.name}` : 'Doctor not recorded',
+          status: visit.visitDetails?.status || 'waiting',
+          rating: visit.behaviorRating,
+          issue: visit.patientInfo?.disease,
+          diagnosis: visit.prescription?.diagnosis,
+          vitals: visit.vitals || {},
+          medicines: visit.prescription?.medicines || [],
+          inventoryItems: visit.prescription?.inventoryItems || [],
+          notes: visit.prescription?.notes,
+          fees: visit.visitDetails?.fees,
+          feeStatus: visit.visitDetails?.feeStatus || 'not_recorded',
+          pdfPath: visit.prescription?.pdfPath || null,
+          selectedTests: visit.prescription?.selectedTests || []
+        }
+      })
+    ]
+
+    const renderMedicinesTable = (visit) => {
+      const medicines = visit.medicines || []
+      const hasMedicines = medicines.length > 0
+      return (
+        <div className="border border-gray-100 rounded-xl overflow-hidden">
+          <div className="bg-gray-50 px-4 py-2 text-xs font-bold uppercase tracking-wide text-gray-600">
+            Prescribed Medicines
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-100 text-xs">
+              <thead className="bg-white">
+                <tr>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-600">Medicine</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-600">Dosage</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-600">Frequency</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-600">Duration</th>
+                  <th className="px-4 py-2 text-left font-semibold text-gray-600">Instructions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 bg-white">
+                {hasMedicines ? (
+                  medicines.map((med, idx) => (
+                    <tr key={`med-${visit.id}-${idx}`} className="hover:bg-purple-50 transition-colors">
+                      <td className="px-4 py-2 font-semibold text-gray-900">{med.name || 'Not recorded'}</td>
+                      <td className="px-4 py-2 text-gray-700">{med.dosage || '—'}</td>
+                      <td className="px-4 py-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold">
+                        {deriveFrequencyPattern(med)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-gray-700">{med.duration || '—'}</td>
+                      <td className="px-4 py-2 text-gray-600 min-w-[160px]">
+                        {med.dosageInstructions || med.dosageNotes || 'No instructions'}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-4 text-center text-gray-500">
+                      No medicines recorded for this visit
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )
+    }
+
+    const renderInventoryItems = (visit) => {
+      if (!visit.inventoryItems || visit.inventoryItems.length === 0) return null
+      return (
+        <div className="border border-cyan-100 rounded-xl p-4 bg-cyan-50/40">
+          <p className="text-xs font-bold uppercase tracking-wide text-cyan-700 mb-2">
+            Injections & Surgical Items
+          </p>
+          <div className="space-y-1 text-sm text-cyan-900">
+            {visit.inventoryItems.map((item, idx) => (
+              <div key={`inv-${visit.id}-${idx}`} className="flex flex-col border border-cyan-100 rounded-lg p-3 bg-white">
+                <span className="font-semibold">{item.name}</span>
+                <span className="text-xs text-cyan-700">
+                  {[item.dosage, item.usage].filter(Boolean).join(' • ') || 'Usage not recorded'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="px-6 pb-6">
+        <div className="bg-white/90 rounded-2xl border border-purple-100 shadow-inner p-5 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-purple-600 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Previous Medical History
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Auto-fetched via Patient ID{' '}
+                {inlineHistoryData?.patientInfo?.patientId || historyKey || fallbackKey || 'Not Assigned'}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!historyKey || inlineHistoryLoadingState}
+                onClick={() => historyKey && fetchInlineHistory(historyKey)}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold border transition ${
+                  inlineHistoryLoadingState
+                    ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                    : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+                }`}
+              >
+                {inlineHistoryLoadingState ? 'Fetching...' : 'Refresh'}
+              </button>
+              <button
+                type="button"
+                onClick={() => openMedicalHistory(patient)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-500 shadow hover:from-blue-600 hover:to-purple-600"
+              >
+                View Full History
+              </button>
+            </div>
+          </div>
+
+          {!historyKey ? (
+            <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+              Assign a hospital Patient ID to view timeline history for this patient.
+            </div>
+          ) : !inlineHistoryData ? (
+            <div className="flex flex-col items-center justify-center py-10 gap-3">
+              <div className="h-10 w-10 rounded-full border-b-2 border-purple-500 animate-spin"></div>
+              <p className="text-sm text-gray-500">Fetching previous visits...</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-gray-500">
+                Showing today's visit {pastVisits.length > 0 ? `+ last ${pastVisitsToShow.length} of ${pastVisits.length} previous visit${pastVisits.length > 1 ? 's' : ''}` : '(no previous visits recorded yet)'}
+              </p>
+              <div className="relative pl-6">
+                <div className="absolute left-3 top-0 bottom-0 w-px bg-gradient-to-b from-purple-200 via-blue-200 to-purple-200"></div>
+                {timelineVisits.map((visit, index) => {
+                  const statusClass =
+                    visit.status === 'completed'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : visit.status === 'in-progress'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-slate-100 text-slate-700 border-slate-200'
+                  const consultClass = visit.consultationType === 'Recheck-up'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-purple-50 text-purple-700 border-purple-200'
+
+                  return (
+                    <div key={visit.id} className="relative pb-10">
+                      <div
+                        className={`absolute left-2 top-2 -translate-x-1/2 w-4 h-4 rounded-full border-2 ${
+                          visit.isToday ? 'bg-purple-500 border-white' : 'bg-blue-500 border-white'
+                        }`}
+                      ></div>
+                      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 space-y-5">
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                              {visit.isToday ? "Today's Visit" : `Past Visit ${index}`}
+                            </p>
+                            <h4 className="text-lg font-bold text-gray-900">{visit.dateLabel}</h4>
+                            <p className="text-sm text-gray-500">{visit.timeLabel}</p>
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold border border-gray-200">
+                                Token #{visit.token}
+                              </span>
+                              <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${consultClass}`}>
+                                {visit.consultationType}
+                              </span>
+                              <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${statusClass}`}>
+                                {visit.status?.replace('-', ' ') || 'Status not recorded'}
+                              </span>
+                              {visit.rating && (
+                                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 text-xs font-semibold border border-yellow-200">
+                                  ⭐ {visit.rating}/5
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Doctor</p>
+                            <p className="text-base font-bold text-gray-900">{visit.doctorName}</p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Health Issue</p>
+                            <p className="text-sm font-bold text-blue-900 mt-1">{visit.issue || 'Not recorded'}</p>
+                          </div>
+                          <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-purple-600">Diagnosis</p>
+                            <p className="text-sm font-bold text-purple-900 mt-1">{visit.diagnosis || 'Not recorded'}</p>
+                          </div>
+                          <div className="bg-pink-50 border border-pink-100 rounded-xl p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-pink-600">Vitals</p>
+                            <div className="text-sm font-bold text-pink-900 mt-1 space-y-1">
+                              <p>BP: {visit.vitals?.bloodPressure || 'N/A'}</p>
+                              <p>Sugar: {visit.vitals?.sugarLevel !== undefined && visit.vitals?.sugarLevel !== null ? `${visit.vitals.sugarLevel} mg/dL` : 'N/A'}</p>
+                              {visit.vitals?.temperature && <p>Temp: {visit.vitals.temperature}</p>}
+                            </div>
+                          </div>
+                        </div>
+
+                        {renderMedicinesTable(visit)}
+                        {renderInventoryItems(visit)}
+
+                        {visit.notes && (
+                          <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Doctor Notes / Instructions</p>
+                            <p className="text-sm text-gray-800 mt-2 whitespace-pre-line">{visit.notes}</p>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Fees Status</p>
+                            <p className="text-sm font-bold text-slate-900 mt-1">
+                              {visit.feeStatus ? visit.feeStatus.replace('_', ' ').toUpperCase() : 'Not recorded'}
+                            </p>
+                            {visit.fees !== undefined && (
+                              <p className="text-xs text-slate-500 mt-1">₹{visit.fees || 0}</p>
+                            )}
+                          </div>
+                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Consultation Type</p>
+                            <p className="text-sm font-bold text-slate-900 mt-1">{visit.consultationType}</p>
+                          </div>
+                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Prescription PDF</p>
+                            {visit.pdfPath ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const pdfUrl = getPDFUrl(visit.pdfPath)
+                                  if (pdfUrl) viewPdf(pdfUrl)
+                                }}
+                                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow hover:bg-blue-700 transition"
+                              >
+                                View PDF
+                              </button>
+                            ) : (
+                              <span className="text-sm text-slate-500">Not uploaded</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {pastVisits.length > pastVisitsToShow.length && (
+                <p className="text-xs text-gray-500">
+                  Showing the most recent {pastVisitsToShow.length} of {pastVisits.length} previous visits. Use "View Full History" to see all visits.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    )
   }
 
   const handleShowTodaysPatients = () => {
@@ -961,6 +1468,10 @@ const DoctorDashboard = () => {
       todaysPatientsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
   }
+
+const handleToggleCompletedPatients = () => {
+  setShowCompletedPatientsPanel((prev) => !prev)
+}
 
   const handlePatientNotificationClick = (patient) => {
     setActivePatientFilter(patient._id)
@@ -1140,6 +1651,41 @@ const DoctorDashboard = () => {
     const backendBase = baseURL.endsWith('/api') ? baseURL.slice(0, -4) : baseURL
     const cleanPath = pdfPath.startsWith('/') ? pdfPath : `/${pdfPath}`
     return `${backendBase}${cleanPath}`
+  }
+
+  const formatVisitDateTime = (dateValue) => {
+    if (!dateValue) {
+      return {
+        dateLabel: 'Date not available',
+        timeLabel: 'Time not available'
+      }
+    }
+    const parsedDate = new Date(dateValue)
+    if (Number.isNaN(parsedDate.getTime())) {
+      return {
+        dateLabel: 'Date not available',
+        timeLabel: 'Time not available'
+      }
+    }
+    return {
+      dateLabel: parsedDate.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      }),
+      timeLabel: parsedDate.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    }
+  }
+
+  const getFrequencyPattern = (times = {}) => {
+    if (!times) return '0-0-0'
+    const morning = times.morning ? 1 : 0
+    const afternoon = times.afternoon ? 1 : 0
+    const night = times.night ? 1 : 0
+    return `${morning}-${afternoon}-${night}`
   }
 
   const ensureTimesShape = (medicine) => ({
@@ -1528,6 +2074,7 @@ const DoctorDashboard = () => {
     
     setPrescriptionData({
       diagnosis: initialDiagnosis, // Auto-fill diagnosis from existing prescription or patient registration
+      diagnosisNotes: '',
       medicines: [{
         name: '',
         dosage: '',
@@ -1537,7 +2084,7 @@ const DoctorDashboard = () => {
         dosageInstructions: ''
       }],
       notes: '',
-      selectedTest: ''
+      selectedTests: []
     })
     setMedicineSuggestions([[]])
     setLoadingSuggestions({})
@@ -1556,6 +2103,10 @@ const DoctorDashboard = () => {
     setInventorySearch('')
     setSelectedInventoryItems([])
     setShowInventorySummary(true)
+    // Clear test input
+    if (testInputRef.current) {
+      testInputRef.current.value = ''
+    }
   }
 
   const handleSubmitPrescription = async () => {
@@ -1569,12 +2120,23 @@ const DoctorDashboard = () => {
     const validMedicines = prescriptionData.medicines.filter((_, i) => results[i])
 
     try {
+      // Combine selected tests with notes
+      const testsText = prescriptionData.selectedTests.length > 0 
+        ? `Tests Required: ${prescriptionData.selectedTests.join(', ')}` 
+        : ''
+      const combinedNotes = [
+        prescriptionData.diagnosisNotes,
+        testsText,
+        prescriptionData.notes
+      ].filter(Boolean).join('\n\n')
+
       // First, generate PDF to get base64 data
       // Use selectedPatient data for PDF generation
       const tempPrescription = {
         diagnosis: prescriptionData.diagnosis,
+        diagnosisNotes: prescriptionData.diagnosisNotes,
         medicines: validMedicines,
-        notes: prescriptionData.notes || '',
+        notes: combinedNotes,
         createdAt: new Date(),
         inventoryItems: selectedInventoryItems.map((item) => ({
           name: item.name,
@@ -1600,8 +2162,10 @@ const DoctorDashboard = () => {
       // Save prescription with PDF data in one call
       const response = await api.put(`/prescription/${selectedPatient._id}`, {
         diagnosis: prescriptionData.diagnosis,
+        diagnosisNotes: prescriptionData.diagnosisNotes,
         medicines: validMedicines,
-        notes: prescriptionData.notes,
+        notes: combinedNotes,
+        selectedTests: prescriptionData.selectedTests,
         inventoryItems: selectedInventoryItems.map((item) => ({
           name: item.name,
           code: item.code,
@@ -1949,6 +2513,27 @@ const DoctorDashboard = () => {
       const dateB = new Date(b.registrationDate || b.createdAt || 0).getTime()
       return dateB - dateA
     })
+
+  useEffect(() => {
+    if (activeTab !== 'active') return
+    filteredTodayPatients.forEach((patient) => {
+      const historyKey = resolvePatientHistoryKey(patient)
+      const fallbackKey = patient?.mobileNumber ? patient.mobileNumber.trim() : null
+      const storageKey = historyKey || fallbackKey
+      if (!storageKey) return
+      if (!patientInlineHistory[storageKey] && !patientInlineHistoryLoading[storageKey]) {
+        fetchInlineHistory(patient)
+      }
+    })
+  }, [
+    activeTab,
+    filteredTodayPatients,
+    patientInlineHistory,
+    patientInlineHistoryLoading,
+    fetchInlineHistory,
+    resolvePatientHistoryKey
+  ])
+
   const filteredHistoryPatients = filterPatients(patientHistory, searchHistory)
     .slice()
     .sort((a, b) => {
@@ -2324,13 +2909,20 @@ const DoctorDashboard = () => {
           {/* Daily Statistics Section */}
           {doctorStats && (
             <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center gap-4">
                   <div>
-                    <p className="text-sm text-gray-600">Daily Limit</p>
-                    <p className="text-2xl font-bold text-purple-600">{doctorStats.dailyPatientLimit}</p>
+                    <p className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Daily Limit</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      <span className="text-purple-600">{doctorStats.dailyPatientLimit}</span>
+                      <span className="mx-2 text-lg text-gray-400">/</span>
+                      <span className={`${doctorStats.remainingSlots > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {doctorStats.remainingSlots}
+                      </span>
+                    </p>
+                    <p className="text-xs text-gray-500">Total capacity / remaining slots</p>
                   </div>
-                  <div className="h-12 w-px bg-gray-300"></div>
+                  <div className="hidden sm:block h-12 w-px bg-gray-300"></div>
                   <button
                     type="button"
                     onClick={handleShowTodaysPatients}
@@ -2344,14 +2936,101 @@ const DoctorDashboard = () => {
                     </p>
                     <p className="text-2xl font-bold text-gray-800">{doctorStats.todayPatientCount}</p>
                   </button>
-                  <div className="h-12 w-px bg-gray-300"></div>
-                  <div>
-                    <p className="text-sm text-gray-600">Remaining Slots</p>
-                    <p className={`text-2xl font-bold ${doctorStats.remainingSlots > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {doctorStats.remainingSlots}
+                  <div className="hidden sm:block h-12 w-px bg-gray-300"></div>
+                  <button
+                    type="button"
+                    onClick={handleToggleCompletedPatients}
+                    aria-expanded={showCompletedPatientsPanel}
+                    className={`text-left px-3 py-2 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-purple-300 ${
+                      showCompletedPatientsPanel ? 'bg-white shadow-sm' : 'hover:bg-white/70'
+                    }`}
+                  >
+                    <p className="text-sm text-gray-600 flex items-center gap-2">
+                      Completed Patients
+                      <span className="inline-flex items-center justify-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                        {completedPatients.length}
+                      </span>
                     </p>
-                  </div>
+                    <p className="text-2xl font-bold text-gray-800">{completedPatients.length}</p>
+                  </button>
                 </div>
+
+                {showCompletedPatientsPanel && (
+                  <div className="rounded-2xl border border-purple-100 bg-white/90 p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-purple-700">Completed Patients</p>
+                        <p className="text-xs text-gray-500">Review completed consultations and pending names</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleToggleCompletedPatients}
+                        className="text-xs font-semibold text-gray-500 hover:text-purple-600 transition"
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid gap-3 max-h-56 overflow-y-auto pr-1">
+                      {completedPatients.length > 0 ? (
+                        completedPatients.map((patient) => {
+                          const key = patient._id || patient.id || patient.patientId || patient.fullName
+                          return (
+                            <div
+                              key={key}
+                              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-gradient-to-r from-emerald-50 to-green-50 p-4"
+                            >
+                              <div className="min-w-[160px]">
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {patient.fullName || 'Unnamed Patient'}
+                                </p>
+                                {patient.patientId && (
+                                  <p className="text-xs text-gray-500">ID: {patient.patientId}</p>
+                                )}
+                              </div>
+                              <div className="text-xs font-semibold uppercase tracking-wide text-emerald-600 flex items-center gap-2">
+                                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
+                                Status: Completed
+                              </div>
+                              <p className="text-sm font-semibold text-gray-800">
+                                Consultation Fee:{' '}
+                                <span className="text-emerald-700">{formatConsultationFee(patient.fees)}</span>
+                              </p>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <p className="rounded-xl border border-dashed border-purple-200 bg-white p-4 text-sm text-gray-500">
+                          No completed patients yet. Completed visits will appear here automatically.
+                        </p>
+                      )}
+                    </div>
+
+                    {remainingPatients.length > 0 && (
+                      <div className="mt-4 border-t border-purple-100 pt-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Remaining Patients</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {remainingPatients.map((patient) => {
+                            const key = patient._id || patient.id || patient.patientId || `${patient.fullName}-remaining`
+                            return (
+                              <span
+                                key={key}
+                                className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm"
+                              >
+                                <span
+                                  className={`h-2 w-2 rounded-full ${
+                                    patient.status === 'in-progress' ? 'bg-amber-500' : 'bg-purple-500 animate-pulse'
+                                  }`}
+                                ></span>
+                                {patient.fullName || 'Unnamed Patient'}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -3118,6 +3797,12 @@ const DoctorDashboard = () => {
                             </div>
                           </div>
 
+                          {renderInlineHistoryPanel(patient, {
+                            formattedToken,
+                            visitDateFormatted,
+                            visitTimeFormatted
+                          })}
+
                           {/* Footer Actions */}
                           <div className="px-6 py-5 bg-gradient-to-r from-gray-50 to-purple-50/50 border-t-2 border-purple-100 flex flex-wrap items-center justify-between gap-4">
                             <div className="flex items-center gap-3 flex-wrap">
@@ -3146,7 +3831,7 @@ const DoctorDashboard = () => {
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                 </svg>
-                                View History
+                                View Full History
                               </button>
                               <button
                                 onClick={() => {
@@ -4066,7 +4751,7 @@ const DoctorDashboard = () => {
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Diagnosis *
+                  Health Issue *
                 </label>
                 <div className="relative">
                   <input
@@ -4074,7 +4759,7 @@ const DoctorDashboard = () => {
                     list="diagnosis-options"
                     value={prescriptionData.diagnosis}
                     onChange={(e) => setPrescriptionData({ ...prescriptionData, diagnosis: e.target.value })}
-                    placeholder="Select or type diagnosis..."
+                    placeholder="Select or type health issue..."
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none shadow-sm"
                     required
                   />
@@ -4104,16 +4789,32 @@ const DoctorDashboard = () => {
                   if (diagnoses.length > 0) {
                     return (
                       <p className="mt-1 text-xs text-gray-500">
-                        Suggestions for <span className="font-semibold">{user.specialization}</span>. You can also type a custom diagnosis.
+                        Suggestions for <span className="font-semibold">{user.specialization}</span>. You can also type a custom health issue.
                       </p>
                     )
                   }
                   return (
                     <p className="mt-1 text-xs text-gray-500">
-                      No specific diagnoses available for <span className="font-semibold">{user.specialization}</span>. Please type your diagnosis.
+                      No specific diagnoses available for <span className="font-semibold">{user.specialization}</span>. Please type your health issue.
                     </p>
                   )
                 })()}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Diagnosis Notes
+                </label>
+                <textarea
+                  value={prescriptionData.diagnosisNotes}
+                  onChange={(e) => setPrescriptionData({ ...prescriptionData, diagnosisNotes: e.target.value })}
+                  placeholder="Enter clinical notes (e.g., BP: 120/80, Pulse: 72, Temperature: 98.6°F, or additional remarks)..."
+                  rows="2"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none shadow-sm resize-none text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Add clinical observations such as vital signs, physical examination findings, or other relevant notes.
+                </p>
               </div>
 
               <div>
@@ -4535,30 +5236,37 @@ const DoctorDashboard = () => {
                 <div className="mb-3">
                   <div className="relative">
                     <input
+                      ref={testInputRef}
                       type="text"
                       list="test-options"
-                      value={prescriptionData.selectedTest || ''}
                       onChange={(e) => {
-                        const selectedTest = e.target.value
-                        const currentNotes = prescriptionData.notes || ''
-                        
-                        // If test is selected, add it to notes if not already present
-                        if (selectedTest) {
-                          const updatedNotes = currentNotes.includes(selectedTest) 
-                            ? currentNotes 
-                            : currentNotes 
-                              ? `${currentNotes}\n${selectedTest}` 
-                              : selectedTest
+                        // Handle datalist selection
+                        const selectedTest = e.target.value.trim()
+                        if (selectedTest && !prescriptionData.selectedTests.includes(selectedTest)) {
                           setPrescriptionData({
                             ...prescriptionData,
-                            selectedTest,
-                            notes: updatedNotes
+                            selectedTests: [...prescriptionData.selectedTests, selectedTest]
                           })
-                        } else {
-                          setPrescriptionData({
-                            ...prescriptionData,
-                            selectedTest: ''
-                          })
+                          // Clear the input
+                          if (testInputRef.current) {
+                            testInputRef.current.value = ''
+                          }
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          const selectedTest = e.target.value.trim()
+                          if (selectedTest && !prescriptionData.selectedTests.includes(selectedTest)) {
+                            setPrescriptionData({
+                              ...prescriptionData,
+                              selectedTests: [...prescriptionData.selectedTests, selectedTest]
+                            })
+                            // Clear the input
+                            if (testInputRef.current) {
+                              testInputRef.current.value = ''
+                            }
+                          }
                         }
                       }}
                       placeholder="Select or type test..."
@@ -4601,6 +5309,35 @@ const DoctorDashboard = () => {
                     )
                   })()}
                 </div>
+
+                {/* Selected Tests Display with Remove Icons */}
+                {prescriptionData.selectedTests.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {prescriptionData.selectedTests.map((test, index) => (
+                      <span
+                        key={index}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-700 font-medium"
+                      >
+                        <span>{test}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPrescriptionData({
+                              ...prescriptionData,
+                              selectedTests: prescriptionData.selectedTests.filter((_, i) => i !== index)
+                            })
+                          }}
+                          className="ml-1 text-purple-600 hover:text-purple-800 hover:bg-purple-100 rounded-full p-0.5 transition-colors"
+                          aria-label={`Remove ${test}`}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 
                 {/* Additional Notes Textarea */}
                 <textarea
@@ -4742,10 +5479,14 @@ const DoctorDashboard = () => {
           setMedicalHistoryPatientId(null)
           setMedicalHistoryPatientName(null)
           setMedicalHistoryPatientMobile(null)
+          setMedicalHistoryIsRecheck(false)
+          setMedicalHistoryCurrentPatient(null)
         }}
         patientId={medicalHistoryPatientId}
         patientName={medicalHistoryPatientName}
         patientMobile={medicalHistoryPatientMobile}
+        isRecheck={medicalHistoryIsRecheck}
+        currentPatient={medicalHistoryCurrentPatient}
       />
 
       {showInventoryPanel && (
