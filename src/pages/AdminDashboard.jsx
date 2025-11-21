@@ -327,10 +327,10 @@ const AdminDashboard = () => {
           <div>
             <div className="flex items-baseline gap-3">
               <span className="text-3xl sm:text-4xl font-black tracking-tight text-blue-600">Tekisky</span>
-              <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital</span>
+              <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital +</span>
             </div>
             <p className="mt-1 inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-700 bg-blue-50 rounded-full">Admin Dashboard</p>
-            <p className="text-xs sm:text-sm text-slate-500 mt-2">Manage staff, track patient registrations, and keep Tekisky Hospital running smoothly.</p>
+            <p className="text-xs sm:text-sm text-slate-500 mt-2">Manage staff, track patient registrations, and keep Tekisky Hospital + running smoothly.</p>
           </div>
           <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
             <div className="hidden sm:flex items-center gap-3 px-4 py-2 rounded-xl bg-slate-100 text-slate-600">

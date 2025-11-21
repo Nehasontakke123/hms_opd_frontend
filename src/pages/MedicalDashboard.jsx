@@ -321,7 +321,7 @@ const MedicalDashboard = () => {
             <div>
               <div className="flex items-baseline gap-3">
                 <span className="text-3xl sm:text-4xl font-black tracking-tight text-purple-600">Tekisky</span>
-                <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital</span>
+                <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital +</span>
               </div>
               <p className="mt-1 inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-purple-700 bg-purple-50 rounded-full">Medical Records Team</p>
               <p className="mt-2 text-xs sm:text-sm text-slate-500">Secure, view-only access to doctor-issued prescriptions and patient history.</p>

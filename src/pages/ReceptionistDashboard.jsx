@@ -324,6 +324,7 @@ const ReceptionistDashboard = () => {
   const [activeTab, setActiveTab] = useState('doctors') // 'doctors', 'registration', 'emergency', 'appointments', or 'prescriptions'
   const [appointmentsView, setAppointmentsView] = useState('today') // 'today' or 'upcoming'
   const [patientsRegisterView, setPatientsRegisterView] = useState('today') // 'today', 'recheck', or 'history'
+  const [showRegistrationModal, setShowRegistrationModal] = useState(false)
   // Doctor Availability filters
   const [availabilityFilterSpecialty, setAvailabilityFilterSpecialty] = useState('all')
   const [availabilityFilterDoctor, setAvailabilityFilterDoctor] = useState('all')
@@ -2015,6 +2016,7 @@ const ReceptionistDashboard = () => {
         setFormData(getInitialFormData())
         setUploadedPDF(null) // Clear uploaded PDF
         setScannedData(null) // Clear scanned data
+        setShowRegistrationModal(false) // Close registration modal
         toast.success('Patient registered successfully!')
         fetchTodayPatients()
         fetchPatientHistory()
@@ -2045,6 +2047,7 @@ const ReceptionistDashboard = () => {
         setFormData(getInitialFormData())
         setUploadedPDF(null) // Clear uploaded PDF
         setScannedData(null) // Clear scanned data
+        setShowRegistrationModal(false) // Close registration modal
         toast.success('Patient registered successfully! Cash payment received.')
         fetchTodayPatients()
         fetchPatientHistory()
@@ -2074,6 +2077,7 @@ const ReceptionistDashboard = () => {
         setFormData(getInitialFormData())
         setUploadedPDF(null) // Clear uploaded PDF
         setScannedData(null) // Clear scanned data
+        setShowRegistrationModal(false) // Close registration modal
         toast.success('Patient registered successfully!')
         fetchTodayPatients()
         fetchPatientHistory()
@@ -2420,6 +2424,17 @@ const ReceptionistDashboard = () => {
     setTodayPatientsPage(1)
     setPatientHistoryPage(1)
   }, [patientsRegisterSearch])
+
+  // Handle Escape key to close registration modal
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape' && showRegistrationModal) {
+        setShowRegistrationModal(false)
+      }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [showRegistrationModal])
 
   // Pagination logic for Patient History
   const patientHistoryTotalPages = Math.ceil(filteredPatientHistory.length / patientHistoryPerPage)
@@ -3181,7 +3196,7 @@ const ReceptionistDashboard = () => {
           <div>
             <div className="flex items-baseline gap-3">
               <span className="text-3xl sm:text-4xl font-black tracking-tight text-green-600">Tekisky</span>
-              <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital</span>
+              <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital +</span>
             </div>
             <p className="mt-1 inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-green-700 bg-green-50 rounded-full">Receptionist Hub</p>
             <p className="mt-2 text-xs sm:text-sm text-slate-500">Manage arrivals, generate tokens, and coordinate with doctors seamlessly.</p>
@@ -3903,11 +3918,59 @@ const ReceptionistDashboard = () => {
         {/* Patient Registration Tab */}
         {activeTab === 'registration' && (
           <div className="space-y-8">
-            {/* Registration Form */}
-            <div className="bg-white rounded-lg shadow p-4 sm:p-8">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-6">Register New Patient</h2>
+            {/* Registration Form Button */}
+            <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2">Patient Registration</h2>
+                  <p className="text-sm text-gray-600">Register new patients or manage existing patient records</p>
+                </div>
+                <button
+                  onClick={() => setShowRegistrationModal(true)}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold text-sm shadow-md hover:from-green-600 hover:to-green-700 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Register New Patient
+                </button>
+              </div>
+            </div>
 
-          <form onSubmit={handleSubmit} className="space-y-10">
+            {/* Registration Modal */}
+            {showRegistrationModal && (
+              <div 
+                className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) {
+                    setShowRegistrationModal(false)
+                  }
+                }}
+              >
+                <div 
+                  className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Modal Header */}
+                  <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50 rounded-t-2xl">
+                    <div>
+                      <h2 className="text-2xl font-bold text-gray-900">Register New Patient</h2>
+                      <p className="text-sm text-gray-600 mt-1">Fill in the patient details to complete registration</p>
+                    </div>
+                    <button
+                      onClick={() => setShowRegistrationModal(false)}
+                      className="text-gray-400 hover:text-gray-600 transition-colors p-2 hover:bg-gray-100 rounded-lg"
+                      aria-label="Close modal"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Scrollable Content */}
+                  <div className="flex-1 overflow-y-auto p-6">
+                    <form id="registration-form" onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Patient ID (auto-generated, read-only) - Professional UI */}
               <div className="md:col-span-2" ref={pidBoxRef}>
@@ -4632,8 +4695,22 @@ const ReceptionistDashboard = () => {
                 </>
               )}
             </button>
-          </form>
-        </div>
+                    </form>
+                  </div>
+
+                  {/* Modal Footer - Cancel Button */}
+                  <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-2xl flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowRegistrationModal(false)}
+                      className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Patients Register Section - Unified with Toggle Tabs */}
             <div id="patients-register-section" className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
@@ -6956,7 +7033,7 @@ const ReceptionistDashboard = () => {
                 </svg>
               </div>
               <h3 className="text-2xl font-bold text-gray-800 mb-2">Appointment Scheduled!</h3>
-              <p className="text-gray-600">Details saved in Tekisky Hospital system.</p>
+              <p className="text-gray-600">Details saved in Tekisky Hospital + system.</p>
             </div>
 
             <div className="text-left mb-6 space-y-2 text-sm bg-blue-50 border border-blue-100 rounded-lg p-4">

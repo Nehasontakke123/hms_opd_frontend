@@ -73,7 +73,7 @@ const Home = () => {
               </div>
             </div>
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
-              Tekisky Hospital
+              Tekisky Hospital +
             </h1>
             <p className="text-lg sm:text-xl text-gray-600 font-medium">OPD Management System</p>
             <div className="mt-4 flex items-center justify-center gap-2">
@@ -208,7 +208,7 @@ const Home = () => {
             </p>
           </div>
           <p className="text-gray-500 text-xs mt-4">
-            © 2025 Tekisky Hospital. All rights reserved.
+            © 2025 Tekisky Hospital +. All rights reserved.
           </p>
         </div>
       </div>

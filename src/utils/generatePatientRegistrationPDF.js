@@ -27,7 +27,7 @@ const generatePatientRegistrationPDF = (patientData, doctorInfo) => {
   doc.setFontSize(22)
   doc.setTextColor(255, 255, 255)
   doc.setFont('helvetica', 'bold')
-  doc.text('Tekisky Hospital', pageWidth / 2, 15, { align: 'center' })
+  doc.text('Tekisky Hospital +', pageWidth / 2, 15, { align: 'center' })
   
   // Report title
   doc.setFontSize(12)
@@ -229,7 +229,7 @@ const generatePatientRegistrationPDF = (patientData, doctorInfo) => {
   doc.setFont('helvetica', 'italic')
   doc.setTextColor(...TEXT_LIGHT)
   doc.text(
-    'Tekisky Hospital Patient Registration Confirmation',
+    'Tekisky Hospital + Patient Registration Confirmation',
     pageWidth / 2,
     pageHeight - 10,
     { align: 'center' }

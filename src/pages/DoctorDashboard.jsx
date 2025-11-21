@@ -2811,7 +2811,7 @@ const handleToggleCompletedPatients = () => {
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-3 mb-1">
                   <span className="text-2xl sm:text-3xl font-black tracking-tight text-purple-600">Tekisky</span>
-                  <span className="text-xl sm:text-2xl font-semibold text-slate-800">Hospital</span>
+                  <span className="text-xl sm:text-2xl font-semibold text-slate-800">Hospital +</span>
                 </div>
                 {/* Doctor's Name - Highlighted */}
                 <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-1 mt-2" style={{ fontSize: '24px', fontWeight: 700 }}>
