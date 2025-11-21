@@ -490,6 +490,7 @@ const DoctorDashboard = () => {
   const [newPatients, setNewPatients] = useState([]) // Newly registered patients
   const seenPatientIdsRef = useRef(new Set()) // Track seen patients using ref to avoid dependency issues
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
+  const [expandedInlineHistoryPanels, setExpandedInlineHistoryPanels] = useState({})
   const notificationRef = useRef(null)
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false)
   const [showLimitModal, setShowLimitModal] = useState(false)
@@ -516,6 +517,7 @@ const DoctorDashboard = () => {
   const [inventorySearch, setInventorySearch] = useState('')
   const [selectedInventoryItems, setSelectedInventoryItems] = useState([])
   const [showInventorySummary, setShowInventorySummary] = useState(true)
+  const [savingPrescription, setSavingPrescription] = useState(false)
   const PAGE_SIZE_TODAY = 5
   const PAGE_SIZE_HISTORY = 6
   const [todayPage, setTodayPage] = useState(1)
@@ -1137,6 +1139,14 @@ const DoctorDashboard = () => {
     setShowMedicalHistoryModal(true)
   }
 
+  const toggleInlineHistoryPanel = useCallback((panelKey) => {
+    if (!panelKey) return
+    setExpandedInlineHistoryPanels((prev) => ({
+      ...prev,
+      [panelKey]: !prev[panelKey]
+    }))
+  }, [])
+
   const renderInlineHistoryPanel = (patient, meta = {}) => {
     const { formattedToken, visitDateFormatted, visitTimeFormatted } = meta
     const historyKey = resolvePatientHistoryKey(patient)
@@ -1144,67 +1154,135 @@ const DoctorDashboard = () => {
     const storageKey = historyKey || fallbackKey
     const inlineHistoryData = storageKey ? patientInlineHistory[storageKey] : null
     const inlineHistoryLoadingState = storageKey ? patientInlineHistoryLoading[storageKey] : false
-    const pastVisits = inlineHistoryData?.medicalHistory || []
-    const pastVisitsToShow = pastVisits.slice(0, 3)
+    const pastVisitsRaw = inlineHistoryData?.medicalHistory || []
     const { dateLabel: fallbackDateLabel, timeLabel: fallbackTimeLabel } = formatVisitDateTime(
       patient.registrationDate || patient.createdAt
     )
     const currentVisitDateLabel = visitDateFormatted || fallbackDateLabel
     const currentVisitTimeLabel = visitTimeFormatted || fallbackTimeLabel
+    const patientIdentifier =
+      inlineHistoryData?.patientInfo?.patientId || historyKey || fallbackKey || 'Not Assigned'
+    const panelKey = storageKey || patient?._id || patient?.mobileNumber || `patient-${patient?._id || 'unknown'}`
+    const isExpanded = expandedInlineHistoryPanels[panelKey] ?? false
 
-    const timelineVisits = [
-      {
-        id: `today-${patient._id}`,
-        isToday: true,
-        label: "Today's Visit",
-        dateLabel: currentVisitDateLabel,
-        timeLabel: currentVisitTimeLabel,
-        token: formattedToken,
-        consultationType: patient.isRecheck ? 'Recheck-up' : 'New Visit',
-        doctorName: user?.fullName ? `Dr. ${user.fullName}` : 'Current Doctor',
-        status: patient.status || 'waiting',
-        rating: patient.behaviorRating,
-        issue: patient.disease,
-        diagnosis: patient.prescription?.diagnosis,
-        vitals: {
-          bloodPressure: patient.bloodPressure,
-          sugarLevel: patient.sugarLevel,
-          temperature: patient.temperature
-        },
-        medicines: patient.prescription?.medicines || [],
-        inventoryItems: patient.prescription?.inventoryItems || [],
-        notes: patient.prescription?.notes,
-        fees: patient.fees,
-        feeStatus: patient.feeStatus,
-        pdfPath: patient.prescription?.pdfPath || null,
-        selectedTests: patient.prescription?.selectedTests || []
-      },
-      ...pastVisitsToShow.map((visit, idx) => {
-        const { dateLabel, timeLabel } = formatVisitDateTime(visit.visitDate)
+    const sanitizeText = (value, fallback = 'Not recorded') => {
+      if (value === null || value === undefined) return fallback
+      if (typeof value === 'string') {
+        const trimmed = value.trim()
+        return trimmed.length > 0 ? trimmed : fallback
+      }
+      return value || fallback
+    }
+
+    const formatStatus = (status) => {
+      if (!status) return 'Waiting'
+      const cleaned = status.replace(/_/g, ' ').replace(/-/g, ' ')
+      return cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+    }
+
+    const formatSugarValue = (value) => {
+      if (value === null || value === undefined || value === '') return '0 mg/dL'
+      if (typeof value === 'string' && value.toLowerCase().includes('mg')) return value
+      return `${value} mg/dL`
+    }
+
+    const formatVitals = (source = {}) => {
+      return {
+        bloodPressure: sanitizeText(source.bloodPressure, 'N/A'),
+        sugarLevel: formatSugarValue(source.sugarLevel),
+        temperature: sanitizeText(source.temperature, 'N/A')
+      }
+    }
+
+    const normalizeToken = (tokenValue) => {
+      if (tokenValue === null || tokenValue === undefined || tokenValue === '-') return null
+      const tokenString = tokenValue.toString().trim()
+      if (!tokenString) return null
+      return tokenString.padStart(2, '0')
+    }
+
+    const todaysVisit = {
+      id: `today-${patient._id}`,
+      label: "Today's Visit",
+      dateLabel: currentVisitDateLabel,
+      timeLabel: currentVisitTimeLabel,
+      tokenDisplay: normalizeToken(formattedToken) || formattedToken || '--',
+      consultationType: patient.isRecheck ? 'Recheck-up' : 'New Visit',
+      doctorName: user?.fullName ? `Dr. ${user.fullName}` : 'Doctor not recorded',
+      status: formatStatus(patient.status),
+      issue: sanitizeText(patient.disease, 'Not recorded'),
+      diagnosis: sanitizeText(patient.prescription?.diagnosis, 'Not recorded'),
+      vitals: formatVitals({
+        bloodPressure: patient.bloodPressure,
+        sugarLevel: patient.sugarLevel,
+        temperature: patient.temperature
+      }),
+      medicines: patient.prescription?.medicines || [],
+      inventoryItems: patient.prescription?.inventoryItems || [],
+      notes: patient.prescription?.notes,
+      pdfPath: patient.prescription?.pdfPath || null,
+      selectedTests: patient.prescription?.selectedTests || []
+    }
+
+    // Get current visit date for filtering
+    const currentVisitDate = patient.registrationDate || patient.createdAt || patient.visitDate
+    const currentVisitDateStr = currentVisitDate ? new Date(currentVisitDate).toDateString() : null
+    const currentVisitId = patient._id
+
+    const normalizedPastVisits = pastVisitsRaw
+      .filter(Boolean)
+      // Filter out the current visit - exclude by ID and date to avoid duplicates
+      .filter((visit) => {
+        const visitId = visit._id || visit.visitDetails?._id
+        const visitDate = visit.visitDate || visit.createdAt
+        const visitDateStr = visitDate ? new Date(visitDate).toDateString() : null
+        
+        // Exclude if it's the current visit (by ID or same date)
+        if (visitId === currentVisitId) return false
+        if (currentVisitDateStr && visitDateStr === currentVisitDateStr) return false
+        
+        // Include all past visits from the database (they are already past visits)
+        return true
+      })
+      .map((visit, idx) => {
+        const { dateLabel, timeLabel } = formatVisitDateTime(visit.visitDate || visit.createdAt)
+        const tokenSource = visit.tokenNumber ?? visit.visitDetails?.tokenNumber
+        const consultationType = visit.visitDetails?.isRecheck ? 'Recheck-up' : 'New Visit'
+        const visitDoctorName = visit.doctor?.name ? `Dr. ${visit.doctor.name}` : visit.doctorName
+        const visitVitalsRaw = visit.vitals || {}
         return {
-          id: `${historyKey || patient._id}-past-${idx}`,
-          isToday: false,
-          label: `Past Visit ${idx + 1}`,
+          ...visit,
+          id: visit._id || visit.visitDetails?._id || `${historyKey || patient._id}-past-${idx}`,
+          label: visit.label || `Visit on ${dateLabel}`,
           dateLabel,
           timeLabel,
-          token: (visit.tokenNumber ?? '-').toString().padStart(2, '0'),
-          consultationType: visit.visitDetails?.isRecheck ? 'Recheck-up' : 'New Visit',
-          doctorName: visit.doctor?.name ? `Dr. ${visit.doctor.name}` : 'Doctor not recorded',
-          status: visit.visitDetails?.status || 'waiting',
-          rating: visit.behaviorRating,
-          issue: visit.patientInfo?.disease,
-          diagnosis: visit.prescription?.diagnosis,
-          vitals: visit.vitals || {},
-          medicines: visit.prescription?.medicines || [],
-          inventoryItems: visit.prescription?.inventoryItems || [],
-          notes: visit.prescription?.notes,
-          fees: visit.visitDetails?.fees,
-          feeStatus: visit.visitDetails?.feeStatus || 'not_recorded',
-          pdfPath: visit.prescription?.pdfPath || null,
-          selectedTests: visit.prescription?.selectedTests || []
+          tokenDisplay: normalizeToken(tokenSource) || '--',
+          consultationType,
+          doctorName: sanitizeText(visitDoctorName, 'Doctor not recorded'),
+          status: formatStatus(visit.visitDetails?.status || visit.status),
+          issue: sanitizeText(visit.patientInfo?.disease || visit.issue, 'Not recorded'),
+          diagnosis: sanitizeText(visit.prescription?.diagnosis || visit.diagnosis, 'Not recorded'),
+          vitals: formatVitals({
+            bloodPressure: visitVitalsRaw.bloodPressure,
+            sugarLevel: visitVitalsRaw.sugarLevel,
+            temperature: visitVitalsRaw.temperature
+          }),
+          medicines: visit.prescription?.medicines || visit.medicines || [],
+          inventoryItems: visit.prescription?.inventoryItems || visit.inventoryItems || [],
+          notes: visit.prescription?.notes || visit.notes,
+          pdfPath: visit.prescription?.pdfPath || visit.pdfPath || null,
+          selectedTests: visit.prescription?.selectedTests || visit.selectedTests || []
         }
       })
-    ]
+      .sort((a, b) => {
+        const dateA = new Date(a.visitDate || a.createdAt || 0).getTime()
+        const dateB = new Date(b.visitDate || b.createdAt || 0).getTime()
+        return dateB - dateA
+      })
+
+    // Only show past visits if there are actual previous completed visits from the database
+    // If patient is visiting for the first time (no past visits), hide the section
+    const hasPastVisits = normalizedPastVisits.length > 0
 
     const renderMedicinesTable = (visit) => {
       const medicines = visit.medicines || []
@@ -1277,184 +1355,223 @@ const DoctorDashboard = () => {
       )
     }
 
+    const statusChipClass = (status) => {
+      if (status === 'completed') return 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+      if (status === 'in-progress') return 'bg-amber-50 text-amber-700 border border-amber-200'
+      return 'bg-slate-100 text-slate-700 border border-slate-200'
+    }
+
+    const renderTests = (tests = []) => {
+      if (!Array.isArray(tests) || tests.length === 0) return null
+      return (
+        <div className="flex flex-wrap gap-2">
+          {tests.map((test, idx) => (
+            <span
+              key={`test-${idx}`}
+              className="inline-flex items-center px-2.5 py-1 rounded-full bg-cyan-50 text-cyan-700 text-xs font-medium border border-cyan-100"
+            >
+              {typeof test === 'string' ? test : test?.name || 'Test'}
+            </span>
+          ))}
+        </div>
+      )
+    }
+
+    const renderVisitCard = (visit, { title }) => {
+      const vitals = visit.vitals || {}
+      const medicinesSection = renderMedicinesTable(visit)
+      const inventorySection = renderInventoryItems(visit)
+      return (
+        <div key={visit.id} className="rounded-2xl border border-gray-100 shadow-sm bg-white overflow-hidden">
+          <div className="p-4 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {visit.dateLabel} · {visit.timeLabel}
+                </p>
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  {visit.tokenDisplay && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-50 text-gray-700 text-xs font-medium border border-gray-200">
+                      Token #{visit.tokenDisplay}
+                    </span>
+                  )}
+                  {visit.consultationType && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#6C63FF]/10 text-[#6C63FF] text-xs font-medium border border-[#6C63FF]/20">
+                      {visit.consultationType}
+                    </span>
+                  )}
+                  {visit.status && (
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${statusChipClass(visit.status)}`}>
+                      {visit.status?.replace('-', ' ') || 'Status not recorded'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="text-right min-w-[140px]">
+                <p className="text-xs text-gray-500">Doctor</p>
+                <p className="text-sm font-semibold text-gray-900">
+                  {visit.doctorName || 'Not recorded'}
+                </p>
+                {visit.pdfPath && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const pdfUrl = getPDFUrl(visit.pdfPath)
+                      if (pdfUrl) viewPdf(pdfUrl)
+                    }}
+                    className="mt-2 inline-flex items-center justify-center rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-100 hover:bg-blue-100 transition"
+                  >
+                    View PDF
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Health Issue</p>
+                  <p className="text-sm font-semibold text-gray-900">{visit.issue || 'Not recorded'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Diagnosis</p>
+                  <p className="text-sm font-semibold text-gray-900">{visit.diagnosis || 'Not recorded'}</p>
+                </div>
+                {visit.notes && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Doctor Notes</p>
+                    <p className="text-sm text-gray-700 whitespace-pre-line">{visit.notes}</p>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="p-2 rounded-lg bg-gray-50 border border-gray-200 text-center">
+                    <p className="text-[11px] text-gray-500 uppercase tracking-wide">BP</p>
+                    <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                      {vitals.bloodPressure || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-gray-50 border border-gray-200 text-center">
+                    <p className="text-[11px] text-gray-500 uppercase tracking-wide">Sugar</p>
+                    <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                      {vitals.sugarLevel || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-lg bg-gray-50 border border-gray-200 text-center">
+                    <p className="text-[11px] text-gray-500 uppercase tracking-wide">Temp</p>
+                    <p className="text-sm font-semibold text-gray-900 mt-0.5">
+                      {vitals.temperature || 'N/A'}
+                    </p>
+                  </div>
+                </div>
+                {renderTests(visit.selectedTests)}
+              </div>
+            </div>
+          </div>
+
+          {(visit.medicines?.length > 0 || visit.inventoryItems?.length > 0) && (
+            <div className="p-4 pt-0 space-y-4">
+              {visit.medicines?.length > 0 && medicinesSection}
+              {visit.inventoryItems?.length > 0 && inventorySection}
+            </div>
+          )}
+        </div>
+      )
+    }
+
     return (
       <div className="px-6 pb-6">
-        <div className="bg-white/90 rounded-2xl border border-purple-100 shadow-inner p-5 space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="bg-white/90 rounded-2xl border border-gray-200 shadow-inner p-5">
+          <button
+            type="button"
+            onClick={() => toggleInlineHistoryPanel(panelKey)}
+            className="flex w-full items-center justify-between gap-3 text-left group"
+            aria-expanded={isExpanded}
+          >
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-purple-600 flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <p className="text-xs font-bold uppercase tracking-wide text-[#6C63FF] flex items-center gap-2 group-hover:underline">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
                 Previous Medical History
               </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Auto-fetched via Patient ID{' '}
-                {inlineHistoryData?.patientInfo?.patientId || historyKey || fallbackKey || 'Not Assigned'}
-              </p>
+              <p className="text-xs text-gray-500 mt-1">Auto-fetched via Patient ID {patientIdentifier}</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={!historyKey || inlineHistoryLoadingState}
-                onClick={() => historyKey && fetchInlineHistory(historyKey)}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold border transition ${
-                  inlineHistoryLoadingState
-                    ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                    : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
-                }`}
-              >
-                {inlineHistoryLoadingState ? 'Fetching...' : 'Refresh'}
-              </button>
-              <button
-                type="button"
-                onClick={() => openMedicalHistory(patient)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-500 shadow hover:from-blue-600 hover:to-purple-600"
-              >
-                View Full History
-              </button>
-            </div>
-          </div>
-
-          {!historyKey ? (
-            <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
-              Assign a hospital Patient ID to view timeline history for this patient.
-            </div>
-          ) : !inlineHistoryData ? (
-            <div className="flex flex-col items-center justify-center py-10 gap-3">
-              <div className="h-10 w-10 rounded-full border-b-2 border-purple-500 animate-spin"></div>
-              <p className="text-sm text-gray-500">Fetching previous visits...</p>
-            </div>
-          ) : (
-            <>
-              <p className="text-xs text-gray-500">
-                Showing today's visit {pastVisits.length > 0 ? `+ last ${pastVisitsToShow.length} of ${pastVisits.length} previous visit${pastVisits.length > 1 ? 's' : ''}` : '(no previous visits recorded yet)'}
-              </p>
-              <div className="relative pl-6">
-                <div className="absolute left-3 top-0 bottom-0 w-px bg-gradient-to-b from-purple-200 via-blue-200 to-purple-200"></div>
-                {timelineVisits.map((visit, index) => {
-                  const statusClass =
-                    visit.status === 'completed'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : visit.status === 'in-progress'
-                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                      : 'bg-slate-100 text-slate-700 border-slate-200'
-                  const consultClass = visit.consultationType === 'Recheck-up'
-                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                    : 'bg-purple-50 text-purple-700 border-purple-200'
-
-                  return (
-                    <div key={visit.id} className="relative pb-10">
-                      <div
-                        className={`absolute left-2 top-2 -translate-x-1/2 w-4 h-4 rounded-full border-2 ${
-                          visit.isToday ? 'bg-purple-500 border-white' : 'bg-blue-500 border-white'
-                        }`}
-                      ></div>
-                      <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 space-y-5">
-                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                              {visit.isToday ? "Today's Visit" : `Past Visit ${index}`}
-                            </p>
-                            <h4 className="text-lg font-bold text-gray-900">{visit.dateLabel}</h4>
-                            <p className="text-sm text-gray-500">{visit.timeLabel}</p>
-                            <div className="flex flex-wrap gap-2 mt-3">
-                              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold border border-gray-200">
-                                Token #{visit.token}
-                              </span>
-                              <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${consultClass}`}>
-                                {visit.consultationType}
-                              </span>
-                              <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${statusClass}`}>
-                                {visit.status?.replace('-', ' ') || 'Status not recorded'}
-                              </span>
-                              {visit.rating && (
-                                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 text-xs font-semibold border border-yellow-200">
-                                  ⭐ {visit.rating}/5
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Doctor</p>
-                            <p className="text-base font-bold text-gray-900">{visit.doctorName}</p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Health Issue</p>
-                            <p className="text-sm font-bold text-blue-900 mt-1">{visit.issue || 'Not recorded'}</p>
-                          </div>
-                          <div className="bg-purple-50 border border-purple-100 rounded-xl p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-purple-600">Diagnosis</p>
-                            <p className="text-sm font-bold text-purple-900 mt-1">{visit.diagnosis || 'Not recorded'}</p>
-                          </div>
-                          <div className="bg-pink-50 border border-pink-100 rounded-xl p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-pink-600">Vitals</p>
-                            <div className="text-sm font-bold text-pink-900 mt-1 space-y-1">
-                              <p>BP: {visit.vitals?.bloodPressure || 'N/A'}</p>
-                              <p>Sugar: {visit.vitals?.sugarLevel !== undefined && visit.vitals?.sugarLevel !== null ? `${visit.vitals.sugarLevel} mg/dL` : 'N/A'}</p>
-                              {visit.vitals?.temperature && <p>Temp: {visit.vitals.temperature}</p>}
-                            </div>
-                          </div>
-                        </div>
-
-                        {renderMedicinesTable(visit)}
-                        {renderInventoryItems(visit)}
-
-                        {visit.notes && (
-                          <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">Doctor Notes / Instructions</p>
-                            <p className="text-sm text-gray-800 mt-2 whitespace-pre-line">{visit.notes}</p>
-                          </div>
-                        )}
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Fees Status</p>
-                            <p className="text-sm font-bold text-slate-900 mt-1">
-                              {visit.feeStatus ? visit.feeStatus.replace('_', ' ').toUpperCase() : 'Not recorded'}
-                            </p>
-                            {visit.fees !== undefined && (
-                              <p className="text-xs text-slate-500 mt-1">₹{visit.fees || 0}</p>
-                            )}
-                          </div>
-                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Consultation Type</p>
-                            <p className="text-sm font-bold text-slate-900 mt-1">{visit.consultationType}</p>
-                          </div>
-                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Prescription PDF</p>
-                            {visit.pdfPath ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const pdfUrl = getPDFUrl(visit.pdfPath)
-                                  if (pdfUrl) viewPdf(pdfUrl)
-                                }}
-                                className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow hover:bg-blue-700 transition"
-                              >
-                                View PDF
-                              </button>
-                            ) : (
-                              <span className="text-sm text-slate-500">Not uploaded</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+            <span
+              className={`inline-flex items-center justify-center w-7 h-7 rounded-full border border-gray-200 text-gray-600 transition-transform duration-200 ${
+                isExpanded ? 'rotate-180' : ''
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path
+                  fillRule="evenodd"
+                  d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.25a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            </span>
+          </button>
+          <div
+            className={`overflow-hidden transition-all duration-200 ease-out ${isExpanded ? 'mt-5 max-h-[5000px] opacity-100' : 'max-h-0 opacity-0 pointer-events-none'}`}
+            aria-hidden={!isExpanded}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!historyKey || inlineHistoryLoadingState}
+                  onClick={() => historyKey && fetchInlineHistory(historyKey)}
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold border transition ${
+                    inlineHistoryLoadingState
+                      ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                      : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-white'
+                  }`}
+                >
+                  {inlineHistoryLoadingState ? 'Fetching…' : 'Refresh'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openMedicalHistory(patient)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-[#6C63FF] hover:bg-[#5A52E5] shadow-sm"
+                >
+                  View Full History
+                </button>
               </div>
+            </div>
 
-              {pastVisits.length > pastVisitsToShow.length && (
-                <p className="text-xs text-gray-500">
-                  Showing the most recent {pastVisitsToShow.length} of {pastVisits.length} previous visits. Use "View Full History" to see all visits.
-                </p>
-              )}
-            </>
-          )}
+            {!historyKey ? (
+              <div className="mt-5 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+                Assign a hospital Patient ID to view history for this patient.
+              </div>
+            ) : !inlineHistoryData ? (
+              <div className="mt-5 flex flex-col items-center justify-center py-10 gap-3">
+                <div className="h-10 w-10 rounded-full border-b-2 border-[#6C63FF] animate-spin"></div>
+                <p className="text-sm text-gray-500">Fetching previous visits…</p>
+              </div>
+            ) : (
+              <div className="mt-5 space-y-5">
+                {renderVisitCard(todaysVisit, { title: "Today's Visit" })}
+
+                {hasPastVisits ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-gray-900">Past Medical History</p>
+                      <span className="text-xs text-gray-500">
+                        {normalizedPastVisits.length} visit{normalizedPastVisits.length > 1 ? 's' : ''} found
+                      </span>
+                    </div>
+                    <div className="space-y-4">
+                      {normalizedPastVisits.map((visit) =>
+                        renderVisitCard(visit, { title: visit.label || 'Past Visit' })
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -2119,6 +2236,7 @@ const handleToggleCompletedPatients = () => {
     }
     const validMedicines = prescriptionData.medicines.filter((_, i) => results[i])
 
+    setSavingPrescription(true)
     try {
       // Combine selected tests with notes
       const testsText = prescriptionData.selectedTests.length > 0 
@@ -2191,6 +2309,8 @@ const handleToggleCompletedPatients = () => {
       }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to save prescription')
+    } finally {
+      setSavingPrescription(false)
     }
   }
 
@@ -2578,48 +2698,48 @@ const handleToggleCompletedPatients = () => {
   }, [filteredHistoryPatients.length])
 
   const inventorySelectionSummary = selectedInventoryItems.length > 0 ? (
-    <div className="mb-6 rounded-2xl border border-purple-100 bg-gradient-to-br from-purple-50 via-white to-purple-50/80 shadow-sm">
+    <div className="mb-6 rounded-[20px] border border-[#6C63FF]/20 bg-gradient-to-br from-[#6C63FF]/5 via-white to-[#6C63FF]/5 shadow-sm">
       <button
         type="button"
         onClick={() => setShowInventorySummary((prev) => !prev)}
-        className="flex w-full items-center justify-between px-5 py-4 text-left"
+        className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-[#6C63FF]/5 transition-colors rounded-t-[20px]"
       >
         <div className="flex items-center gap-3">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-purple-100 text-purple-600 shadow-inner">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#6C63FF] to-[#8B7FFF] text-white shadow-sm">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v8m4-4H8m12 0a8 8 0 11-16 0 8 8 0 0116 0z" />
             </svg>
           </span>
           <div>
-            <p className="text-sm font-semibold text-purple-900">Added Injections &amp; Surgical Items</p>
-            <p className="text-xs text-purple-500">{selectedInventoryItems.length} item{selectedInventoryItems.length > 1 ? 's' : ''} included below.</p>
+            <p className="text-sm font-semibold text-gray-800">Added Injections &amp; Surgical Items</p>
+            <p className="text-xs text-gray-500 mt-0.5">{selectedInventoryItems.length} item{selectedInventoryItems.length > 1 ? 's' : ''} included below.</p>
           </div>
         </div>
         <span className={`transition-transform duration-200 ${showInventorySummary ? 'rotate-0' : '-rotate-90'}`}>
-          <svg className="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <svg className="w-5 h-5 text-[#6C63FF]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </span>
       </button>
       {showInventorySummary && (
-        <div className="border-t border-purple-100 px-5 py-5">
+        <div className="border-t border-[#6C63FF]/20 px-5 py-5">
           <div className="grid gap-4 md:grid-cols-2">
             {selectedInventoryItems.map((item) => (
               <div
                 key={item.code}
-                className="group relative overflow-hidden rounded-xl border border-purple-100 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                className="group relative overflow-hidden rounded-[16px] border border-[#6C63FF]/20 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-[#6C63FF]/40"
               >
-                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-purple-400 via-purple-500 to-purple-600 opacity-80" />
+                <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#6C63FF] via-[#8B7FFF] to-[#6C63FF] opacity-80" />
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-sm font-semibold text-slate-900 group-hover:text-purple-600 transition">{item.name}</p>
-                    <p className="mt-1 text-xs text-slate-500">{item.usage}</p>
+                    <p className="text-sm font-semibold text-gray-800 group-hover:text-[#6C63FF] transition-colors">{item.name}</p>
+                    <p className="mt-1 text-xs text-gray-500">{item.usage}</p>
                   </div>
-                  <span className="ml-3 inline-flex items-center rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-purple-600">
+                  <span className="ml-3 inline-flex items-center rounded-full bg-[#6C63FF]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#6C63FF]">
                     {item.code}
                   </span>
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-xs text-purple-600">
+                <div className="mt-3 flex items-center gap-2 text-xs text-[#6C63FF]">
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
                   </svg>
@@ -3583,274 +3703,231 @@ const handleToggleCompletedPatients = () => {
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Active Consultation Header */}
-                <div className="bg-gradient-to-br from-white via-purple-50 to-blue-50 border border-purple-100 rounded-3xl shadow-xl overflow-hidden">
-                  <div className="px-6 py-6 bg-gradient-to-r from-purple-600 via-purple-700 to-blue-600">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center ring-4 ring-white/30">
-                          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="text-xs font-bold uppercase tracking-wider text-white/90">Active Consultation</p>
-                          <h3 className="text-2xl font-bold text-white mt-1">Currently Treating Patient</h3>
-                        </div>
-                      </div>
-                      <span className="px-5 py-2.5 bg-white/25 backdrop-blur-sm text-white rounded-full text-sm font-bold shadow-lg ring-2 ring-white/30 animate-pulse">
-                        ACTIVE
-                      </span>
+                {/* Active Consultation - Compact Professional Design */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Active Patients</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">Currently Treating Patient</p>
                     </div>
                   </div>
 
-                  <div className="px-6 py-6 space-y-6">
-                    {filteredTodayPatients.map((patient) => {
-                      const hasPendingFees = !patient.isRecheck && patient.feeStatus !== 'not_required' && patient.feeStatus === 'pending'
-                      const formattedToken = (patient.tokenNumber ?? '-').toString().padStart(2, '0')
-                      const registrationDate = patient.visitDate
-                        ? new Date(`${patient.visitDate}T00:00:00`)
-                        : new Date(patient.registrationDate)
-                      const visitDateFormatted = registrationDate.toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric'
-                      })
-                      const visitTimeFormatted = patient.visitTime
-                        ? patient.visitTime
-                        : new Date(patient.registrationDate).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })
-                      const sugarFormatted =
-                        patient.sugarLevel !== undefined && patient.sugarLevel !== null && patient.sugarLevel !== ''
-                          ? `${patient.sugarLevel} mg/dL`
-                          : 'N/A'
-                      const isWaitingStatus = patient.status !== 'completed' && patient.status !== 'in-progress'
-                      const waitingStatusProps = isWaitingStatus
-                        ? {
-                            role: 'button',
-                            tabIndex: 0,
-                            onClick: () => handleOpenPrescriptionModal(patient),
-                            onKeyDown: (event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault()
-                                handleOpenPrescriptionModal(patient)
-                              }
+                  {filteredTodayPatients.map((patient) => {
+                    const hasPendingFees = !patient.isRecheck && patient.feeStatus !== 'not_required' && patient.feeStatus === 'pending'
+                    const formattedToken = (patient.tokenNumber ?? '-').toString().padStart(2, '0')
+                    const registrationDate = patient.visitDate
+                      ? new Date(`${patient.visitDate}T00:00:00`)
+                      : new Date(patient.registrationDate)
+                    const visitDateFormatted = registrationDate.toLocaleDateString('en-IN', {
+                      day: '2-digit',
+                      month: 'short',
+                      year: 'numeric'
+                    })
+                    const visitTimeFormatted = patient.visitTime
+                      ? patient.visitTime
+                      : new Date(patient.registrationDate).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })
+                    const sugarFormatted =
+                      patient.sugarLevel !== undefined && patient.sugarLevel !== null && patient.sugarLevel !== ''
+                        ? `${patient.sugarLevel} mg/dL`
+                        : 'N/A'
+                    const isWaitingStatus = patient.status !== 'completed' && patient.status !== 'in-progress'
+                    const waitingStatusProps = isWaitingStatus
+                      ? {
+                          role: 'button',
+                          tabIndex: 0,
+                          onClick: () => handleOpenPrescriptionModal(patient),
+                          onKeyDown: (event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              handleOpenPrescriptionModal(patient)
                             }
                           }
-                        : {}
+                        }
+                      : {}
 
-                      return (
-                        <div
-                          key={patient._id}
-                          className="bg-white rounded-2xl border-2 border-purple-200 shadow-xl overflow-hidden hover:shadow-2xl transition-shadow duration-300"
-                        >
-                          {/* Patient Header */}
-                          <div className="bg-gradient-to-r from-purple-50 via-blue-50 to-purple-50 px-6 py-5 border-b-2 border-purple-100">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-5">
-                                <div className="relative">
-                                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 via-purple-600 to-blue-600 flex items-center justify-center text-white text-3xl font-bold shadow-xl ring-4 ring-purple-100">
-                                    {patient.fullName?.charAt(0).toUpperCase() || 'P'}
-                                  </div>
-                                  <span className="absolute -bottom-1 -right-1 w-6 h-6 bg-purple-600 rounded-full border-3 border-white flex items-center justify-center shadow-lg">
-                                    <span className="w-2 h-2 bg-white rounded-full animate-pulse"></span>
-                                  </span>
-                                </div>
-                                <div>
-                                  <h4 className="text-2xl font-bold text-gray-900 mb-1">{patient.fullName}</h4>
-                                  {patient.patientId && (
-                                    <div className="mb-2">
-                                      <span className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200">
-                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
-                                        </svg>
+                    return (
+                      <div
+                        key={patient._id}
+                        className="bg-white rounded-[20px] border border-gray-200 shadow-[0_2px_8px_rgba(0,0,0,0.04)] overflow-hidden hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-shadow duration-200"
+                        role="article"
+                        aria-label={`Patient ${patient.fullName} consultation card`}
+                      >
+                        {/* Main Content - Two Column Layout */}
+                        <div className="p-5 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-5">
+                          {/* Left Column - Patient Information */}
+                          <div className="flex items-start gap-4">
+                            {/* Patient Avatar */}
+                            <div className="relative flex-shrink-0">
+                              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#6C63FF]/20 to-[#3A9EC2]/20 flex items-center justify-center border-2 border-[#6C63FF]/30">
+                                <span className="text-lg font-semibold text-[#6C63FF]">
+                                  {patient.fullName?.charAt(0).toUpperCase() || 'P'}
+                                </span>
+                              </div>
+                              <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-[#6C63FF] rounded-full border-2 border-white flex items-center justify-center">
+                                <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
+                              </span>
+                            </div>
+
+                            {/* Patient Details */}
+                            <div className="flex-1 min-w-0">
+                              {/* Name and Token */}
+                              <div className="flex items-start justify-between gap-3 mb-3">
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="text-[17px] font-semibold text-gray-900 mb-1.5 truncate">
+                                    {patient.fullName}
+                                  </h4>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {patient.patientId && (
+                                      <span className="text-xs text-gray-600 font-medium">
                                         {patient.patientId}
                                       </span>
-                                    </div>
-                                  )}
-                                  <div className="flex items-center gap-3 flex-wrap">
-                                    <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 text-sm font-bold shadow-sm border border-purple-200">
-                                      <span className="h-2.5 w-2.5 rounded-full bg-purple-500 animate-pulse"></span>
-                                      Token #{formattedToken}
-                                    </span>
+                                    )}
                                     {patient.age && (
-                                      <span className="text-sm font-semibold text-gray-700 bg-gray-50 px-3 py-1 rounded-lg">
+                                      <span className="text-xs text-gray-600">
                                         {patient.age} {patient.gender ? `• ${patient.gender}` : ''}
                                       </span>
                                     )}
+                                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[#6C63FF]/10 text-[#6C63FF] text-xs font-medium">
+                                      Token #{formattedToken}
+                                    </span>
                                   </div>
                                 </div>
                               </div>
-                              <div className="text-right bg-white/80 rounded-xl px-4 py-3 border border-purple-100 shadow-sm">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">Mobile</p>
-                                <p className="text-base font-bold text-gray-900">{patient.mobileNumber}</p>
-                              </div>
-                            </div>
-                          </div>
 
-                          {/* Patient Details Grid */}
-                          <div className="px-6 py-6 grid grid-cols-1 lg:grid-cols-2 gap-6 bg-gradient-to-br from-white to-purple-50/30">
-                            {/* Left Column */}
-                            <div className="space-y-5">
-                              <div>
-                                <p className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-3 flex items-center gap-2">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                  </svg>
-                                  Health Issue
-                                </p>
-                                <div className="flex items-center gap-3 px-5 py-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 shadow-sm">
-                                  <span className="h-3 w-3 rounded-full bg-blue-500 shadow-sm"></span>
-                                  <p className="font-bold text-lg text-gray-900">{patient.disease || 'Not specified'}</p>
-                                </div>
-                              </div>
-
-                              {/* Diagnosis Section - Show prescription diagnosis if available */}
-                              {patient.prescription?.diagnosis && (
-                                <div>
-                                  <p className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-3 flex items-center gap-2">
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                    </svg>
-                                    Diagnosis
-                                  </p>
-                                  <div className="flex items-center gap-3 px-5 py-3.5 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 shadow-sm">
-                                    <span className="h-3 w-3 rounded-full bg-green-500 shadow-sm"></span>
-                                    <p className="font-bold text-lg text-gray-900">{patient.prescription.diagnosis}</p>
+                              {/* Health Issue */}
+                              {patient.disease && (
+                                <div className="mb-3">
+                                  <p className="text-xs font-medium text-gray-500 mb-1.5">Health Issue</p>
+                                  <div className="inline-flex items-center px-3 py-1.5 rounded-lg bg-[#3A9EC2]/10 border border-[#3A9EC2]/20">
+                                    <span className="text-sm font-medium text-gray-900">{patient.disease}</span>
                                   </div>
                                 </div>
                               )}
 
-                              <div>
-                                <p className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-3 flex items-center gap-2">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                  </svg>
-                                  Vitals
-                                </p>
-                                <div className="space-y-3">
-                                  <div className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200 shadow-sm">
-                                    <span className="h-3 w-3 rounded-full bg-purple-500 shadow-sm"></span>
-                                    <span className="text-sm font-semibold text-gray-600">BP:</span>
-                                    <span className="font-bold text-lg text-gray-900">{patient.bloodPressure || 'N/A'}</span>
-                                  </div>
-                                  <div className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200 shadow-sm">
-                                    <span className="h-3 w-3 rounded-full bg-purple-500 shadow-sm"></span>
-                                    <span className="text-sm font-semibold text-gray-600">Sugar:</span>
-                                    <span className="font-bold text-lg text-gray-900">{sugarFormatted}</span>
-                                  </div>
+                              {/* Vitals Microcards */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {/* BP Microcard */}
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-200">
+                                  <span className="text-xs font-medium text-gray-500">BP</span>
+                                  <span className="text-xs font-semibold text-gray-900">{patient.bloodPressure || 'N/A'}</span>
                                 </div>
-                              </div>
-                            </div>
-
-                            {/* Right Column */}
-                            <div className="space-y-5">
-                              <div>
-                                <p className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-3 flex items-center gap-2">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                  </svg>
-                                  Schedule
-                                </p>
-                                <div className="space-y-3">
-                                  <div className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-slate-50 to-gray-50 rounded-xl border-2 border-slate-200 shadow-sm">
-                                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                    <span className="text-base font-bold text-gray-900">{visitDateFormatted}</span>
-                                  </div>
-                                  <div className="flex items-center gap-3 px-5 py-3 bg-gradient-to-r from-slate-50 to-gray-50 rounded-xl border-2 border-slate-200 shadow-sm">
-                                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    <span className="text-base font-bold text-gray-900">{visitTimeFormatted}</span>
-                                  </div>
+                                {/* Sugar Microcard */}
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-50 border border-gray-200">
+                                  <span className="text-xs font-medium text-gray-500">Sugar</span>
+                                  <span className="text-xs font-semibold text-gray-900">{sugarFormatted}</span>
                                 </div>
-                              </div>
-
-                              <div>
-                                <p className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-3 flex items-center gap-2">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                  Status
-                                </p>
-                                <span
+                                {/* Status Microcard */}
+                                <div
                                   {...waitingStatusProps}
-                                  className={`inline-flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold shadow-sm ${
-                                  patient.status === 'completed'
-                                    ? 'bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 border-2 border-green-300'
-                                    : patient.status === 'in-progress'
-                                    ? 'bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-700 border-2 border-yellow-300'
-                                    : 'bg-gradient-to-r from-purple-100 to-blue-100 text-purple-700 border-2 border-purple-300 cursor-pointer hover:shadow-md focus:outline-none focus:ring-2 focus:ring-purple-300'
-                                }`}>
-                                  <span className={`w-3 h-3 rounded-full shadow-sm ${
-                                    patient.status === 'completed' ? 'bg-green-500'
-                                    : patient.status === 'in-progress' ? 'bg-yellow-500'
-                                    : 'bg-purple-500 animate-pulse'
+                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium ${
+                                    patient.status === 'completed'
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : patient.status === 'in-progress'
+                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                      : 'bg-[#6C63FF]/10 text-[#6C63FF] border border-[#6C63FF]/20 cursor-pointer hover:bg-[#6C63FF]/15 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:ring-offset-1'
+                                  }`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${
+                                    patient.status === 'completed' ? 'bg-emerald-500'
+                                    : patient.status === 'in-progress' ? 'bg-amber-500'
+                                    : 'bg-[#6C63FF]'
                                   }`}></span>
                                   {patient.status === 'completed' ? 'Completed' : patient.status === 'in-progress' ? 'In Progress' : 'Waiting'}
-                                </span>
+                                </div>
                               </div>
                             </div>
                           </div>
 
-                          {renderInlineHistoryPanel(patient, {
-                            formattedToken,
-                            visitDateFormatted,
-                            visitTimeFormatted
-                          })}
-
-                          {/* Footer Actions */}
-                          <div className="px-6 py-5 bg-gradient-to-r from-gray-50 to-purple-50/50 border-t-2 border-purple-100 flex flex-wrap items-center justify-between gap-4">
-                            <div className="flex items-center gap-3 flex-wrap">
-                              {patient.feeStatus === 'paid' && (
-                                <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 text-sm font-bold border-2 border-green-300 shadow-sm">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                  Fees Paid
-                                </span>
-                              )}
-                              {patient.behaviorRating && (
-                                <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-700 text-sm font-bold border-2 border-yellow-300 shadow-sm">
-                                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                                  </svg>
-                                  {patient.behaviorRating}/5
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <button
-                                onClick={() => openMedicalHistory(patient)}
-                                className="px-5 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 rounded-xl hover:from-blue-100 hover:to-indigo-100 border-2 border-blue-200 transition-all font-bold text-sm flex items-center gap-2 shadow-sm hover:shadow-md"
-                              >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                </svg>
-                                View Full History
-                              </button>
+                          {/* Right Column - Quick Actions */}
+                          <div className="flex flex-col items-end gap-2.5 lg:border-l lg:border-gray-200 lg:pl-5">
+                            {/* Primary CTA - Add Prescription (only show for active patients, not completed) */}
+                            {patient.status !== 'completed' && (
                               <button
                                 onClick={() => {
                                   setSelectedPatient(patient)
                                   setShowPrescriptionModal(true)
                                 }}
-                                className="px-5 py-2.5 bg-gradient-to-r from-purple-600 via-purple-700 to-blue-600 text-white rounded-xl hover:from-purple-700 hover:via-purple-800 hover:to-blue-700 transition-all font-bold text-sm flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                                className="w-full lg:w-auto px-4 py-2.5 bg-[#6C63FF] text-white rounded-[12px] text-sm font-semibold hover:bg-[#5A52E5] focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:ring-offset-2 transition-colors duration-150 flex items-center justify-center gap-2 shadow-sm hover:shadow-md"
+                                aria-label={`Add prescription for ${patient.fullName}`}
                               >
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                 </svg>
                                 Add Prescription
                               </button>
+                            )}
+
+                            {/* Secondary Actions */}
+                            <div className="flex items-center gap-2 w-full lg:w-auto">
+                              {/* Call Button */}
+                              {patient.mobileNumber && (
+                                <a
+                                  href={`tel:${patient.mobileNumber}`}
+                                  className="flex items-center justify-center w-10 h-10 rounded-[10px] border border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-1 transition-colors duration-150"
+                                  aria-label={`Call ${patient.fullName} at ${patient.mobileNumber}`}
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                  </svg>
+                                </a>
+                              )}
+
+                              {/* View History Button */}
+                              <button
+                                onClick={() => openMedicalHistory(patient)}
+                                className="flex items-center justify-center w-10 h-10 rounded-[10px] border border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-1 transition-colors duration-150"
+                                aria-label={`View full medical history for ${patient.fullName}`}
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </button>
                             </div>
+
+                            {/* Mobile Number Display */}
+                            {patient.mobileNumber && (
+                              <div className="text-right mt-1">
+                                <p className="text-xs text-gray-500">Mobile</p>
+                                <p className="text-sm font-medium text-gray-900">{patient.mobileNumber}</p>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      )
-                    })}
-                  </div>
+
+                        {/* Additional Info Footer (if needed) */}
+                        {(patient.feeStatus === 'paid' || patient.behaviorRating) && (
+                          <div className="px-5 py-3 bg-gray-50/50 border-t border-gray-100 flex items-center gap-3 flex-wrap">
+                            {patient.feeStatus === 'paid' && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Fees Paid
+                              </span>
+                            )}
+                            {patient.behaviorRating && (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                                </svg>
+                                {patient.behaviorRating}/5
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Inline History Panel */}
+                        {renderInlineHistoryPanel(patient, {
+                          formattedToken,
+                          visitDateFormatted,
+                          visitTimeFormatted
+                        })}
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -4721,37 +4798,45 @@ const handleToggleCompletedPatients = () => {
       {/* Prescription Modal */}
       {showPrescriptionModal && selectedPatient && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-[fadeIn_0.2s_ease-out]"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-[fadeIn_0.2s_ease-out]"
           onClick={handleClosePrescriptionModal}
         >
           <div 
-            className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-[slideIn_0.2s_ease-out]"
+            className="bg-white rounded-[24px] max-w-4xl w-full max-h-[95vh] overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.05)] flex flex-col animate-[slideIn_0.2s_ease-out]"
             onClick={(e) => e.stopPropagation()}
+            style={{ boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}
           >
-            {/* Modal Header with Close Button */}
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-5 rounded-t-2xl z-10">
+            {/* Modal Header with Sticky Top Bar */}
+            <div className="sticky top-0 bg-gradient-to-r from-white via-[#F4F4F7] to-white border-b border-[#E5E5EA] px-6 py-5 z-10 shadow-[0_2px_8px_rgba(0,0,0,0.03)]">
               <div className="flex items-center justify-between">
-                <h3 className="text-2xl font-bold text-gray-900">
-                  Create Prescription - {selectedPatient.fullName}
-                </h3>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-1.5">
+                    Create Prescription – {selectedPatient.fullName}
+                  </h3>
+                  <p className="text-sm text-gray-500 font-medium leading-relaxed">
+                    Add diagnosis, medicines, dosage timings, tests, and doctor notes.
+                  </p>
+                </div>
                 <button
                   onClick={handleClosePrescriptionModal}
-                  className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 flex items-center justify-center transition-all duration-200 shadow-sm hover:shadow-md"
+                  className="w-10 h-10 rounded-full bg-white hover:bg-gray-50 text-gray-400 hover:text-gray-600 flex items-center justify-center transition-all duration-200 shadow-sm hover:shadow-md border border-gray-200"
                   aria-label="Close modal"
                   type="button"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
             </div>
             
-            <div className="p-6">
+            {/* Scrollable Content Area */}
+            <div className="flex-1 overflow-y-auto px-6 py-6" style={{ backgroundColor: '#F4F4F7' }}>
             <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Health Issue *
+              {/* Health Issue Input */}
+              <div className="bg-white rounded-[22px] p-6 shadow-sm border border-gray-100">
+                <label className="block text-sm font-semibold text-gray-800 mb-3">
+                  Health Issue <span className="text-[#3A9EC2]">*</span>
                 </label>
                 <div className="relative">
                   <input
@@ -4759,8 +4844,8 @@ const handleToggleCompletedPatients = () => {
                     list="diagnosis-options"
                     value={prescriptionData.diagnosis}
                     onChange={(e) => setPrescriptionData({ ...prescriptionData, diagnosis: e.target.value })}
-                    placeholder="Select or type health issue..."
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none shadow-sm"
+                    placeholder="Enter health issue (e.g., Headache, Fever, Migraine…)"
+                    className="w-full px-4 py-3.5 border border-gray-200 rounded-[16px] focus:ring-2 focus:ring-[#3A9EC2]/20 focus:border-[#3A9EC2] outline-none transition-all bg-white text-gray-900 placeholder:text-gray-400"
                     required
                   />
                   <datalist id="diagnosis-options">
@@ -4788,85 +4873,90 @@ const handleToggleCompletedPatients = () => {
                   const diagnoses = getDiagnosesForSpecialization(user.specialization)
                   if (diagnoses.length > 0) {
                     return (
-                      <p className="mt-1 text-xs text-gray-500">
-                        Suggestions for <span className="font-semibold">{user.specialization}</span>. You can also type a custom health issue.
+                      <p className="mt-2.5 text-xs text-gray-500 font-medium">
+                        Suitable for <span className="font-semibold text-gray-700">{user.specialization}</span> • Custom issue allowed
                       </p>
                     )
                   }
                   return (
-                    <p className="mt-1 text-xs text-gray-500">
-                      No specific diagnoses available for <span className="font-semibold">{user.specialization}</span>. Please type your health issue.
+                    <p className="mt-2.5 text-xs text-gray-500 font-medium">
+                      Suitable for <span className="font-semibold text-gray-700">{user.specialization}</span> • Custom issue allowed
                     </p>
                   )
                 })()}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              {/* Diagnosis Notes */}
+              <div className="bg-white rounded-[22px] p-6 shadow-sm border border-gray-100">
+                <label className="block text-sm font-semibold text-gray-800 mb-3">
                   Diagnosis Notes
                 </label>
                 <textarea
                   value={prescriptionData.diagnosisNotes}
                   onChange={(e) => setPrescriptionData({ ...prescriptionData, diagnosisNotes: e.target.value })}
-                  placeholder="Enter clinical notes (e.g., BP: 120/80, Pulse: 72, Temperature: 98.6°F, or additional remarks)..."
-                  rows="2"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none shadow-sm resize-none text-sm"
+                  placeholder="Enter clinical notes (e.g., BP: 120/80, Pulse: 72, Temperature: 98.6°F, remarks…)"
+                  rows="3"
+                  className="w-full px-4 py-3.5 border border-gray-200 rounded-[16px] focus:ring-2 focus:ring-[#14B8A6]/20 focus:border-[#14B8A6] outline-none transition-all resize-none text-sm bg-white text-gray-900 placeholder:text-gray-400"
                 />
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-2.5 text-xs text-gray-500 font-medium">
                   Add clinical observations such as vital signs, physical examination findings, or other relevant notes.
                 </p>
               </div>
 
-              <div>
-                <div className={`flex flex-col ${showInventoryPanel ? 'lg:flex-row lg:items-start lg:gap-6' : ''}`}>
-                  <div className="flex-1">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
-                      <label className="block text-sm font-medium text-gray-700 whitespace-nowrap">
-                        Prescribed Medicines *
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={addMedicineField}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm"
-                        >
-                          <span className="text-base">➕</span>
-                          Add Medicine
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowInventoryPanel((prev) => !prev)}
-                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-semibold transition shadow-sm ${
-                            showInventoryPanel
-                              ? 'border-purple-300 bg-purple-100 text-purple-700'
-                              : 'border-purple-200 bg-white text-purple-600 hover:bg-purple-50'
-                          }`}
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h10M4 17h7" />
-                          </svg>
-                          {showInventoryPanel ? 'Hide' : 'View'} Injections & Surgical Items
-                          {selectedInventoryItems.length > 0 && (
-                            <span className="ml-1 inline-flex items-center justify-center rounded-full bg-purple-600 text-white text-[11px] px-2 py-0.5">
-                              {selectedInventoryItems.length}
-                            </span>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
+              {/* Prescribed Medicines Section */}
+              <div className="bg-white rounded-[20px] p-4 shadow-sm border border-gray-100">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
+                  <label className="block text-sm font-semibold text-gray-800 whitespace-nowrap">
+                    Prescribed Medicines <span className="text-[#3A9EC2]">*</span>
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={addMedicineField}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#6C63FF] via-[#3A9EC2] to-[#14B8A6] text-white rounded-[14px] hover:opacity-90 transition-all text-sm font-semibold shadow-sm hover:shadow-md"
+                      style={{ background: 'linear-gradient(to right, #6C63FF, #3A9EC2, #14B8A6)' }}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Medicine
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowInventoryPanel((prev) => !prev)}
+                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-[14px] border-2 text-sm font-semibold transition-all ${
+                        showInventoryPanel
+                          ? 'border-[#3A9EC2] bg-[#3A9EC2]/10 text-[#3A9EC2]'
+                          : 'border-[#3A9EC2]/30 bg-white text-[#3A9EC2] hover:bg-[#3A9EC2]/5'
+                      }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h10M4 17h7" />
+                      </svg>
+                      {showInventoryPanel ? 'Hide' : 'View'} Injections & Surgical Items
+                      {selectedInventoryItems.length > 0 && (
+                        <span className="ml-1 inline-flex items-center justify-center rounded-full bg-[#6C63FF] text-white text-[11px] px-2 py-0.5 font-bold">
+                          {selectedInventoryItems.length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
                     {prescriptionData.medicines.map((medicine, index) => (
-                      <div key={index} className="mb-4 p-4 border border-gray-200 rounded-xl bg-white shadow-sm">
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                          <div className="lg:col-span-4">
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Medicine</label>
-                            <div className={`relative ${listeningMedicineIndex === index ? 'ring-2 ring-purple-300 rounded-lg' : ''}`}>
+                      <div key={index} className="bg-white rounded-[20px] p-3 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {/* Medicine Name Column */}
+                          <div className="md:col-span-1">
+                            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Medicine</label>
+                            <div className="relative">
                               <input
                                 type="text"
-                                placeholder={listeningMedicineIndex === index ? 'Listening…' : 'Start typing to search...'}
+                                placeholder={listeningMedicineIndex === index ? 'Listening…' : 'Start typing to search'}
                                 value={medicine.name}
                                 onChange={(e) => handleMedicineChange(index, 'name', e.target.value)}
-                                className="w-full px-3 pr-11 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
+                                className="w-full px-3 pr-[48px] py-2.5 border border-gray-200 rounded-[10px] focus:ring-2 focus:ring-[#3A9EC2]/20 focus:border-[#3A9EC2] outline-none transition-all bg-white text-sm"
                               />
                               <button
                                 type="button"
@@ -4886,9 +4976,9 @@ const handleToggleCompletedPatients = () => {
                                     startMedicineVoice()
                                   }
                                 }}
-                                className={`mic-btn absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-full text-purple-600 hover:text-purple-700 hover:bg-purple-50 transition-colors ${listeningMedicineIndex === index ? 'bg-purple-100 pulsing' : 'bg-transparent'}`}
+                                className={`mic-btn right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full text-[#3A9EC2] hover:text-[#2A8EAC] hover:bg-[#3A9EC2]/10 ${listeningMedicineIndex === index ? 'bg-[#3A9EC2]/20 text-[#3A9EC2] pulsing' : 'bg-transparent'}`}
                               >
-                                <svg className={`w-4 h-4 ${listeningMedicineIndex === index ? 'animate-pulse' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                   <path d="M12 14a3 3 0 003-3V7a3 3 0 10-6 0v4a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 0014 0h-2zM11 19.93V22h2v-2.07A8.001 8.001 0 0120 12h-2a6 6 0 11-12 0H4a8.001 8.001 0 017 7.93z"/>
                                 </svg>
                               </button>
@@ -4922,16 +5012,17 @@ const handleToggleCompletedPatients = () => {
                             </div>
                           </div>
 
-                          <div className="lg:col-span-3">
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Duration</label>
-                            <div className={`relative ${listeningDurationIndex === index ? 'ring-2 ring-purple-300 rounded-lg' : ''}`}>
+                          {/* Duration Column */}
+                          <div className="md:col-span-1">
+                            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Duration</label>
+                            <div className="relative">
                               <input
                                 type="text"
                                 aria-label="Medicine duration"
                                 placeholder="e.g. 5 days"
                                 value={medicine.duration}
                                 onChange={(e) => handleMedicineChange(index, 'duration', e.target.value)}
-                                className={`w-full px-3 pr-11 py-2 border ${medicineErrors[index]?.duration ? 'border-red-400 shake-once' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-purple-500 outline-none shadow-sm`}
+                                className={`w-full px-3 pr-[48px] py-2.5 border ${medicineErrors[index]?.duration ? 'border-red-400 shake-once' : 'border-gray-200'} rounded-[10px] focus:ring-2 focus:ring-[#14B8A6]/20 focus:border-[#14B8A6] outline-none transition-all bg-white text-sm`}
                               />
                               <button
                                 type="button"
@@ -4951,22 +5042,22 @@ const handleToggleCompletedPatients = () => {
                                     startDurationVoice()
                                   }
                                 }}
-                                className={`mic-btn absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-full text-purple-600 hover:text-purple-700 hover:bg-purple-50 transition-colors ${listeningDurationIndex === index ? 'bg-purple-100 pulsing' : 'bg-transparent'}`}
+                                className={`mic-btn right-2 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full text-[#14B8A6] hover:text-[#0D9488] hover:bg-[#14B8A6]/10 ${listeningDurationIndex === index ? 'bg-[#14B8A6]/20 text-[#14B8A6] pulsing mic-teal' : 'bg-transparent'}`}
                               >
-                                <svg className={`w-4 h-4 ${listeningDurationIndex === index ? 'animate-pulse' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                   <path d="M12 14a3 3 0 003-3V7a3 3 0 10-6 0v4a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 0014 0h-2zM11 19.93V22h2v-2.07A8.001 8.001 0 0120 12h-2a6 6 0 11-12 0H4a8.001 8.001 0 017 7.93z"/>
                                 </svg>
                               </button>
                             </div>
                             {medicineErrors[index]?.duration && (
-                              <p className="text-xs text-red-600 mt-1 animate-fade-in">{medicineErrors[index].duration}</p>
+                              <p className="text-xs text-red-600 mt-1 animate-fade-in font-medium">{medicineErrors[index].duration}</p>
                             )}
-                            <p className="text-[11px] text-gray-400 mt-1">Speak duration, e.g., ‘five days’</p>
                           </div>
 
-                          <div className="lg:col-span-5">
-                            <fieldset className={`relative border border-gray-200 rounded-lg px-3 py-2 shadow-sm ${listeningDosageIndex === index ? 'ring-2 ring-purple-300' : ''}`}>
-                              <legend className="text-xs font-semibold text-gray-500 px-1">Dosage Times</legend>
+                          {/* Dosage Times Column */}
+                          <div className="md:col-span-2 lg:col-span-1">
+                            <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Dosage Times</label>
+                            <div className="relative border border-gray-200 rounded-[10px] px-2.5 py-2 bg-white">
                               <button
                                 type="button"
                                 aria-label="Voice select dosage times"
@@ -4984,63 +5075,81 @@ const handleToggleCompletedPatients = () => {
                                     startDosageVoice()
                                   }
                                 }}
-                                className={`mic-btn absolute top-1.5 right-2 inline-flex items-center justify-center w-7 h-7 rounded-full text-purple-600 hover:text-purple-700 hover:bg-purple-50 transition-colors ${listeningDosageIndex === index ? 'bg-purple-100 pulsing' : 'bg-transparent'}`}
+                                className={`mic-btn top-1.5 right-2 z-10 w-7 h-7 rounded-full text-[#6C63FF] hover:text-[#5A52E6] hover:bg-[#6C63FF]/10 ${listeningDosageIndex === index ? 'bg-[#6C63FF]/20 text-[#6C63FF] pulsing mic-lavender' : 'bg-transparent'}`}
                               >
-                                <svg className={`w-3.5 h-3.5 ${listeningDosageIndex === index ? 'animate-pulse' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                   <path d="M12 14a3 3 0 003-3V7a3 3 0 10-6 0v4a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 0014 0h-2zM11 19.93V22h2v-2.07A8.001 8.001 0 0120 12h-2a6 6 0 11-12 0H4a8.001 8.001 0 017 7.93z"/>
                                 </svg>
                               </button>
-                              <div className="flex flex-wrap items-center gap-3 mb-3">
+                              <div className="grid grid-cols-3 gap-1.5 mb-2">
                                 {[
-                                  { key: 'morning', label: 'Morning' },
-                                  { key: 'afternoon', label: 'Afternoon' },
-                                  { key: 'night', label: 'Night' }
-                                ].map((time) => (
-                                  <label key={time.key} className="inline-flex items-center gap-2 bg-purple-50 border border-purple-100 px-3 py-1 rounded-lg hover:border-purple-300 transition-colors">
-                                    <input
-                                      type="checkbox"
-                                      checked={ensureTimesShape(medicine)[time.key]}
-                                      onChange={() => handleDosageToggle(index, time.key)}
-                                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                                    />
-                                    <span className="font-medium text-purple-700 text-xs uppercase">{time.label}</span>
-                                  </label>
-                                ))}
-
-                                {/* Additional Instructions Dropdown - Right next to dosage times */}
-                                <div className="flex-1 min-w-[200px]">
-                                  <select
-                                    value={medicine.dosageInstructions || ''}
-                                    onChange={(e) => handleMedicineChange(index, 'dosageInstructions', e.target.value)}
-                                    className="w-full px-3 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-xs bg-white shadow-sm"
-                                  >
-                                    <option value="">Additional Instructions...</option>
-                                    <option value="Take the tablet after meals | जेवणानंतर गोळी घ्या | भोजन के बाद टैबलेट लें">
-                                      Take the tablet after meals | जेवणानंतर गोळी घ्या | भोजन के बाद टैबलेट लें
-                                    </option>
-                                    <option value="Take the tablet before meals | जेवणापूर्वी गोळी घ्या | भोजन से पहले टैबलेट लें">
-                                      Take the tablet before meals | जेवणापूर्वी गोळी घ्या | भोजन से पहले टैबलेट लें
-                                    </option>
-                                    <option value="Take the tablet with water | पाण्यासोबत गोळी घ्या | पानी के साथ टैबलेट लें">
-                                      Take the tablet with water | पाण्यासोबत गोळी घ्या | पानी के साथ टैबलेट लें
-                                    </option>
-                                    <option value="Take the tablet on an empty stomach | रिकाम्या पोटी गोळी घ्या | खाली पेट टैबलेट लें">
-                                      Take the tablet on an empty stomach | रिकाम्या पोटी गोळी घ्या | खाली पेट टैबलेट लें
-                                    </option>
-                                  </select>
-                                </div>
+                                  { key: 'morning', label: 'MORNING', icon: '🌅', color: 'from-[#3A9EC2] to-[#5BB3D4]', borderColor: '#3A9EC2' },
+                                  { key: 'afternoon', label: 'AFTERNOON', icon: '☀️', color: 'from-[#6C63FF] to-[#8B7FFF]', borderColor: '#6C63FF' },
+                                  { key: 'night', label: 'NIGHT', icon: '🌙', color: 'from-[#14B8A6] to-[#2DD4BF]', borderColor: '#14B8A6' }
+                                ].map((time) => {
+                                  const isChecked = ensureTimesShape(medicine)[time.key]
+                                  return (
+                                    <button
+                                      key={time.key}
+                                      type="button"
+                                      onClick={() => handleDosageToggle(index, time.key)}
+                                      className={`flex flex-col items-center justify-center gap-0.5 px-1.5 py-1.5 rounded-[8px] border-2 transition-all relative ${
+                                        isChecked
+                                          ? 'text-white shadow-sm'
+                                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                                      }`}
+                                      style={isChecked ? {
+                                        background: time.key === 'morning' 
+                                          ? 'linear-gradient(to bottom right, #3A9EC2, #5BB3D4)'
+                                          : time.key === 'afternoon'
+                                          ? 'linear-gradient(to bottom right, #6C63FF, #8B7FFF)'
+                                          : 'linear-gradient(to bottom right, #14B8A6, #2DD4BF)',
+                                        borderColor: time.borderColor,
+                                        boxShadow: isChecked ? `0 0 0 2px ${time.borderColor}20, 0 1px 4px ${time.borderColor}30` : 'none'
+                                      } : {}}
+                                    >
+                                      <span className="text-sm leading-none">{time.icon}</span>
+                                      <span className="font-semibold text-[9px] uppercase tracking-wide leading-tight">{time.label}</span>
+                                    </button>
+                                  )
+                                })}
                               </div>
+
                               {medicineErrors[index]?.times && (
-                                <p className="text-xs text-red-600 mt-1 animate-fade-in">{medicineErrors[index].times}</p>
+                                <p className="text-xs text-red-600 mt-1 animate-fade-in font-medium">{medicineErrors[index].times}</p>
                               )}
-                              {/* Custom Instructions Input (optional) */}
-                              <div className={`relative ${listeningNotesIndex === index ? 'ring-2 ring-purple-300 rounded-lg' : ''}`}>
+                              
+                              {/* Additional Instructions Dropdown */}
+                              <div className="mt-2">
+                                <select
+                                  value={medicine.dosageInstructions || ''}
+                                  onChange={(e) => handleMedicineChange(index, 'dosageInstructions', e.target.value)}
+                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-[8px] focus:ring-2 focus:ring-[#3A9EC2]/20 focus:border-[#3A9EC2] outline-none text-xs bg-white transition-all"
+                                >
+                                  <option value="">Additional Instructions...</option>
+                                  <option value="Take the tablet after meals | जेवणानंतर गोळी घ्या | भोजन के बाद टैबलेट लें">
+                                    Take the tablet after meals | जेवणानंतर गोळी घ्या | भोजन के बाद टैबलेट लें
+                                  </option>
+                                  <option value="Take the tablet before meals | जेवणापूर्वी गोळी घ्या | भोजन से पहले टैबलेट लें">
+                                    Take the tablet before meals | जेवणापूर्वी गोळी घ्या | भोजन से पहले टैबलेट लें
+                                  </option>
+                                  <option value="Take the tablet with water | पाण्यासोबत गोळी घ्या | पानी के साथ टैबलेट लें">
+                                    Take the tablet with water | पाण्यासोबत गोळी घ्या | पानी के साथ टैबलेट लें
+                                  </option>
+                                  <option value="Take the tablet on an empty stomach | रिकाम्या पोटी गोळी घ्या | खाली पेट टैबलेट लें">
+                                    Take the tablet on an empty stomach | रिकाम्या पोटी गोळी घ्या | खाली पेट टैबलेट लें
+                                  </option>
+                                </select>
+                              </div>
+                              
+                              {/* Custom Instructions Input */}
+                              <div className="relative mt-2">
                                 <input
                                   type="text"
                                   placeholder="Custom instructions (optional)"
                                   value={medicine.dosageNotes || ''}
                                   onChange={(e) => handleMedicineChange(index, 'dosageNotes', e.target.value)}
-                                  className="w-full px-3 pr-11 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm"
+                                  className="w-full px-2.5 pr-[44px] py-2 border border-gray-200 rounded-[8px] focus:ring-2 focus:ring-[#14B8A6]/20 focus:border-[#14B8A6] outline-none text-xs bg-white transition-all"
                                 />
                                 <button
                                   type="button"
@@ -5059,181 +5168,48 @@ const handleToggleCompletedPatients = () => {
                                       startNotesVoice()
                                     }
                                   }}
-                                  className={`mic-btn absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-7 h-7 rounded-full text-purple-600 hover:text-purple-700 hover:bg-purple-50 transition-colors ${listeningNotesIndex === index ? 'bg-purple-100 pulsing' : 'bg-transparent'}`}
+                                  className={`mic-btn right-2 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full text-[#14B8A6] hover:text-[#0D9488] hover:bg-[#14B8A6]/10 ${listeningNotesIndex === index ? 'bg-[#14B8A6]/20 text-[#14B8A6] pulsing mic-teal' : 'bg-transparent'}`}
                                 >
-                                  <svg className={`w-4 h-4 ${listeningNotesIndex === index ? 'animate-pulse' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M12 14a3 3 0 003-3V7a3 3 0 10-6 0v4a3 3 0 003 3zm5-3a5 5 0 01-10 0H5a7 7 0 0014 0h-2zM11 19.93V22h2v-2.07A8.001 8.001 0 0120 12h-2a6 6 0 11-12 0H4a8.001 8.001 0 017 7.93z"/>
                                   </svg>
                                 </button>
                               </div>
-                            </fieldset>
+                            </div>
                           </div>
                         </div>
-                        {medicine.dosage && (
-                          <p className="mt-2 text-xs text-gray-500">Generated dosage: {medicine.dosage}</p>
-                        )}
-                        {prescriptionData.medicines.length > 1 && (
-                          <div className="mt-3 flex justify-end">
+                        <div className="flex items-center justify-between mt-2">
+                          {medicine.dosage && (
+                            <p className="text-xs text-gray-600 font-medium bg-gradient-to-r from-[#3A9EC2]/10 to-[#14B8A6]/10 px-2.5 py-1.5 rounded-[8px] border border-[#3A9EC2]/20">Generated: <span className="text-[#3A9EC2] font-semibold">{medicine.dosage}</span></p>
+                          )}
+                          {prescriptionData.medicines.length > 1 && (
                             <button
                               type="button"
                               onClick={() => removeMedicineField(index)}
-                              className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center gap-1"
+                              className="text-red-500 hover:text-red-700 text-xs font-semibold flex items-center gap-1 px-2.5 py-1.5 rounded-[8px] hover:bg-red-50 transition-colors ml-auto"
                             >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                               </svg>
-                              Remove Medicine
+                              Remove
                             </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     ))}
-                  </div>
-
-                  {showInventoryPanel && (
-                    <aside className="mt-4 lg:mt-0 lg:w-80 w-full bg-purple-50/60 border border-purple-100 rounded-2xl p-4 shadow-inner">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h4 className="text-sm font-semibold text-purple-900">Injections & Surgical Items</h4>
-                          <p className="text-[11px] text-purple-600">Quickly reference inventory without leaving the chart.</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowInventoryPanel(false)
-                            setInventorySearch('')
-                          }}
-                          className="text-xs text-purple-500 hover:text-purple-700 font-semibold"
-                        >
-                          Close
-                        </button>
-                      </div>
-
-                      <div className="mt-3 flex items-center gap-2 bg-white border border-purple-100 rounded-xl p-1.5">
-                        {[
-                          { key: 'injections', label: 'Injections' },
-                          { key: 'surgical', label: 'Surgical Items' }
-                        ].map((tab) => {
-                          const active = inventoryTab === tab.key
-                          return (
-                            <button
-                              key={tab.key}
-                              type="button"
-                              onClick={() => {
-                                setInventoryTab(tab.key)
-                                setInventorySearch('')
-                              }}
-                              className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                                active
-                                  ? 'bg-purple-600 text-white shadow'
-                                  : 'text-purple-600 hover:bg-purple-100'
-                              }`}
-                            >
-                              {tab.label}
-                            </button>
-                          )
-                        })}
-                      </div>
-
-                      <div className="mt-3">
-                        <div className="relative">
-                          <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" />
-                          </svg>
-                          <input
-                            type="text"
-                            value={inventorySearch}
-                            onChange={(e) => setInventorySearch(e.target.value)}
-                            placeholder={`Search ${inventoryTab === 'injections' ? 'injections' : 'surgical items'}...`}
-                            className="w-full pl-9 pr-3 py-2 text-sm border border-purple-100 rounded-lg focus:ring-2 focus:ring-purple-200 focus:border-purple-300 bg-white shadow-sm"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="mt-3 space-y-2 max-h-64 overflow-y-auto pr-1">
-                        {filteredInventoryItems.length === 0 ? (
-                          <div className="rounded-xl border border-purple-100 bg-white px-3 py-4 text-center text-xs text-purple-500">
-                            No items found. Try a different search term.
-                          </div>
-                        ) : (
-                          filteredInventoryItems.map((item) => {
-                            const selected = selectedInventoryItems.some((selectedItem) => selectedItem.code === item.code)
-                            return (
-                              <button
-                                type="button"
-                                key={item.code}
-                                onClick={() => toggleInventoryItem(item)}
-                                className={`w-full text-left border rounded-xl px-3 py-3 text-sm transition shadow-sm ${
-                                  selected
-                                    ? 'border-purple-400 bg-white ring-2 ring-purple-200'
-                                    : 'border-purple-100 bg-white hover:border-purple-300'
-                                }`}
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="font-semibold text-purple-900">{item.name}</p>
-                                    <p className="text-[11px] text-purple-500 mt-0.5">{item.usage}</p>
-                                  </div>
-                                  <span className={`text-[11px] font-bold uppercase tracking-wide ${selected ? 'text-purple-600' : 'text-purple-400'}`}>
-                                    {item.code}
-                                  </span>
-                                </div>
-                                <p className="mt-2 text-[11px] text-purple-600/90">Recommended dose: {item.dosage}</p>
-                                {selected && (
-                                  <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700">
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                    </svg>
-                                    Selected
-                                  </div>
-                                )}
-                              </button>
-                            )
-                          })
-                        )}
-                      </div>
-
-                      <div className="mt-3 space-y-2">
-                        {selectedInventoryItems.length > 0 && (
-                          <div className="rounded-xl border border-purple-200 bg-white px-3 py-2 text-xs text-purple-600">
-                            <p className="font-semibold text-purple-800 mb-1">Selected ({selectedInventoryItems.length}):</p>
-                            <ul className="list-disc list-inside space-y-1">
-                              {selectedInventoryItems.map((item) => (
-                                <li key={item.code}>{item.name}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                        <button
-                          type="button"
-                          onClick={appendInventorySelectionToNotes}
-                          className={`w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg transition ${
-                            selectedInventoryItems.length === 0
-                              ? 'bg-purple-200 text-purple-500 cursor-not-allowed'
-                              : 'bg-purple-600 text-white hover:bg-purple-700 shadow'
-                          }`}
-                          disabled={selectedInventoryItems.length === 0}
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                          </svg>
-                          Add selected to notes
-                        </button>
-                      </div>
-                    </aside>
-                  )}
                 </div>
 
                 {inventorySelectionSummary}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+              {/* Test Suggestions / Additional Notes */}
+              <div className="bg-white rounded-[22px] p-6 shadow-sm border border-gray-100">
+                <label className="block text-sm font-semibold text-gray-800 mb-3">
                   Additional Notes / Test Required
                 </label>
                 
                 {/* Test Dropdown - Based on Doctor's Specialization */}
-                <div className="mb-3">
+                <div className="mb-4">
                   <div className="relative">
                     <input
                       ref={testInputRef}
@@ -5270,7 +5246,7 @@ const handleToggleCompletedPatients = () => {
                         }
                       }}
                       placeholder="Select or type test..."
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white shadow-sm text-sm font-medium"
+                      className="w-full px-4 py-3.5 border border-gray-200 rounded-[16px] focus:ring-2 focus:ring-[#3A9EC2]/20 focus:border-[#3A9EC2] outline-none bg-white transition-all text-sm font-medium placeholder:text-gray-400"
                     />
                     <datalist id="test-options">
                       {(() => {
@@ -5297,14 +5273,14 @@ const handleToggleCompletedPatients = () => {
                     const tests = getTestsForSpecialization(user.specialization)
                     if (tests.length > 0) {
                       return (
-                        <p className="mt-1 text-xs text-gray-500">
-                          Test suggestions for <span className="font-semibold">{user.specialization}</span>. You can also type a custom test.
+                        <p className="mt-2.5 text-xs text-gray-500 font-medium">
+                          Test suggestions for <span className="font-semibold text-gray-700">{user.specialization}</span>. You can also type a custom test.
                         </p>
                       )
                     }
                     return (
-                      <p className="mt-1 text-xs text-gray-500">
-                        No specific tests available for <span className="font-semibold">{user.specialization}</span>. Please type your test.
+                      <p className="mt-2.5 text-xs text-gray-500 font-medium">
+                        No specific tests available for <span className="font-semibold text-gray-700">{user.specialization}</span>. Please type your test.
                       </p>
                     )
                   })()}
@@ -5312,11 +5288,11 @@ const handleToggleCompletedPatients = () => {
 
                 {/* Selected Tests Display with Remove Icons */}
                 {prescriptionData.selectedTests.length > 0 && (
-                  <div className="mb-3 flex flex-wrap gap-2">
+                  <div className="mb-4 flex flex-wrap gap-2">
                     {prescriptionData.selectedTests.map((test, index) => (
                       <span
                         key={index}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-700 font-medium"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-[#3A9EC2]/10 to-[#14B8A6]/10 border border-[#3A9EC2]/20 rounded-[12px] text-sm text-[#3A9EC2] font-semibold"
                       >
                         <span>{test}</span>
                         <button
@@ -5327,7 +5303,7 @@ const handleToggleCompletedPatients = () => {
                               selectedTests: prescriptionData.selectedTests.filter((_, i) => i !== index)
                             })
                           }}
-                          className="ml-1 text-purple-600 hover:text-purple-800 hover:bg-purple-100 rounded-full p-0.5 transition-colors"
+                          className="ml-1 text-[#3A9EC2] hover:text-[#2A8EAC] hover:bg-[#3A9EC2]/20 rounded-full p-0.5 transition-colors"
                           aria-label={`Remove ${test}`}
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
@@ -5345,28 +5321,215 @@ const handleToggleCompletedPatients = () => {
                   onChange={(e) => setPrescriptionData({ ...prescriptionData, notes: e.target.value })}
                   rows="3"
                   placeholder="Add any additional notes or observations..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none resize-none"
+                  className="w-full px-4 py-3.5 border border-gray-200 rounded-[16px] focus:ring-2 focus:ring-[#14B8A6]/20 focus:border-[#14B8A6] outline-none resize-none transition-all bg-white text-sm placeholder:text-gray-400"
                 />
               </div>
             </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={handleSubmitPrescription}
-                disabled={!isFormValid}
-                className={`flex-1 py-3 rounded-lg font-semibold transition ${isFormValid ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-purple-300 text-white cursor-not-allowed'}`}
-              >
-                Save & Generate PDF
-              </button>
-              <button
-                onClick={handleClosePrescriptionModal}
-                className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition"
-              >
-                Cancel
-              </button>
             </div>
+
+            {/* Fixed Bottom Footer */}
+            <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 shadow-[0_-2px_8px_rgba(0,0,0,0.03)]">
+              <div className="flex gap-3">
+                <button
+                  onClick={handleClosePrescriptionModal}
+                  className="flex-1 py-3.5 rounded-[16px] font-semibold text-base transition-all border-2 border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 active:scale-[0.98]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSubmitPrescription}
+                  disabled={!isFormValid || !prescriptionData.diagnosis.trim() || savingPrescription}
+                  className={`flex-1 py-3.5 rounded-[16px] font-semibold text-base transition-all shadow-sm flex items-center justify-center gap-2 ${
+                    isFormValid && prescriptionData.diagnosis.trim() && !savingPrescription
+                      ? 'text-white hover:shadow-md active:scale-[0.98] prescription-save-success'
+                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  }`}
+                  style={isFormValid && prescriptionData.diagnosis.trim() && !savingPrescription ? {
+                    background: 'linear-gradient(to right, #6C63FF, #3A9EC2, #14B8A6)'
+                  } : {}}
+                >
+                  {savingPrescription ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    'Save Prescription'
+                  )}
+                </button>
+              </div>
             </div>
           </div>
+
+          {/* Injections & Surgical Items Side Drawer - Fixed Overlay */}
+          {showInventoryPanel && (
+            <>
+              {/* Backdrop */}
+              <div 
+                className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[60] transition-opacity duration-300"
+                onClick={() => {
+                  setShowInventoryPanel(false)
+                  setInventorySearch('')
+                }}
+              />
+              
+              {/* Drawer */}
+              <aside 
+                className={`fixed top-0 right-0 h-full w-[420px] max-w-[90vw] bg-white shadow-2xl z-[70] transform transition-transform duration-300 ease-out drawer-slide-in ${
+                  showInventoryPanel ? 'translate-x-0' : 'translate-x-full'
+                }`}
+                style={{ 
+                  boxShadow: '-4px 0 20px rgba(0,0,0,0.1)',
+                  borderTopLeftRadius: '24px',
+                  borderBottomLeftRadius: '24px'
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="h-full flex flex-col overflow-hidden">
+                  {/* Drawer Header */}
+                  <div className="flex items-center justify-between gap-3 px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-white to-[#F4F4F7]">
+                    <div>
+                      <h4 className="text-base font-semibold text-gray-800">Injections & Surgical Items</h4>
+                      <p className="text-xs text-gray-500 mt-0.5">Quickly reference inventory without leaving the chart.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowInventoryPanel(false)
+                        setInventorySearch('')
+                      }}
+                      className="w-8 h-8 rounded-full bg-white hover:bg-gray-50 text-gray-400 hover:text-gray-600 flex items-center justify-center transition-all duration-200 shadow-sm hover:shadow-md border border-gray-200"
+                      aria-label="Close drawer"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Drawer Content - Scrollable */}
+                  <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+                    {/* Tabs */}
+                    <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-[16px] p-1.5">
+                      {[
+                        { key: 'injections', label: 'Injections' },
+                        { key: 'surgical', label: 'Surgical Items' }
+                      ].map((tab) => {
+                        const active = inventoryTab === tab.key
+                        return (
+                          <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => {
+                              setInventoryTab(tab.key)
+                              setInventorySearch('')
+                            }}
+                            className={`flex-1 px-4 py-2.5 rounded-[12px] text-sm font-semibold transition-all ${
+                              active
+                                ? 'bg-gradient-to-r from-[#6C63FF] to-[#8B7FFF] text-white shadow-sm'
+                                : 'text-gray-600 hover:bg-gray-50'
+                            }`}
+                          >
+                            {tab.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Search */}
+                    <div className="relative">
+                      <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" />
+                      </svg>
+                      <input
+                        type="text"
+                        value={inventorySearch}
+                        onChange={(e) => setInventorySearch(e.target.value)}
+                        placeholder={`Search ${inventoryTab === 'injections' ? 'injections' : 'surgical items'}...`}
+                        className="w-full pl-9 pr-3 py-3 text-sm border border-gray-200 rounded-[14px] focus:ring-2 focus:ring-[#6C63FF]/20 focus:border-[#6C63FF] bg-white transition-all outline-none"
+                      />
+                    </div>
+
+                    {/* Items List */}
+                    <div className="space-y-3">
+                      {filteredInventoryItems.length === 0 ? (
+                        <div className="rounded-[16px] border border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">
+                          No items found. Try a different search term.
+                        </div>
+                      ) : (
+                        filteredInventoryItems.map((item) => {
+                          const selected = selectedInventoryItems.some((selectedItem) => selectedItem.code === item.code)
+                          return (
+                            <button
+                              type="button"
+                              key={item.code}
+                              onClick={() => toggleInventoryItem(item)}
+                              className={`w-full text-left border rounded-[16px] px-4 py-3.5 text-sm transition-all shadow-sm ${
+                                selected
+                                  ? 'border-[#6C63FF] bg-gradient-to-br from-[#6C63FF]/10 to-white ring-2 ring-[#6C63FF]/20'
+                                  : 'border-gray-200 bg-white hover:border-[#6C63FF]/30 hover:shadow-md'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1">
+                                  <p className="font-semibold text-gray-800">{item.name}</p>
+                                  <p className="text-xs text-gray-500 mt-1">{item.usage}</p>
+                                </div>
+                                <span className={`text-xs font-bold uppercase tracking-wide ${selected ? 'text-[#6C63FF]' : 'text-gray-400'}`}>
+                                  {item.code}
+                                </span>
+                              </div>
+                              <p className="mt-2 text-xs text-gray-600">Recommended dose: <span className="font-semibold">{item.dosage}</span></p>
+                              {selected && (
+                                <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#6C63FF] px-2.5 py-1 text-[10px] font-semibold text-white">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  Selected
+                                </div>
+                              )}
+                            </button>
+                          )
+                        })
+                      )}
+                    </div>
+
+                    {/* Selected Items Summary */}
+                    {selectedInventoryItems.length > 0 && (
+                      <div className="rounded-[16px] border border-[#6C63FF]/20 bg-white px-4 py-3 text-sm text-gray-600">
+                        <p className="font-semibold text-gray-800 mb-2">Selected ({selectedInventoryItems.length}):</p>
+                        <ul className="list-disc list-inside space-y-1 text-gray-600 text-xs">
+                          {selectedInventoryItems.map((item) => (
+                            <li key={item.code}>{item.name}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Add to Notes Button */}
+                    <button
+                      type="button"
+                      onClick={appendInventorySelectionToNotes}
+                      className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-semibold rounded-[14px] transition-all ${
+                        selectedInventoryItems.length === 0
+                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-[#6C63FF] to-[#8B7FFF] text-white hover:from-[#5A52E6] hover:to-[#7A6FFF] shadow-sm hover:shadow-md'
+                      }`}
+                      disabled={selectedInventoryItems.length === 0}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add selected to notes
+                    </button>
+                  </div>
+                </div>
+              </aside>
+            </>
+          )}
         </div>
       )}
 

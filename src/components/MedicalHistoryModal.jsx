@@ -526,8 +526,8 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
                 </div>
               )}
 
-              {/* Previous Visit Summary - Highlight Last Visit */}
-              {medicalHistory.medicalHistory && medicalHistory.medicalHistory.length > 0 && (() => {
+              {/* Previous Visit Summary - Highlight Last Visit (only show if more than 1 visit) */}
+              {medicalHistory.medicalHistory && medicalHistory.medicalHistory.length > 0 && medicalHistory.totalVisits > 1 && (() => {
                 const lastVisit = medicalHistory.medicalHistory[0] // Most recent visit
                 const hasPrescription = lastVisit.prescription
                 return (
@@ -722,8 +722,8 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
                 )
               })()}
 
-              {/* Complete Medication History Table - All Visits */}
-              {medicalHistory.medicalHistory && medicalHistory.medicalHistory.some(visit => 
+              {/* Complete Medication History Table - All Visits (only show if more than 1 visit) */}
+              {medicalHistory.medicalHistory && medicalHistory.totalVisits > 1 && medicalHistory.medicalHistory.some(visit => 
                 visit.prescription?.medicines?.length > 0 || visit.prescription?.inventoryItems?.length > 0
               ) && (
                 <div className="bg-white rounded-lg border-2 border-blue-200 shadow-lg mb-6 overflow-hidden">
@@ -842,9 +842,11 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
                 </div>
               )}
 
-              <div className="relative pl-6">
-                <div className="absolute left-[1rem] top-2 bottom-2 w-px bg-gradient-to-b from-blue-200 via-purple-200 to-blue-200"></div>
-                {medicalHistory.medicalHistory.map((record, index) => {
+              {/* Visit Timeline - Only show if more than 1 visit (not first visit) */}
+              {medicalHistory.totalVisits > 1 && (
+                <div className="relative pl-6">
+                  <div className="absolute left-[1rem] top-2 bottom-2 w-px bg-gradient-to-b from-blue-200 via-purple-200 to-blue-200"></div>
+                  {medicalHistory.medicalHistory.map((record, index) => {
                   const isExpanded = !!expandedCards[index]
                   const sugarLabel =
                     record?.vitals?.sugarLevel || record?.vitals?.sugarLevel === 0
@@ -1130,7 +1132,8 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
                     </div>
                   )
                 })}
-              </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-12 text-gray-600">
