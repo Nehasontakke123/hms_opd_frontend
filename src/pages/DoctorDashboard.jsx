@@ -3078,11 +3078,11 @@ const handleToggleCompletedPatients = () => {
           {/* Daily Statistics Section - Compact Desktop Layout */}
           {doctorStats && (
             <div className="mt-3 sm:mt-4">
-              <div className="max-w-[1100px] mx-auto lg:mx-0 lg:-ml-2 xl:-ml-1">
-                <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg py-3 sm:py-4 px-4 sm:px-5 md:px-6 max-h-[140px] sm:max-h-[140px]">
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 sm:gap-6 md:gap-[24px] justify-between h-full">
+              <div className="w-full max-w-[1100px] mx-auto lg:mx-0 lg:-ml-2 xl:-ml-1">
+                <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg py-4 px-4 sm:py-3 sm:py-4 sm:px-5 md:px-6 sm:max-h-[140px]">
+                  <div className="flex flex-col sm:grid sm:grid-cols-2 lg:flex lg:flex-row items-stretch sm:items-center gap-4 sm:gap-4 lg:gap-6 md:gap-[24px] lg:justify-between h-full">
                     {/* Daily Limit Card */}
-                    <div className="flex-1 min-w-0 py-2 sm:py-0 px-4 sm:px-5 md:px-6 flex flex-col justify-center">
+                    <div className="w-full sm:w-auto flex-1 min-w-0 py-2 sm:py-0 px-0 sm:px-4 md:px-5 lg:px-6 flex flex-col justify-center">
                       <p className="text-[10px] sm:text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5 sm:mb-2">Daily Limit</p>
                       <p className="text-2xl sm:text-3xl md:text-[32px] font-bold text-gray-900 leading-tight mb-1 sm:mb-1.5">
                         <span className="text-purple-600">{doctorStats.dailyPatientLimit}</span>
@@ -3094,14 +3094,14 @@ const handleToggleCompletedPatients = () => {
                       <p className="text-[10px] sm:text-[11px] text-gray-500 leading-tight">Total capacity / remaining slots</p>
                     </div>
                     
-                    {/* Divider */}
-                    <div className="hidden sm:block self-stretch w-px bg-gray-300 flex-shrink-0 my-2"></div>
+                    {/* Divider - Hidden on mobile and tablet, shown on desktop */}
+                    <div className="hidden lg:block self-stretch w-px bg-gray-300 flex-shrink-0 my-2"></div>
                     
                     {/* Today's Patients Card */}
                     <button
                       type="button"
                       onClick={handleShowTodaysPatients}
-                      className="flex-1 min-w-0 text-left py-2 sm:py-0 px-4 sm:px-5 md:px-6 rounded-lg transition hover:bg-white/70 focus:outline-none focus:ring-2 focus:ring-purple-300 flex flex-col justify-center"
+                      className="w-full sm:w-auto flex-1 min-w-0 text-left py-2 sm:py-0 px-0 sm:px-4 md:px-5 lg:px-6 rounded-lg transition hover:bg-white/70 focus:outline-none focus:ring-2 focus:ring-purple-300 flex flex-col justify-center"
                     >
                       <p className="text-[10px] sm:text-[11px] text-gray-500 flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
                         Today's Patients
@@ -3113,14 +3113,14 @@ const handleToggleCompletedPatients = () => {
                     </button>
                     
                     {/* Divider */}
-                    <div className="hidden sm:block self-stretch w-px bg-gray-300 flex-shrink-0 my-2"></div>
+                    <div className="hidden lg:block self-stretch w-px bg-gray-300 flex-shrink-0 my-2"></div>
                     
                     {/* Completed Patients Card */}
                     <button
                       type="button"
                       onClick={handleToggleCompletedPatients}
                       aria-expanded={showCompletedPatientsPanel}
-                      className={`flex-1 min-w-0 text-left py-2 sm:py-0 px-4 sm:px-5 md:px-6 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-purple-300 flex flex-col justify-center ${
+                      className={`w-full sm:w-auto flex-1 min-w-0 text-left py-2 sm:py-0 px-0 sm:px-4 md:px-5 lg:px-6 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-purple-300 flex flex-col justify-center ${
                         showCompletedPatientsPanel ? 'bg-white shadow-sm' : 'hover:bg-white/70'
                       }`}
                     >
