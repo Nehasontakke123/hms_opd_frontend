@@ -322,6 +322,7 @@ const getInitialAppointmentForm = () => ({
 const ReceptionistDashboard = () => {
   const { user, logout } = useAuth()
   const [activeTab, setActiveTab] = useState('doctors') // 'doctors', 'registration', 'emergency', 'appointments', or 'prescriptions'
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false) // Mobile hamburger menu state
   const [appointmentsView, setAppointmentsView] = useState('today') // 'today' or 'upcoming'
   const [patientsRegisterView, setPatientsRegisterView] = useState('today') // 'today', 'recheck', or 'history'
   const [showRegistrationModal, setShowRegistrationModal] = useState(false)
@@ -1651,7 +1652,7 @@ const ReceptionistDashboard = () => {
 
   const getFieldClasses = (field) => {
     const baseClasses =
-      'w-full px-4 py-3 text-sm font-medium font-["Inter",sans-serif] rounded-lg border bg-white text-slate-700 transition-all duration-200 outline-none'
+      'w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm font-medium font-["Inter",sans-serif] rounded-lg border bg-white text-slate-700 transition-all duration-200 outline-none'
     const normalClasses =
       'border-slate-200 hover:border-emerald-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 focus:ring-offset-0 focus:shadow-[0_0_0_4px_rgba(0,184,148,0.12)]'
     const errorClasses =
@@ -1662,9 +1663,9 @@ const ReceptionistDashboard = () => {
 
   const getLabelClasses = (field) => {
     if (formErrors[field]) {
-      return 'text-sm font-semibold text-red-600 transition-colors duration-200'
+      return 'text-xs sm:text-sm font-semibold text-red-600 transition-colors duration-200 block break-words'
     }
-    return `text-sm font-semibold transition-colors duration-200 ${
+    return `text-xs sm:text-sm font-semibold transition-colors duration-200 block break-words ${
       focusedField === field ? 'text-emerald-600' : 'text-slate-700'
     }`
   }
@@ -3191,35 +3192,170 @@ const ReceptionistDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <div className="flex items-baseline gap-3">
-              <span className="text-3xl sm:text-4xl font-black tracking-tight text-green-600">Tekisky</span>
-              <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital +</span>
+      <header className="bg-white shadow-sm overflow-hidden">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
+          <div className="flex flex-col gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap">
+                  <span className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-green-600 whitespace-nowrap">Tekisky</span>
+                  <span className="text-xl sm:text-2xl md:text-3xl font-semibold text-slate-800 whitespace-nowrap">Hospital +</span>
+                </div>
+                <p className="mt-1 inline-flex items-center gap-2 px-2 sm:px-3 py-1 text-xs font-semibold uppercase tracking-wide text-green-700 bg-green-50 rounded-full whitespace-nowrap">Receptionist Hub</p>
+                <p className="mt-2 text-xs sm:text-sm text-slate-500 break-words">Manage arrivals, generate tokens, and coordinate with doctors seamlessly.</p>
+              </div>
+              <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto flex-shrink-0">
+                <span className="text-xs sm:text-sm text-gray-700 truncate max-w-[120px] sm:max-w-none">{user?.fullName}</span>
+                <button
+                  onClick={logout}
+                  className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
+                >
+                  Logout
+                </button>
+              </div>
             </div>
-            <p className="mt-1 inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-green-700 bg-green-50 rounded-full">Receptionist Hub</p>
-            <p className="mt-2 text-xs sm:text-sm text-slate-500">Manage arrivals, generate tokens, and coordinate with doctors seamlessly.</p>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
-            <span className="text-sm text-gray-700 truncate">{user?.fullName}</span>
-            <button
-              onClick={logout}
-              className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm whitespace-nowrap"
-            >
-              Logout
-            </button>
           </div>
         </div>
       </header>
 
-      {/* Tabs */}
-      <div className="max-w-7xl mx-auto px-4 pt-6">
+      {/* Mobile Hamburger Menu Button */}
+      <div className="sm:hidden max-w-7xl mx-auto px-3 pt-4 flex items-center justify-between border-b border-gray-200 pb-3">
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="inline-flex items-center justify-center p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+          aria-label="Toggle menu"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {mobileMenuOpen ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            )}
+          </svg>
+        </button>
+        <span className="text-sm font-semibold text-gray-700 capitalize">{activeTab === 'registration' ? 'Patient Registration' : activeTab === 'emergency' ? 'Emergency Patient' : activeTab === 'appointments' ? 'Appointments' : activeTab === 'prescriptions' ? 'Prescription Records' : 'Doctors Overview'}</span>
+        <div className="w-10"></div> {/* Spacer for centering */}
+      </div>
+
+      {/* Mobile Menu Drawer */}
+      {mobileMenuOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 sm:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          ></div>
+          <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-2xl z-50 sm:hidden transform transition-transform duration-300 ease-in-out overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-lg font-bold text-green-700">Navigation</h3>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="p-1 rounded-lg text-gray-600 hover:bg-gray-100"
+                  aria-label="Close menu"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <nav className="flex flex-col p-2">
+              <button
+                onClick={() => {
+                  setActiveTab('doctors')
+                  setMobileMenuOpen(false)
+                }}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium text-sm transition-colors ${
+                  activeTab === 'doctors'
+                    ? 'bg-green-100 text-green-700 border-l-4 border-green-600'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+                Doctors Overview
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('registration')
+                  setMobileMenuOpen(false)
+                }}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium text-sm transition-colors ${
+                  activeTab === 'registration'
+                    ? 'bg-green-100 text-green-700 border-l-4 border-green-600'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Patient Registration
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('emergency')
+                  setMobileMenuOpen(false)
+                }}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium text-sm transition-colors relative ${
+                  activeTab === 'emergency'
+                    ? 'bg-red-100 text-red-700 border-l-4 border-red-600'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                Emergency Patient
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center justify-center h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                </span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('appointments')
+                  setMobileMenuOpen(false)
+                }}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium text-sm transition-colors ${
+                  activeTab === 'appointments'
+                    ? 'bg-green-100 text-green-700 border-l-4 border-green-600'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Appointments
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('prescriptions')
+                  setMobileMenuOpen(false)
+                }}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg font-medium text-sm transition-colors ${
+                  activeTab === 'prescriptions'
+                    ? 'bg-green-100 text-green-700 border-l-4 border-green-600'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Prescription Records
+              </button>
+            </nav>
+          </div>
+        </>
+      )}
+
+      {/* Desktop Tabs */}
+      <div className="hidden sm:block max-w-7xl mx-auto px-4 pt-6 overflow-hidden">
         <div className="border-b border-gray-200">
-          <nav className="flex space-x-8">
+          <nav className="flex space-x-8 overflow-x-auto scrollbar-hide -mx-4 px-4">
             <button
               onClick={() => setActiveTab('doctors')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'doctors'
                   ? 'border-green-600 text-green-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -3229,7 +3365,7 @@ const ReceptionistDashboard = () => {
             </button>
             <button
               onClick={() => setActiveTab('registration')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'registration'
                   ? 'border-green-600 text-green-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -3239,21 +3375,21 @@ const ReceptionistDashboard = () => {
             </button>
             <button
               onClick={() => setActiveTab('emergency')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm relative ${
+              className={`py-4 px-1 pr-5 border-b-2 font-medium text-sm relative whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'emergency'
                   ? 'border-red-600 text-red-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               Emergency Patient
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="absolute top-1/2 -translate-y-1/2 right-1 flex items-center justify-center h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
               </span>
             </button>
             <button
               onClick={() => setActiveTab('appointments')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'appointments'
                   ? 'border-green-600 text-green-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -3263,7 +3399,7 @@ const ReceptionistDashboard = () => {
             </button>
             <button
               onClick={() => setActiveTab('prescriptions')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'prescriptions'
                   ? 'border-green-600 text-green-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -3352,7 +3488,7 @@ const ReceptionistDashboard = () => {
       `}</style>
 
       {/* Tab Content */}
-      <div className="max-w-7xl mx-auto px-4 py-6" style={{ backgroundColor: '#f9fafb' }}>
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 overflow-x-hidden" style={{ backgroundColor: '#f9fafb' }}>
         {/* Doctors Overview Tab */}
         {activeTab === 'doctors' && (
           <div>
@@ -3917,22 +4053,22 @@ const ReceptionistDashboard = () => {
 
         {/* Patient Registration Tab */}
         {activeTab === 'registration' && (
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             {/* Registration Form Button */}
-            <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2">Patient Registration</h2>
-                  <p className="text-sm text-gray-600">Register new patients or manage existing patient records</p>
+            <div className="bg-white rounded-lg shadow p-4 sm:p-6 overflow-hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800 mb-2 break-words">Patient Registration</h2>
+                  <p className="text-xs sm:text-sm text-gray-600 break-words">Register new patients or manage existing patient records</p>
                 </div>
                 <button
                   onClick={() => setShowRegistrationModal(true)}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold text-sm shadow-md hover:from-green-600 hover:to-green-700 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                  className="inline-flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-semibold text-xs sm:text-sm shadow-md hover:from-green-600 hover:to-green-700 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 flex-shrink-0 w-full sm:w-auto"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
-                  Register New Patient
+                  <span className="whitespace-nowrap">Register New Patient</span>
                 </button>
               </div>
             </div>
@@ -3940,7 +4076,7 @@ const ReceptionistDashboard = () => {
             {/* Registration Modal */}
             {showRegistrationModal && (
               <div 
-                className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+                className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-0 sm:p-4"
                 onClick={(e) => {
                   if (e.target === e.currentTarget) {
                     setShowRegistrationModal(false)
@@ -3948,30 +4084,30 @@ const ReceptionistDashboard = () => {
                 }}
               >
                 <div 
-                  className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col"
+                  className="bg-white rounded-none sm:rounded-2xl shadow-2xl w-full h-full sm:h-auto sm:max-w-4xl sm:max-h-[90vh] flex flex-col m-0 sm:m-4"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Modal Header */}
-                  <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50 rounded-t-2xl">
-                    <div>
-                      <h2 className="text-2xl font-bold text-gray-900">Register New Patient</h2>
-                      <p className="text-sm text-gray-600 mt-1">Fill in the patient details to complete registration</p>
+                  <div className="flex items-start sm:items-center justify-between p-4 sm:p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50 rounded-t-none sm:rounded-t-2xl flex-shrink-0">
+                    <div className="flex-1 min-w-0 pr-2">
+                      <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 break-words">Register New Patient</h2>
+                      <p className="text-xs sm:text-sm text-gray-600 mt-1 break-words">Fill in the patient details to complete registration</p>
                     </div>
                     <button
                       onClick={() => setShowRegistrationModal(false)}
-                      className="text-gray-400 hover:text-gray-600 transition-colors p-2 hover:bg-gray-100 rounded-lg"
+                      className="text-gray-400 hover:text-gray-600 transition-colors p-2 hover:bg-gray-100 rounded-lg flex-shrink-0"
                       aria-label="Close modal"
                     >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
                   </div>
 
                   {/* Scrollable Content */}
-                  <div className="flex-1 overflow-y-auto p-6">
-                    <form id="registration-form" onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-h-0">
+                    <form id="registration-form" onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               {/* Patient ID (auto-generated, read-only) - Professional UI */}
               <div className="md:col-span-2" ref={pidBoxRef}>
                 <div className="rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50 px-4 sm:px-5 py-4 relative">
@@ -3982,9 +4118,9 @@ const ReceptionistDashboard = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
                       </svg>
                     </div>
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-700/80">UNIQUE PATIENT ID</p>
-                      <p className="text-xs text-slate-600 mt-0.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-700/80 break-words">UNIQUE PATIENT ID</p>
+                      <p className="text-xs text-slate-600 mt-0.5 break-words">
                         This ID is generated automatically and remains the same across Appointments, Doctor Dashboard, Records, and Prescriptions.
                       </p>
                     </div>
@@ -4003,7 +4139,7 @@ const ReceptionistDashboard = () => {
                           setPidOpen(true)
                         }}
                         onFocus={() => setPidOpen(true)}
-                        className="w-full px-4 py-3 rounded-lg border border-blue-200 bg-white outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 text-sm font-medium placeholder:text-slate-400"
+                        className="w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg border border-blue-200 bg-white outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400 text-xs sm:text-sm font-medium placeholder:text-slate-400"
                       />
                       {/* Dropdown */}
                       {pidOpen && pidSearch.trim().length >= 2 && (
@@ -4137,7 +4273,7 @@ const ReceptionistDashboard = () => {
                   className={getFieldClasses('fullName')}
                 />
                 {formErrors.fullName && (
-                  <p className="text-xs text-red-600">{formErrors.fullName}</p>
+                  <p className="text-xs text-red-600 break-words">{formErrors.fullName}</p>
                 )}
               </div>
 
@@ -4160,7 +4296,7 @@ const ReceptionistDashboard = () => {
                   maxLength={10}
                 />
                 {formErrors.mobileNumber && (
-                  <p className="text-xs text-red-600">{formErrors.mobileNumber}</p>
+                  <p className="text-xs text-red-600 break-words">{formErrors.mobileNumber}</p>
                 )}
               </div>
 
@@ -4181,7 +4317,7 @@ const ReceptionistDashboard = () => {
                   className={getFieldClasses('address')}
                 />
                 {formErrors.address && (
-                  <p className="text-xs text-red-600">{formErrors.address}</p>
+                  <p className="text-xs text-red-600 break-words">{formErrors.address}</p>
                 )}
               </div>
 
@@ -4203,7 +4339,7 @@ const ReceptionistDashboard = () => {
                   className={getFieldClasses('age')}
                 />
                 {formErrors.age && (
-                  <p className="text-xs text-red-600">{formErrors.age}</p>
+                  <p className="text-xs text-red-600 break-words">{formErrors.age}</p>
                 )}
               </div>
 
@@ -4226,7 +4362,7 @@ const ReceptionistDashboard = () => {
                   <option value="Other">Other</option>
                 </select>
                 {formErrors.gender && (
-                  <p className="text-xs text-red-600">{formErrors.gender}</p>
+                  <p className="text-xs text-red-600 break-words">{formErrors.gender}</p>
                 )}
               </div>
 
@@ -4262,7 +4398,7 @@ const ReceptionistDashboard = () => {
                   })}
                 </select>
                 {formErrors.doctor && (
-                  <p className="text-xs text-red-600">{formErrors.doctor}</p>
+                  <p className="text-xs text-red-600 break-words">{formErrors.doctor}</p>
                 )}
                 {selectedDoctor && (
                   <div className="mt-3 rounded-xl border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 space-y-2 text-sm text-slate-700">
@@ -4317,7 +4453,7 @@ const ReceptionistDashboard = () => {
                   className={getFieldClasses('visitDate')}
                 />
                 {formErrors.visitDate && (
-                  <p className="text-xs text-red-600">{formErrors.visitDate}</p>
+                  <p className="text-xs text-red-600 break-words">{formErrors.visitDate}</p>
                 )}
               </div>
 
@@ -4336,7 +4472,7 @@ const ReceptionistDashboard = () => {
                   className={getFieldClasses('visitTime')}
                 />
                 {formErrors.visitTime && (
-                  <p className="text-xs text-red-600">{formErrors.visitTime}</p>
+                  <p className="text-xs text-red-600 break-words">{formErrors.visitTime}</p>
                 )}
               </div>
 
@@ -4361,7 +4497,7 @@ const ReceptionistDashboard = () => {
                   isClearable
                 />
                 {formErrors.disease && (
-                  <p className="text-xs text-red-600">{formErrors.disease}</p>
+                  <p className="text-xs text-red-600 break-words">{formErrors.disease}</p>
                 )}
                 <p className="text-xs text-slate-500">{diseaseHelperText}</p>
               </div>
@@ -4382,7 +4518,7 @@ const ReceptionistDashboard = () => {
                   className={getFieldClasses('bloodPressure')}
                 />
                 {formErrors.bloodPressure && (
-                  <p className="text-xs text-red-600">{formErrors.bloodPressure}</p>
+                  <p className="text-xs text-red-600 break-words">{formErrors.bloodPressure}</p>
                 )}
               </div>
 
@@ -4404,7 +4540,7 @@ const ReceptionistDashboard = () => {
                   className={getFieldClasses('sugarLevel')}
                 />
                 {formErrors.sugarLevel && (
-                  <p className="text-xs text-red-600">{formErrors.sugarLevel}</p>
+                  <p className="text-xs text-red-600 break-words">{formErrors.sugarLevel}</p>
                 )}
               </div>
 
@@ -4670,28 +4806,28 @@ const ReceptionistDashboard = () => {
 
             <button
               type="submit"
-              className="group relative flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-green-500 to-green-600 px-4 py-4 text-lg font-semibold text-white shadow-xl transition duration-200 hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+              className="group relative flex w-full items-center justify-center gap-2 rounded-xl sm:rounded-2xl bg-gradient-to-r from-green-500 to-green-600 px-4 py-3 sm:py-4 text-base sm:text-lg font-semibold text-white shadow-xl transition duration-200 hover:from-green-600 hover:to-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
             >
               {!formData.isRecheck && formData.paymentMethod === 'online' && formData.feeStatus === 'pending' ? (
                 <>
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                   </svg>
-                  Complete Payment First
+                  <span className="whitespace-nowrap">Complete Payment First</span>
                 </>
               ) : formData.paymentMethod === 'cash' ? (
                 <>
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
-                  Register Patient (Cash Payment)
+                  <span className="whitespace-nowrap text-xs sm:text-base">Register Patient (Cash Payment)</span>
                 </>
               ) : (
                 <>
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
-                  Register Patient
+                  <span className="whitespace-nowrap">Register Patient</span>
                 </>
               )}
             </button>
@@ -4699,11 +4835,11 @@ const ReceptionistDashboard = () => {
                   </div>
 
                   {/* Modal Footer - Cancel Button */}
-                  <div className="p-6 border-t border-gray-200 bg-gray-50 rounded-b-2xl flex items-center justify-end">
+                  <div className="p-4 sm:p-6 border-t border-gray-200 bg-gray-50 rounded-b-none sm:rounded-b-2xl flex items-center justify-end flex-shrink-0">
                     <button
                       type="button"
                       onClick={() => setShowRegistrationModal(false)}
-                      className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+                      className="px-4 sm:px-6 py-2 sm:py-2.5 border border-gray-300 text-gray-700 rounded-lg text-sm sm:text-base font-semibold hover:bg-gray-100 transition-colors whitespace-nowrap"
                     >
                       Cancel
                     </button>
@@ -4713,27 +4849,27 @@ const ReceptionistDashboard = () => {
             )}
 
             {/* Patients Register Section - Unified with Toggle Tabs */}
-            <div id="patients-register-section" className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
-              {/* Section Header with Professional Layout */}
-              <div className={`px-6 py-5 border-b transition-colors duration-300 ${
+            <div id="patients-register-section" className="bg-white rounded-2xl shadow-lg border border-slate-100 flex flex-col">
+              {/* Section Header with Professional Layout - Fixed/Sticky */}
+              <div className={`sticky top-0 z-10 px-4 sm:px-6 py-3 sm:py-5 border-b transition-colors duration-300 bg-white rounded-t-2xl ${
                 patientsRegisterView === 'today'
                   ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200'
                   : patientsRegisterView === 'recheck'
                   ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200'
                   : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'
               }`}>
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-center">
                   {/* Left Section - Title and Description */}
                   <div className="lg:col-span-3">
-                    <h4 className="text-xl font-bold text-slate-800 flex items-center gap-2 mb-1">
-                      <span className={`w-3 h-3 rounded-full ${
+                    <h4 className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2 mb-1">
+                      <span className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full flex-shrink-0 ${
                         patientsRegisterView === 'today' ? 'bg-green-500' 
                         : patientsRegisterView === 'recheck' ? 'bg-purple-500'
                         : 'bg-blue-500'
                       }`}></span>
                       Patients Register
                     </h4>
-                    <p className="text-sm text-slate-600">
+                    <p className="text-xs sm:text-sm text-slate-600">
                       {patientsRegisterView === 'today' 
                         ? 'View and manage today\'s new patient registrations' 
                         : patientsRegisterView === 'recheck'
@@ -4743,7 +4879,7 @@ const ReceptionistDashboard = () => {
                   </div>
 
                   {/* Middle Section - Action Button and Search */}
-                  <div className="lg:col-span-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <div className="lg:col-span-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                     {/* View Medical History Button */}
                     <button
                       onClick={() => {
@@ -4752,18 +4888,19 @@ const ReceptionistDashboard = () => {
                         setMedicalHistoryPatientMobile(null)
                         setShowMedicalHistoryModal(true)
                       }}
-                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 text-sm font-semibold shadow-sm hover:shadow-md whitespace-nowrap"
+                      className="inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 text-xs sm:text-sm font-semibold shadow-sm hover:shadow-md"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      View Medical History
+                      <span className="hidden sm:inline">View Medical History</span>
+                      <span className="sm:hidden">Medical History</span>
                     </button>
                     
                     {/* Search Bar */}
-                    <div className="relative flex-1">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div className="relative flex-1 min-w-0">
+                      <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
+                        <svg className="h-4 w-4 sm:h-5 sm:w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                         </svg>
                       </div>
@@ -4772,7 +4909,7 @@ const ReceptionistDashboard = () => {
                         value={patientsRegisterSearch}
                         onChange={(e) => setPatientsRegisterSearch(e.target.value)}
                         placeholder="Search by Patient Name, Mobile, Token, or Patient ID..."
-                        className={`block w-full pl-10 pr-10 py-2.5 border rounded-lg text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
+                        className={`block w-full pl-8 sm:pl-10 pr-8 sm:pr-10 py-2 sm:py-2.5 border rounded-lg text-xs sm:text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 ${
                           patientsRegisterView === 'today'
                             ? 'border-green-300 focus:ring-green-500 focus:border-green-500 bg-white'
                             : patientsRegisterView === 'recheck'
@@ -4783,10 +4920,10 @@ const ReceptionistDashboard = () => {
                       {patientsRegisterSearch && (
                         <button
                           onClick={() => setPatientsRegisterSearch('')}
-                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                          className="absolute inset-y-0 right-0 pr-2.5 sm:pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
                           aria-label="Clear search"
                         >
-                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                           </svg>
                         </button>
@@ -4795,21 +4932,21 @@ const ReceptionistDashboard = () => {
                   </div>
 
                   {/* Right Section - Statistics Pills (Stacked Vertically) */}
-                  <div className="lg:col-span-3 flex flex-col gap-2">
+                  <div className="lg:col-span-3 flex flex-col gap-1.5 sm:gap-2">
                     {/* Patients Today Pill */}
                     <button
                       onClick={() => setPatientsRegisterView('today')}
-                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 shadow-sm ${
+                      className={`inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 shadow-sm ${
                         patientsRegisterView === 'today'
                           ? 'bg-green-600 text-white shadow-md hover:bg-green-700'
                           : 'bg-green-100 text-green-700 hover:bg-green-200 border border-green-300'
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full ${
+                      <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0 ${
                         patientsRegisterView === 'today' ? 'bg-white' : 'bg-green-500'
                       }`}></span>
-                      <span className="flex-1 text-left">Patients Today</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                      <span className="flex-1 text-left truncate">Patients Today</span>
+                      <span className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold flex-shrink-0 ${
                         patientsRegisterView === 'today'
                           ? 'bg-white/20 text-white'
                           : 'bg-white text-green-700'
@@ -4821,17 +4958,17 @@ const ReceptionistDashboard = () => {
                     {/* Recheck-up Patients Pill */}
                     <button
                       onClick={() => setPatientsRegisterView('recheck')}
-                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 shadow-sm ${
+                      className={`inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 shadow-sm ${
                         patientsRegisterView === 'recheck'
                           ? 'bg-purple-600 text-white shadow-md hover:bg-purple-700'
                           : 'bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-300'
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full ${
+                      <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0 ${
                         patientsRegisterView === 'recheck' ? 'bg-white' : 'bg-purple-500'
                       }`}></span>
-                      <span className="flex-1 text-left">Recheck-up Patients</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                      <span className="flex-1 text-left truncate">Recheck-up Patients</span>
+                      <span className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold flex-shrink-0 ${
                         patientsRegisterView === 'recheck'
                           ? 'bg-white/20 text-white'
                           : 'bg-white text-purple-700'
@@ -4843,17 +4980,17 @@ const ReceptionistDashboard = () => {
                     {/* Patient History Pill */}
                     <button
                       onClick={() => setPatientsRegisterView('history')}
-                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 shadow-sm ${
+                      className={`inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-300 shadow-sm ${
                         patientsRegisterView === 'history'
                           ? 'bg-blue-600 text-white shadow-md hover:bg-blue-700'
                           : 'bg-blue-100 text-blue-700 hover:bg-blue-200 border border-blue-300'
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full ${
+                      <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0 ${
                         patientsRegisterView === 'history' ? 'bg-white' : 'bg-blue-500'
                       }`}></span>
-                      <span className="flex-1 text-left">Patient History</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                      <span className="flex-1 text-left truncate">Patient History</span>
+                      <span className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-bold flex-shrink-0 ${
                         patientsRegisterView === 'history'
                           ? 'bg-white/20 text-white'
                           : 'bg-white text-blue-700'
@@ -4867,7 +5004,7 @@ const ReceptionistDashboard = () => {
 
               {/* Patients Today & Recheck-up View */}
               {(patientsRegisterView === 'today' || patientsRegisterView === 'recheck') && (
-                <div className="fade-enter">
+                <div className="fade-enter flex-1 flex flex-col min-h-0">
                   {loadingPatients ? (
                     <div className="text-center py-12">
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
@@ -4897,20 +5034,20 @@ const ReceptionistDashboard = () => {
                     </div>
                   ) : (
                 <>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-green-100">
-                      <thead className="bg-green-50">
+                  <div className="flex-1 overflow-y-auto">
+                    <table className="w-full divide-y divide-green-100 table-fixed">
+                      <thead className="bg-green-50 sticky top-0 z-10">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient ID</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor Profile</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Action</th>
+                          <th className="w-16 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
+                          <th className="w-48 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
+                          <th className="w-40 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient ID</th>
+                          <th className="w-48 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor Profile</th>
+                          <th className="w-36 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
+                          <th className="w-24 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
+                          <th className="w-36 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
+                          <th className="w-32 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
+                          <th className="w-32 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                          <th className="w-36 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Action</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-green-100">
@@ -4920,12 +5057,12 @@ const ReceptionistDashboard = () => {
                           const displayIndex = filteredTodayPatients.length - globalIndex
                           return (
                             <tr key={patient._id} className="bg-green-50/30 hover:bg-green-50/50 transition border-l-4 border-green-400">
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4">
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
                                   {String(displayIndex).padStart(2, '0')}
                                 </div>
                               </td>
-                              <td className="px-6 py-4">
+                              <td className="px-4 py-4">
                                 <div className="text-sm font-semibold text-slate-900 flex flex-col gap-1">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span>{patient.fullName}</span>
@@ -4957,14 +5094,14 @@ const ReceptionistDashboard = () => {
                                   )}
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4">
                                 {patient.patientId ? (
                                   <div className="flex flex-col gap-1">
                                     <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 text-xs font-bold border border-blue-200 shadow-sm">
                                       <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
                                       </svg>
-                                      <span className="font-mono">{patient.patientId}</span>
+                                      <span className="font-mono truncate">{patient.patientId}</span>
                                     </span>
                                     {patient.isRecheck && (
                                       <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-green-50 text-green-700 text-[10px] font-semibold uppercase tracking-wide border border-green-200 w-fit">
@@ -4976,7 +5113,7 @@ const ReceptionistDashboard = () => {
                                   <span className="text-xs text-slate-400 italic">—</span>
                                 )}
                               </td>
-                              <td className="px-6 py-4">
+                              <td className="px-4 py-4">
                                 {patient.doctor ? (
                                   <div className="flex items-center gap-3">
                                     {/* Doctor Profile Image */}
@@ -5010,37 +5147,37 @@ const ReceptionistDashboard = () => {
                                     </div>
                                   </div>
                                 ) : (
-                                  <div className="text-sm font-semibold text-slate-400">N/A</div>
+                                    <div className="text-sm font-semibold text-slate-400">N/A</div>
                                 )}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4">
                                 <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">
-                                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                  {patient.disease || 'Not specified'}
+                                  <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></span>
+                                  <span className="truncate">{patient.disease || 'Not specified'}</span>
                                 </span>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4">
                                 <span className="px-3 py-1.5 bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 rounded-full font-bold text-sm border border-green-200 shadow-sm">
                                   #{patient.tokenNumber}
                                 </span>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4">
                                 <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                   </svg>
-                                  {dateLabel}
+                                  <span className="truncate">{dateLabel}</span>
                                 </div>
                               </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-4 py-4">
                             <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                  <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <svg className="w-4 h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                   </svg>
-                                  <span>{timeLabel}</span>
+                                  <span className="truncate">{timeLabel}</span>
                             </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4">
                                 <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
                                   patient.status === 'completed'
                                     ? 'bg-green-100 text-green-700 border-green-200'
@@ -5065,7 +5202,7 @@ const ReceptionistDashboard = () => {
                                     : 'Waiting'}
                                 </span>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
+                              <td className="px-4 py-4">
                                 <div className="flex flex-col gap-2">
                                   <button
                                     type="button"
@@ -5189,7 +5326,7 @@ const ReceptionistDashboard = () => {
 
               {/* Patient History View */}
               {patientsRegisterView === 'history' && (
-                <div className="fade-enter">
+                <div className="fade-enter flex-1 flex flex-col min-h-0">
                   {filteredPatientHistory.length === 0 ? (
                     <div className="text-center py-12 px-6">
                       <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 mb-4">
@@ -5210,20 +5347,20 @@ const ReceptionistDashboard = () => {
                     </div>
                   ) : (
                     <>
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200">
-                          <thead className="bg-slate-50">
+                      <div className="flex-1 overflow-y-auto">
+                        <table className="w-full divide-y divide-slate-200 table-fixed">
+                          <thead className="bg-slate-50 sticky top-0 z-10">
                             <tr>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient ID</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor Profile</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Action</th>
+                              <th className="w-16 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
+                              <th className="w-48 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
+                              <th className="w-40 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient ID</th>
+                              <th className="w-48 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor Profile</th>
+                              <th className="w-36 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
+                              <th className="w-24 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
+                              <th className="w-36 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
+                              <th className="w-32 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
+                              <th className="w-32 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                              <th className="w-36 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Action</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-slate-100">
@@ -5233,12 +5370,12 @@ const ReceptionistDashboard = () => {
                               const displayIndex = filteredPatientHistory.length - globalIndex
                               return (
                                 <tr key={patient._id} className="hover:bg-green-50/40 transition border border-slate-200">
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                  <td className="px-4 py-4">
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
                                       {String(displayIndex).padStart(2, '0')}
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 border-r border-slate-200">
+                                  <td className="px-4 py-4">
                                     <div className="text-sm font-semibold text-slate-900 flex flex-col gap-1">
                                       <div className="flex flex-wrap items-center gap-2">
                                         <span>{patient.fullName}</span>
@@ -5270,14 +5407,14 @@ const ReceptionistDashboard = () => {
                                       )}
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                  <td className="px-4 py-4">
                                     {patient.patientId ? (
                                       <div className="flex flex-col gap-1">
                                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 text-xs font-bold border border-blue-200 shadow-sm">
                                           <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
                                           </svg>
-                                          <span className="font-mono">{patient.patientId}</span>
+                                          <span className="font-mono truncate">{patient.patientId}</span>
                                         </span>
                                         {patient.isRecheck && (
                                           <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-green-50 text-green-700 text-[10px] font-semibold uppercase tracking-wide border border-green-200 w-fit">
@@ -5289,7 +5426,7 @@ const ReceptionistDashboard = () => {
                                       <span className="text-xs text-slate-400 italic">—</span>
                                     )}
                                   </td>
-                                  <td className="px-6 py-4 border-r border-slate-200">
+                                  <td className="px-4 py-4">
                                     {patient.doctor ? (
                                       <div className="flex items-center gap-3">
                                         {/* Doctor Profile Image */}
@@ -5326,34 +5463,34 @@ const ReceptionistDashboard = () => {
                                       <div className="text-sm font-semibold text-slate-400">N/A</div>
                                     )}
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                  <td className="px-4 py-4">
                                     <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-sm font-medium border border-purple-200">
-                                      <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                                      {patient.disease || 'Not specified'}
+                                      <span className="w-2 h-2 rounded-full bg-purple-500 flex-shrink-0"></span>
+                                      <span className="truncate">{patient.disease || 'Not specified'}</span>
                                     </span>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                  <td className="px-4 py-4">
                                     <span className="px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-full font-bold text-sm border border-blue-200 shadow-sm">
                                       #{patient.tokenNumber}
                                     </span>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                  <td className="px-4 py-4">
                                     <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                       </svg>
-                                      {dateLabel}
+                                      <span className="truncate">{dateLabel}</span>
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                  <td className="px-4 py-4">
                                     <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <svg className="w-4 h-4 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                       </svg>
-                                      <span>{timeLabel}</span>
+                                      <span className="truncate">{timeLabel}</span>
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
+                                  <td className="px-4 py-4">
                                     <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
                                       patient.status === 'completed'
                                         ? 'bg-green-100 text-green-700 border-green-200'
@@ -5378,7 +5515,7 @@ const ReceptionistDashboard = () => {
                                         : 'Waiting'}
                                     </span>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
+                                  <td className="px-4 py-4">
                                     <div className="flex flex-col gap-2">
                                       <button
                                         onClick={() => {
@@ -5526,23 +5663,23 @@ const ReceptionistDashboard = () => {
         {activeTab === 'emergency' && (
           <div className="space-y-8">
             {/* Emergency Patient Registration Form */}
-            <div className="bg-gradient-to-br from-red-50 via-white to-orange-50 rounded-2xl shadow-xl border-2 border-red-200 p-6 sm:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center shadow-lg">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="bg-gradient-to-br from-red-50 via-white to-orange-50 rounded-2xl shadow-xl border-2 border-red-200 p-3 sm:p-6 md:p-8">
+              <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 md:mb-6">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center shadow-lg flex-shrink-0">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
                 </div>
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-bold text-red-700">Emergency Patient Registration</h2>
-                  <p className="text-sm text-red-600 mt-1">Quick registration for critical cases - bypasses daily limits</p>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-red-700 leading-tight">Emergency Patient Registration</h2>
+                  <p className="text-xs sm:text-sm text-red-600 mt-0.5 sm:mt-1 leading-snug">Quick registration for critical cases – bypasses daily limits</p>
                 </div>
               </div>
 
-              <form onSubmit={handleEmergencySubmit} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700">
+              <form onSubmit={handleEmergencySubmit} className="space-y-3 sm:space-y-4 md:space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 md:gap-6">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-xs sm:text-sm font-semibold text-gray-700">
                       Full Name <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -5551,7 +5688,7 @@ const ReceptionistDashboard = () => {
                       value={emergencyFormData.fullName}
                       onChange={(e) => setEmergencyFormData(prev => ({ ...prev, fullName: e.target.value }))}
                       placeholder="Enter patient name"
-                      className="w-full px-4 py-3 text-sm font-medium rounded-lg border-2 border-red-200 bg-white text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition-all"
+                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm font-medium rounded-lg border-2 border-red-200 bg-white text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition-all"
                       required
                     />
                     {emergencyFormErrors.fullName && (
@@ -5559,8 +5696,8 @@ const ReceptionistDashboard = () => {
                     )}
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-xs sm:text-sm font-semibold text-gray-700">
                       Age <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -5571,7 +5708,7 @@ const ReceptionistDashboard = () => {
                       placeholder="e.g. 42"
                       min="0"
                       max="150"
-                      className="w-full px-4 py-3 text-sm font-medium rounded-lg border-2 border-red-200 bg-white text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition-all"
+                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm font-medium rounded-lg border-2 border-red-200 bg-white text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition-all"
                       required
                     />
                     {emergencyFormErrors.age && (
@@ -5579,15 +5716,15 @@ const ReceptionistDashboard = () => {
                     )}
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-xs sm:text-sm font-semibold text-gray-700">
                       Gender <span className="text-red-500">*</span>
                     </label>
                     <select
                       name="gender"
                       value={emergencyFormData.gender}
                       onChange={(e) => setEmergencyFormData(prev => ({ ...prev, gender: e.target.value }))}
-                      className="w-full px-4 py-3 text-sm font-medium rounded-lg border-2 border-red-200 bg-white text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition-all appearance-none"
+                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm font-medium rounded-lg border-2 border-red-200 bg-white text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition-all appearance-none"
                       required
                     >
                       <option value="">Select Gender</option>
@@ -5600,8 +5737,8 @@ const ReceptionistDashboard = () => {
                     )}
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-xs sm:text-sm font-semibold text-gray-700">
                       Select Doctor <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -5615,7 +5752,7 @@ const ReceptionistDashboard = () => {
                           fees: selectedDoc?.fees || prev.fees || ''
                         }))
                       }}
-                      className="w-full px-4 py-3 text-sm font-medium rounded-lg border-2 border-red-200 bg-white text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition-all appearance-none"
+                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm font-medium rounded-lg border-2 border-red-200 bg-white text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition-all appearance-none"
                       required
                     >
                       <option value="">Select a doctor</option>
@@ -5630,8 +5767,8 @@ const ReceptionistDashboard = () => {
                     )}
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-gray-700">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-xs sm:text-sm font-semibold text-gray-700">
                       Consultation Fees (₹) <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -5642,7 +5779,7 @@ const ReceptionistDashboard = () => {
                       placeholder="Enter consultation fee"
                       min="0"
                       step="1"
-                      className="w-full px-4 py-3 text-sm font-medium rounded-lg border-2 border-red-200 bg-white text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition-all"
+                      className="w-full px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-xs sm:text-sm font-medium rounded-lg border-2 border-red-200 bg-white text-gray-700 focus:border-red-500 focus:ring-2 focus:ring-red-100 outline-none transition-all"
                       required
                     />
                     {emergencyFormErrors.fees && (
@@ -5651,14 +5788,14 @@ const ReceptionistDashboard = () => {
                   </div>
                 </div>
 
-                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mt-6">
-                  <div className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-2.5 sm:p-3 md:p-4 mt-3 sm:mt-4 md:mt-6">
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <div>
-                      <p className="text-sm font-semibold text-red-800 mb-1">Emergency Registration Notice</p>
-                      <p className="text-xs text-red-700">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm font-semibold text-red-800 mb-0.5 sm:mb-1 leading-tight">Emergency Registration Notice</p>
+                      <p className="text-xs text-red-700 leading-relaxed">
                         Emergency patients bypass daily patient limits and are immediately visible to doctors.
                         This form registers critical cases that require immediate attention.
                       </p>
@@ -5668,12 +5805,12 @@ const ReceptionistDashboard = () => {
 
                 <button
                   type="submit"
-                  className="w-full group relative flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-red-600 via-red-700 to-red-600 px-6 py-4 text-lg font-bold text-white shadow-xl transition duration-200 hover:from-red-700 hover:via-red-800 hover:to-red-700 focus:outline-none focus:ring-4 focus:ring-red-300 transform hover:scale-[1.02]"
+                  className="w-full group relative flex items-center justify-center gap-2 sm:gap-3 rounded-xl bg-gradient-to-r from-red-600 via-red-700 to-red-600 px-4 sm:px-6 py-2.5 sm:py-3 md:py-4 text-sm sm:text-base md:text-lg font-bold text-white shadow-xl transition duration-200 hover:from-red-700 hover:via-red-800 hover:to-red-700 focus:outline-none focus:ring-4 focus:ring-red-300 transform hover:scale-[1.02]"
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
-                  Register Emergency Patient
+                  <span className="whitespace-nowrap">Register Emergency Patient</span>
                 </button>
               </form>
             </div>
@@ -5685,14 +5822,14 @@ const ReceptionistDashboard = () => {
             {/* Doctor Availability Section */}
             <div className="bg-white rounded-lg shadow-lg border border-gray-100 overflow-hidden">
               {/* Header */}
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-6 border-b border-green-100">
-                <h2 className="text-3xl font-bold text-gray-900 mb-2">Doctor Availability</h2>
-                <p className="text-gray-600">View real-time availability and schedule appointments</p>
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-6 border-b border-green-100">
+                <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1 sm:mb-2 leading-tight">Doctor Availability</h2>
+                <p className="text-xs sm:text-sm md:text-base text-gray-600 leading-snug">View real-time availability and schedule appointments</p>
               </div>
 
               {/* Filters */}
-              <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="px-3 sm:px-4 md:px-6 py-2 sm:py-3 md:py-4 bg-gray-50 border-b border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-3 md:gap-4">
                   {/* Filter by Specialty */}
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -5746,7 +5883,7 @@ const ReceptionistDashboard = () => {
               </div>
 
               {/* Doctor Cards Grid */}
-              <div className="p-6">
+              <div className="p-3 sm:p-4 md:p-6">
                 {(() => {
                   // Filter doctors based on selected filters
                   let filteredDoctors = allDoctors.filter(doctor => {
@@ -5929,16 +6066,16 @@ const ReceptionistDashboard = () => {
                       
                       {/* Pagination */}
                       {totalPages > 1 && (
-                        <div className="mt-6 bg-gray-50 px-6 py-4 border-t border-gray-200 rounded-lg">
-                          <div className="flex items-center justify-between">
-                            <div className="text-sm text-gray-700">
+                        <div className="mt-3 sm:mt-4 md:mt-6 bg-gray-50 px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 border-t border-gray-200 rounded-lg">
+                          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-4">
+                            <div className="text-xs sm:text-sm text-gray-700 whitespace-nowrap order-2 sm:order-1">
                               Showing <span className="font-semibold">{startIndex + 1}</span> to{' '}
                               <span className="font-semibold">
                                 {Math.min(endIndex, totalDoctors)}
                               </span>{' '}
                               of <span className="font-semibold">{totalDoctors}</span> doctors
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center gap-1 sm:gap-2 w-full sm:w-auto order-1 sm:order-2">
                               <button
                                 onClick={() => {
                                   const newPage = availabilityPage - 1
@@ -5946,11 +6083,11 @@ const ReceptionistDashboard = () => {
                                   window.scrollTo({ top: 0, behavior: 'smooth' })
                                 }}
                                 disabled={availabilityPage === 1}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                               >
                                 Previous
                               </button>
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-0.5 sm:gap-1">
                                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                                   let pageNum
                                   if (totalPages <= 5) {
@@ -5970,7 +6107,7 @@ const ReceptionistDashboard = () => {
                                         setAvailabilityPage(pageNum)
                                         window.scrollTo({ top: 0, behavior: 'smooth' })
                                       }}
-                                      className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                      className={`px-2 sm:px-2.5 md:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors min-w-[32px] sm:min-w-[36px] md:min-w-[40px] ${
                                         availabilityPage === pageNum
                                           ? 'bg-green-600 text-white'
                                           : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
@@ -5988,7 +6125,7 @@ const ReceptionistDashboard = () => {
                                   window.scrollTo({ top: 0, behavior: 'smooth' })
                                 }}
                                 disabled={availabilityPage >= totalPages}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                               >
                                 Next
                               </button>
@@ -6009,8 +6146,8 @@ const ReceptionistDashboard = () => {
             </div>
 
             {/* Schedule Appointment Form */}
-            <div id="schedule-appointment-form" className="bg-white rounded-lg shadow p-4 sm:p-8">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-6">Schedule Appointment</h2>
+            <div id="schedule-appointment-form" className="bg-white rounded-lg shadow p-3 sm:p-4 md:p-6 lg:p-8">
+              <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800 mb-3 sm:mb-4 md:mb-6 leading-tight">Schedule Appointment</h2>
 
               <form onSubmit={handleScheduleAppointment} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -6271,9 +6408,9 @@ const ReceptionistDashboard = () => {
 
                 <button
                   type="submit"
-                  className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition"
+                  className="w-full bg-green-600 text-white py-2 sm:py-2.5 md:py-3 rounded-lg text-sm sm:text-base font-semibold hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition"
                 >
-                  Schedule Next-Day Appointment & Send SMS
+                  <span className="whitespace-normal sm:whitespace-nowrap">Schedule Next-Day Appointment & Send SMS</span>
                 </button>
               </form>
             </div>
@@ -6281,19 +6418,19 @@ const ReceptionistDashboard = () => {
             {/* Appointments List */}
             <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
               {/* Header */}
-              <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50 to-slate-100 px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+                <div className="flex flex-col gap-3 sm:gap-4">
                   <div>
-                    <h3 className="text-2xl font-bold text-slate-800">All Appointments</h3>
-                    <p className="text-sm text-slate-600 mt-1">View today's appointments and upcoming scheduled visits</p>
+                    <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-800 leading-tight">All Appointments</h3>
+                    <p className="text-xs sm:text-sm text-slate-600 mt-0.5 sm:mt-1 leading-snug">View today's appointments and upcoming scheduled visits</p>
                   </div>
                   {/* Search Bar and Toggle Buttons */}
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <div className="flex flex-col gap-2 sm:gap-3">
                     {/* Search Bar */}
-                    <div className="relative flex-1 sm:flex-initial sm:w-80">
+                    <div className="relative w-full">
                       <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                          <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
+                          <svg className="h-4 w-4 sm:h-5 sm:w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                           </svg>
                         </div>
@@ -6301,16 +6438,16 @@ const ReceptionistDashboard = () => {
                           type="text"
                           value={appointmentsSearch}
                           onChange={(e) => setAppointmentsSearch(e.target.value)}
-                          placeholder="Search by Patient Name, Mobile, Token, or Patient ID..."
-                          className={`block w-full pl-10 pr-10 py-2.5 border rounded-xl text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 border-slate-300 focus:ring-blue-500 focus:border-blue-500 bg-white/90 ${appointmentsSearch ? 'shadow-sm' : ''}`}
+                          placeholder="Search by Name/Mobile/Token/ID..."
+                          className={`block w-full pl-8 sm:pl-10 pr-8 sm:pr-10 py-2 sm:py-2.5 border rounded-xl text-xs sm:text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 border-slate-300 focus:ring-blue-500 focus:border-blue-500 bg-white/90 ${appointmentsSearch ? 'shadow-sm' : ''}`}
                         />
                         {appointmentsSearch && (
                           <button
                             onClick={() => setAppointmentsSearch('')}
-                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                            className="absolute inset-y-0 right-0 pr-2.5 sm:pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
                             aria-label="Clear search"
                           >
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </button>
@@ -6318,44 +6455,44 @@ const ReceptionistDashboard = () => {
                       </div>
                     </div>
                     {/* Toggle Buttons */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                     <button
                       onClick={() => setAppointmentsView('today')}
-                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm border ${
+                      className={`inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all shadow-sm border flex-1 sm:flex-initial ${
                         appointmentsView === 'today'
                           ? 'bg-green-50 text-green-700 border-green-300 shadow-md'
                           : 'bg-white text-slate-600 border-slate-300 hover:bg-green-50 hover:text-green-700 hover:border-green-200'
                       }`}
                     >
-                      <span className="text-lg">🟢</span>
-                      <span>Today's Patients</span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      <span className="text-sm sm:text-lg">🟢</span>
+                      <span className="whitespace-nowrap">Today's Patients</span>
+                      <span className={`px-2 sm:px-2.5 py-0.5 rounded-full text-xs font-bold ${
                         appointmentsView === 'today'
                           ? 'bg-green-600 text-white'
                           : 'bg-slate-200 text-slate-700'
                       }`}>
                         {appointmentsSearchDebounced ? filteredTodayAppointments.length : todayAppointments.length}
                       </span>
-                      <span className="text-xs opacity-75">appointments</span>
+                      <span className="text-xs opacity-75 hidden sm:inline">appointments</span>
                     </button>
                     <button
                       onClick={() => setAppointmentsView('upcoming')}
-                      className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all shadow-sm border ${
+                      className={`inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all shadow-sm border flex-1 sm:flex-initial ${
                         appointmentsView === 'upcoming'
                           ? 'bg-blue-50 text-blue-700 border-blue-300 shadow-md'
                           : 'bg-white text-slate-600 border-slate-300 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200'
                       }`}
                     >
-                      <span className="text-lg">🔵</span>
-                      <span>Upcoming Patients</span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      <span className="text-sm sm:text-lg">🔵</span>
+                      <span className="whitespace-nowrap">Upcoming Patients</span>
+                      <span className={`px-2 sm:px-2.5 py-0.5 rounded-full text-xs font-bold ${
                         appointmentsView === 'upcoming'
                           ? 'bg-blue-600 text-white'
                           : 'bg-slate-200 text-slate-700'
                       }`}>
                         {appointmentsSearchDebounced ? filteredUpcomingAppointments.length : upcomingAppointments.length}
                       </span>
-                      <span className="text-xs opacity-75">appointments</span>
+                      <span className="text-xs opacity-75 hidden sm:inline">appointments</span>
                     </button>
                   </div>
                 </div>
@@ -6372,11 +6509,11 @@ const ReceptionistDashboard = () => {
                   {/* Today's Patients Section */}
                   {appointmentsView === 'today' && (
                     <div>
-                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-3 border-b border-green-200">
-                        <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                          <span className="text-green-600">🟢</span>
-                          Today's Patients
-                          <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold ml-2">
+                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 px-3 sm:px-4 md:px-6 py-2 sm:py-3 border-b border-green-200">
+                        <h4 className="text-sm sm:text-base md:text-lg font-bold text-slate-800 flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                          <span className="text-green-600 text-sm sm:text-base">🟢</span>
+                          <span className="leading-tight">Today's Patients</span>
+                          <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold ml-1 sm:ml-2">
                             {appointmentsSearchDebounced ? filteredTodayAppointments.length : todayAppointments.length} appointment{(appointmentsSearchDebounced ? filteredTodayAppointments.length : todayAppointments.length) !== 1 ? 's' : ''}
                           </span>
                         </h4>
@@ -6400,19 +6537,19 @@ const ReceptionistDashboard = () => {
                         </p>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto -mx-3 sm:mx-0">
                         <table className="min-w-full divide-y divide-green-100">
                           <thead className="bg-green-50">
                             <tr>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Reason</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">SMS</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Action</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Reason</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">SMS</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Action</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-green-100">
@@ -6420,35 +6557,35 @@ const ReceptionistDashboard = () => {
                               const { dateLabel, timeLabel } = getAppointmentLabels(appointment.appointmentDate, appointment.appointmentTime)
                               return (
                                 <tr key={appointment._id} className="bg-green-50/30 hover:bg-green-50/50 transition border-l-4 border-green-400">
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap">
+                                    <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 text-white font-bold flex items-center justify-center text-xs sm:text-sm shadow-md">
                                       {String(index + 1).padStart(2, '0')}
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap">
+                                    <div className="text-xs sm:text-sm font-semibold text-slate-900 flex items-center gap-1 sm:gap-2">
+                                      <svg className="w-3 h-3 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                       </svg>
-                                      {dateLabel}
+                                      <span className="truncate">{dateLabel}</span>
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                      <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap">
+                                    <div className="text-xs sm:text-sm font-semibold text-slate-900 flex items-center gap-1 sm:gap-2">
+                                      <svg className="w-3 h-3 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                       </svg>
-                                      {timeLabel}
+                                      <span className="truncate">{timeLabel}</span>
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4">
-                                    <div className="text-sm font-semibold text-slate-900">{appointment.patientName}</div>
-                                    <div className="text-xs text-slate-500 mt-1">{appointment.mobileNumber}</div>
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 min-w-[120px]">
+                                    <div className="text-xs sm:text-sm font-semibold text-slate-900 truncate">{appointment.patientName}</div>
+                                    <div className="text-xs text-slate-500 mt-0.5 sm:mt-1 truncate">{appointment.mobileNumber}</div>
                                     {appointment.email && (
-                                      <div className="text-xs text-slate-400 truncate max-w-xs">{appointment.email}</div>
+                                      <div className="text-xs text-slate-400 truncate max-w-[200px] sm:max-w-xs">{appointment.email}</div>
                                     )}
                                   </td>
-                                  <td className="px-6 py-4">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 min-w-[140px]">
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -6481,14 +6618,14 @@ const ReceptionistDashboard = () => {
                                       )})()}
                                     </button>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium border border-emerald-200">
-                                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                      {appointment.reason || 'General consultation'}
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4">
+                                    <span className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs sm:text-sm font-medium border border-emerald-200">
+                                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                                      <span className="truncate max-w-[100px] sm:max-w-none">{appointment.reason || 'General consultation'}</span>
                                     </span>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4">
+                                    <span className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-bold border ${
                                       appointment.status === 'completed'
                                         ? 'bg-green-100 text-green-700 border-green-200'
                                         : appointment.status === 'cancelled'
@@ -6497,38 +6634,39 @@ const ReceptionistDashboard = () => {
                                         ? 'bg-blue-100 text-blue-700 border-blue-200'
                                         : 'bg-yellow-100 text-yellow-700 border-yellow-200'
                                     }`}>
-                                      <span className={`w-2 h-2 rounded-full ${
+                                      <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0 ${
                                         appointment.status === 'completed' ? 'bg-green-500'
                                         : appointment.status === 'cancelled' ? 'bg-red-500'
                                         : appointment.status === 'confirmed' ? 'bg-blue-500'
                                         : 'bg-yellow-500'
                                       }`}></span>
-                                      {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                                      <span className="truncate">{appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}</span>
                                     </span>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4">
                                     {appointment.smsSent ? (
-                                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold border border-green-200">
-                                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                        Sent
+                                      <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold border border-green-200">
+                                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-green-500 flex-shrink-0"></span>
+                                        <span>Sent</span>
                                       </span>
                                     ) : (
                                       <button
                                         onClick={() => handleResendSMS(appointment._id)}
-                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition"
+                                        className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition"
                                       >
-                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                         </svg>
-                                        Resend
+                                        <span className="hidden sm:inline">Resend</span>
+                                        <span className="sm:hidden">SMS</span>
                                       </button>
                                     )}
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4">
                                     <button
                                       onClick={() => handleCancelAppointment(appointment)}
                                       disabled={appointment.status === 'cancelled' || appointment.status === 'completed'}
-                                      className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+                                      className={`px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition ${
                                         appointment.status === 'cancelled' || appointment.status === 'completed'
                                           ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                                           : 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-200'
@@ -6550,11 +6688,11 @@ const ReceptionistDashboard = () => {
                   {/* Upcoming Patients Section */}
                   {appointmentsView === 'upcoming' && (
                     <div>
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-3 border-b border-blue-200">
-                        <h4 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                          <span className="text-blue-600">🔵</span>
-                          Upcoming Patients
-                          <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold ml-2">
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 sm:px-4 md:px-6 py-2 sm:py-3 border-b border-blue-200">
+                        <h4 className="text-sm sm:text-base md:text-lg font-bold text-slate-800 flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                          <span className="text-blue-600 text-sm sm:text-base">🔵</span>
+                          <span className="leading-tight">Upcoming Patients</span>
+                          <span className="px-2 sm:px-3 py-0.5 sm:py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold ml-1 sm:ml-2">
                             {appointmentsSearchDebounced ? filteredUpcomingAppointments.length : upcomingAppointments.length} appointment{(appointmentsSearchDebounced ? filteredUpcomingAppointments.length : upcomingAppointments.length) !== 1 ? 's' : ''}
                           </span>
                         </h4>
@@ -6578,19 +6716,19 @@ const ReceptionistDashboard = () => {
                         </p>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto -mx-3 sm:mx-0">
                         <table className="min-w-full divide-y divide-slate-200">
                           <thead className="bg-slate-50">
                             <tr>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Reason</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">SMS</th>
-                              <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Action</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Reason</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">SMS</th>
+                              <th className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Action</th>
                             </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-slate-100">
@@ -6601,35 +6739,35 @@ const ReceptionistDashboard = () => {
 
                               return (
                                 <tr key={appointment._id} className="hover:bg-slate-50 transition border border-slate-200">
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-md">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap border-r border-slate-200">
+                                    <div className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-xs sm:text-sm shadow-md">
                                       {String(index + 1).padStart(2, '0')}
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
-                                    <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap border-r border-slate-200">
+                                    <div className="text-xs sm:text-sm font-semibold text-slate-900 flex items-center gap-1 sm:gap-2">
+                                      <svg className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                                       </svg>
-                                      {dateLabel}
+                                      <span className="truncate">{dateLabel}</span>
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
-                                    <div className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 whitespace-nowrap border-r border-slate-200">
+                                    <div className="text-xs sm:text-sm font-semibold text-slate-900 flex items-center gap-1 sm:gap-2">
+                                      <svg className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                       </svg>
-                                      {timeLabel}
+                                      <span className="truncate">{timeLabel}</span>
                                     </div>
                                   </td>
-                                  <td className="px-6 py-4 border-r border-slate-200">
-                                    <div className="text-sm font-semibold text-slate-900">{appointment.patientName}</div>
-                                    <div className="text-xs text-slate-500 mt-1">{appointment.mobileNumber}</div>
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 border-r border-slate-200 min-w-[120px]">
+                                    <div className="text-xs sm:text-sm font-semibold text-slate-900 truncate">{appointment.patientName}</div>
+                                    <div className="text-xs text-slate-500 mt-0.5 sm:mt-1 truncate">{appointment.mobileNumber}</div>
                                     {appointment.email && (
-                                      <div className="text-xs text-slate-400 truncate max-w-xs">{appointment.email}</div>
+                                      <div className="text-xs text-slate-400 truncate max-w-[200px] sm:max-w-xs">{appointment.email}</div>
                                     )}
                                   </td>
-                                  <td className="px-6 py-4 border-r border-slate-200">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 border-r border-slate-200 min-w-[140px]">
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -6638,23 +6776,23 @@ const ReceptionistDashboard = () => {
                                           setShowDoctorDrawer(true)
                                         }
                                       }}
-                                      className="text-left"
+                                      className="text-left w-full"
                                       title="View doctor profile"
                                     >
                                       {(() => { const doc = resolveAppointmentDoctor(appointment.doctor); return (
-                                      <div className="flex items-center gap-3">
-                                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-md border-2 border-white overflow-hidden">
+                                      <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3">
+                                        <div className="w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center text-white text-xs font-bold shadow-md border-2 border-white overflow-hidden flex-shrink-0">
                                           {doc?.profileImage ? (
                                             <img src={doc.profileImage} alt={doc?.fullName || 'Doctor'} className="w-full h-full object-cover" />
                                           ) : (
-                                            <span>{(doc?.fullName || 'D').split(' ').map(p => p[0]).slice(0,2).join('').toUpperCase()}</span>
+                                            <span className="text-xs">{(doc?.fullName || 'D').split(' ').map(p => p[0]).slice(0,2).join('').toUpperCase()}</span>
                                           )}
                                         </div>
-                                        <div>
-                                          <div className="text-sm font-semibold text-blue-700 hover:underline">
+                                        <div className="min-w-0 flex-1">
+                                          <div className="text-xs sm:text-sm font-semibold text-blue-700 hover:underline truncate">
                                             {doc?.fullName || 'N/A'}
                                           </div>
-                                          <div className="text-xs text-slate-500">
+                                          <div className="text-xs text-slate-500 truncate">
                                             {doc?.specialization || '—'}
                                           </div>
                                         </div>
@@ -6662,14 +6800,14 @@ const ReceptionistDashboard = () => {
                                       )})()}
                                     </button>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
-                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-sm font-medium border border-emerald-200">
-                                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                      {appointment.reason || 'General consultation'}
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 border-r border-slate-200">
+                                    <span className="inline-flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs sm:text-sm font-medium border border-emerald-200">
+                                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                                      <span className="truncate max-w-[100px] sm:max-w-none">{appointment.reason || 'General consultation'}</span>
                                     </span>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
-                                    <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 border-r border-slate-200">
+                                    <span className={`inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-bold border ${
                                       appointment.status === 'completed'
                                         ? 'bg-green-100 text-green-700 border-green-200'
                                         : appointment.status === 'cancelled'
@@ -6678,38 +6816,39 @@ const ReceptionistDashboard = () => {
                                         ? 'bg-blue-100 text-blue-700 border-blue-200'
                                         : 'bg-yellow-100 text-yellow-700 border-yellow-200'
                                     }`}>
-                                      <span className={`w-2 h-2 rounded-full ${
+                                      <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0 ${
                                         appointment.status === 'completed' ? 'bg-green-500'
                                         : appointment.status === 'cancelled' ? 'bg-red-500'
                                         : appointment.status === 'confirmed' ? 'bg-blue-500'
                                         : 'bg-yellow-500'
                                       }`}></span>
-                                      {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                                      <span className="truncate">{appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}</span>
                                     </span>
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap border-r border-slate-200">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4 border-r border-slate-200">
                                     {appointment.smsSent ? (
-                                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold border border-green-200">
-                                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                                        Sent
+                                      <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-green-50 text-green-700 text-xs font-semibold border border-green-200">
+                                        <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-green-500 flex-shrink-0"></span>
+                                        <span>Sent</span>
                                       </span>
                                     ) : (
                                       <button
                                         onClick={() => handleResendSMS(appointment._id)}
-                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition"
+                                        className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition"
                                       >
-                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                         </svg>
-                                        Resend
+                                        <span className="hidden sm:inline">Resend</span>
+                                        <span className="sm:hidden">SMS</span>
                                       </button>
                                     )}
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
+                                  <td className="px-2 sm:px-3 md:px-6 py-2 sm:py-3 md:py-4">
                                     <button
                                       onClick={() => handleCancelAppointment(appointment)}
                                       disabled={appointment.status === 'cancelled' || appointment.status === 'completed'}
-                                      className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+                                      className={`px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 rounded-lg text-xs font-semibold transition ${
                                         appointment.status === 'cancelled' || appointment.status === 'completed'
                                           ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
                                           : 'bg-red-100 text-red-700 hover:bg-red-200 border border-red-200'

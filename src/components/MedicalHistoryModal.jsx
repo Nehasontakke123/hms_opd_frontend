@@ -303,27 +303,28 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className={`${isRecheck ? 'bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600' : 'bg-gradient-to-r from-blue-600 to-purple-600'} text-white p-6 flex justify-between items-center`}>
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <h2 className="text-2xl font-bold">Medical History</h2>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-xl shadow-2xl w-full h-[95vh] sm:h-auto sm:max-w-4xl sm:max-h-[90vh] overflow-hidden flex flex-col m-0 sm:m-4">
+        {/* Header - Mobile Optimized */}
+        <div className={`${isRecheck ? 'bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600' : 'bg-gradient-to-r from-blue-600 to-purple-600'} text-white p-4 sm:p-6 flex justify-between items-start flex-shrink-0`}>
+          <div className="flex-1 min-w-0 pr-2">
+            <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
+              <h2 className="text-lg sm:text-xl md:text-2xl font-bold break-words">Medical History</h2>
               {isRecheck && (
-                <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white/20 backdrop-blur-sm text-white text-sm font-bold border-2 border-white/30 shadow-lg">
-                  <span className="text-lg">↺</span>
-                  Recheck-up Patient
+                <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-4 py-1 sm:py-1.5 rounded-full bg-white/20 backdrop-blur-sm text-white text-xs sm:text-sm font-bold border-2 border-white/30 shadow-lg whitespace-nowrap">
+                  <span className="text-base sm:text-lg">↺</span>
+                  <span className="hidden sm:inline">Recheck-up Patient</span>
+                  <span className="sm:hidden">Recheck</span>
                 </span>
               )}
             </div>
             {medicalHistory?.patientInfo && (
-              <div className="flex items-center gap-4 flex-wrap">
-                <p className="text-blue-100">
+              <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+                <p className="text-xs sm:text-sm text-blue-100 break-words">
                   {medicalHistory.patientInfo.fullName} • {medicalHistory.totalVisits} {medicalHistory.totalVisits === 1 ? 'visit' : 'visits'}
                 </p>
                 {medicalHistory.patientInfo?.patientId && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-sm text-white text-xs font-semibold border border-white/30">
+                  <span className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full bg-white/20 backdrop-blur-sm text-white text-[10px] sm:text-xs font-semibold border border-white/30">
                     ID: {medicalHistory.patientInfo.patientId}
                   </span>
                 )}
@@ -332,7 +333,8 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
           </div>
           <button
             onClick={onClose}
-            className="text-white hover:text-gray-200 transition-colors text-2xl font-bold ml-4"
+            className="text-white hover:text-gray-200 transition-colors text-2xl sm:text-2xl font-bold ml-2 sm:ml-4 flex-shrink-0 w-8 h-8 sm:w-auto sm:h-auto flex items-center justify-center rounded-full hover:bg-white/10"
+            aria-label="Close modal"
           >
             ×
           </button>
@@ -340,12 +342,12 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
 
         {/* Search Section */}
         {!patientId && (
-          <div className="p-4 bg-gray-50 border-b">
-            <div className="flex gap-2">
+          <div className="p-3 sm:p-4 bg-gray-50 border-b flex-shrink-0">
+            <div className="flex flex-col sm:flex-row gap-2">
               <select
                 value={searchType}
                 onChange={(e) => setSearchType(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                className="px-2.5 sm:px-3 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-auto flex-shrink-0"
               >
                 <option value="fullName">Name</option>
                 <option value="mobileNumber">Mobile Number</option>
@@ -356,12 +358,12 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder={`Enter patient ${searchType === 'fullName' ? 'name' : searchType === 'mobileNumber' ? 'mobile number' : 'ID'}`}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder={`Enter patient ${searchType === 'fullName' ? 'name' : searchType === 'mobileNumber' ? 'mobile' : 'ID'}`}
+                className="flex-1 px-3 sm:px-4 py-2 text-xs sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none min-w-0"
               />
               <button
                 onClick={handleSearch}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                className="px-4 sm:px-6 py-2 text-xs sm:text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
               >
                 Search
               </button>
@@ -370,10 +372,10 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-h-0">
           {loading ? (
-            <div className="flex justify-center items-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div className="flex justify-center items-center py-8 sm:py-12">
+              <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-blue-600"></div>
             </div>
           ) : medicalHistory && medicalHistory.medicalHistory && medicalHistory.medicalHistory.length > 0 ? (
             <div className="space-y-4">
@@ -396,26 +398,26 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
                       </span>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 text-sm">
-                    <div className="bg-white rounded-lg p-3 border border-blue-100 shadow-sm">
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</span>
-                      <p className="font-bold text-gray-900 mt-1">{medicalHistory.patientInfo.fullName}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3 md:gap-4 text-sm">
+                    <div className="bg-white rounded-lg p-2.5 sm:p-3 border border-blue-100 shadow-sm">
+                      <span className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</span>
+                      <p className="font-bold text-gray-900 mt-1 text-xs sm:text-sm break-words">{medicalHistory.patientInfo.fullName}</p>
                     </div>
-                    <div className="bg-white rounded-lg p-3 border border-blue-100 shadow-sm">
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mobile</span>
-                      <p className="font-bold text-gray-900 mt-1">{medicalHistory.patientInfo.mobileNumber}</p>
+                    <div className="bg-white rounded-lg p-2.5 sm:p-3 border border-blue-100 shadow-sm">
+                      <span className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide">Mobile</span>
+                      <p className="font-bold text-gray-900 mt-1 text-xs sm:text-sm break-words">{medicalHistory.patientInfo.mobileNumber}</p>
                     </div>
-                    <div className="bg-white rounded-lg p-3 border border-blue-100 shadow-sm">
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Age</span>
-                      <p className="font-bold text-gray-900 mt-1">{medicalHistory.patientInfo.age} years</p>
+                    <div className="bg-white rounded-lg p-2.5 sm:p-3 border border-blue-100 shadow-sm">
+                      <span className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide">Age</span>
+                      <p className="font-bold text-gray-900 mt-1 text-xs sm:text-sm">{medicalHistory.patientInfo.age} years</p>
                     </div>
-                    <div className="bg-white rounded-lg p-3 border border-blue-100 shadow-sm">
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Gender</span>
-                      <p className="font-bold text-gray-900 mt-1">{medicalHistory.patientInfo.gender || 'N/A'}</p>
+                    <div className="bg-white rounded-lg p-2.5 sm:p-3 border border-blue-100 shadow-sm">
+                      <span className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide">Gender</span>
+                      <p className="font-bold text-gray-900 mt-1 text-xs sm:text-sm">{medicalHistory.patientInfo.gender || 'N/A'}</p>
                     </div>
-                    <div className="bg-white rounded-lg p-3 border border-blue-100 shadow-sm">
-                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Address</span>
-                      <p className="font-bold text-gray-900 mt-1 text-xs">{medicalHistory.patientInfo.address || 'N/A'}</p>
+                    <div className="bg-white rounded-lg p-2.5 sm:p-3 border border-blue-100 shadow-sm col-span-2 sm:col-span-1">
+                      <span className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wide">Address</span>
+                      <p className="font-bold text-gray-900 mt-1 text-[10px] sm:text-xs break-words">{medicalHistory.patientInfo.address || 'N/A'}</p>
                     </div>
                   </div>
                 </div>
@@ -1136,9 +1138,9 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
               )}
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-600">
-              <p className="text-lg">No medical history found</p>
-              <p className="text-sm mt-2">Search for a patient to view their medical records</p>
+            <div className="text-center py-8 sm:py-12 px-4">
+              <p className="text-base sm:text-lg font-semibold text-gray-700">No medical history found</p>
+              <p className="text-xs sm:text-sm mt-2 text-gray-500">Search for a patient to view their medical records</p>
             </div>
           )}
         </div>

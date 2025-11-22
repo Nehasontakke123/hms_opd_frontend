@@ -161,3 +161,52 @@ code {
 .drawer-slide-in {
   animation: slideInFromRight 0.3s ease-out;
 }
+
+/* Hide scrollbar for mobile tab navigation */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Mobile responsive improvements - only for screens ≤ 768px */
+@media (max-width: 768px) {
+  /* Prevent horizontal scroll on body and html */
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
+    position: relative;
+  }
+  
+  /* Ensure containers don't overflow */
+  .max-w-7xl {
+    max-width: 100%;
+  }
+  
+  /* Prevent text overflow in containers - avoid affecting all elements */
+  p, span, label, div, h1, h2, h3, h4, h5, h6 {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  
+  /* Ensure images don't overflow */
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+  
+  /* Prevent form elements from overflowing */
+  input, select, textarea {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  
+  /* Ensure buttons wrap properly */
+  button {
+    box-sizing: border-box;
+    white-space: normal;
+  }
+}
