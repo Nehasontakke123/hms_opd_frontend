@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import PatientLimitModal from '../components/PatientLimitModal'
 import MedicalHistoryModal from '../components/MedicalHistoryModal'
 import PatientRegistrationSuccessPopup from '../components/PatientRegistrationSuccessPopup'
+import EmergencyRegistrationSuccessToast from '../components/EmergencyRegistrationSuccessToast'
 import CreatableSelect from 'react-select/creatable'
 import generatePatientHistoryPDF from '../utils/generatePatientHistoryPDF'
 import { Html5Qrcode } from 'html5-qrcode'
@@ -407,6 +408,8 @@ const ReceptionistDashboard = () => {
     fees: ''
   })
   const [emergencyFormErrors, setEmergencyFormErrors] = useState({})
+  const [showEmergencySuccessToast, setShowEmergencySuccessToast] = useState(false)
+  const [emergencyTokenNumber, setEmergencyTokenNumber] = useState(null)
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [selectedDoctorForProfile, setSelectedDoctorForProfile] = useState(null)
   const [profileImageFile, setProfileImageFile] = useState(null)
@@ -2146,7 +2149,10 @@ const ReceptionistDashboard = () => {
         visitTime: getDefaultVisitTime()
       })
 
-      toast.success('Emergency patient registered successfully!')
+      // Show success toaster with token number if available
+      const tokenNumber = response.data?.data?.tokenNumber || null
+      setEmergencyTokenNumber(tokenNumber)
+      setShowEmergencySuccessToast(true)
       
       // Reset form
       setEmergencyFormData({
@@ -7789,6 +7795,13 @@ const ReceptionistDashboard = () => {
       )}
 
       {/* Medical History Modal */}
+      {/* Emergency Registration Success Toaster */}
+      <EmergencyRegistrationSuccessToast
+        show={showEmergencySuccessToast}
+        onClose={() => setShowEmergencySuccessToast(false)}
+        tokenNumber={emergencyTokenNumber}
+      />
+
       <MedicalHistoryModal
         isOpen={showMedicalHistoryModal}
         onClose={() => {
