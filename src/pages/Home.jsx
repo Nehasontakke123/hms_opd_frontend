@@ -64,51 +64,51 @@ const Home = () => {
       </div>
 
       {/* Header */}
-      <header className="relative z-10 bg-white/80 backdrop-blur-md shadow-lg border-b border-gray-200/50">
-        <div className="max-w-7xl mx-auto px-4 py-8">
+      <header className="relative z-10 bg-white/90 backdrop-blur-md shadow-md border-b border-gray-200/50">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 md:py-3.5">
           <div className="text-center">
-            <div className="inline-flex items-center justify-center mb-3">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl shadow-lg flex items-center justify-center transform rotate-3 hover:rotate-6 transition-transform duration-300">
-                <span className="text-3xl">🏥</span>
+            <div className="inline-flex items-center justify-center mb-1.5 sm:mb-2">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl sm:rounded-2xl shadow-md flex items-center justify-center transform rotate-3 hover:rotate-6 transition-transform duration-300">
+                <span className="text-xl sm:text-2xl md:text-2xl">🏥</span>
               </div>
             </div>
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-1 sm:mb-1.5">
               Tekisky Hospital +
             </h1>
-            <p className="text-lg sm:text-xl text-gray-600 font-medium">OPD Management System</p>
-            <div className="mt-4 flex items-center justify-center gap-2">
-              <div className="h-1 w-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
-              <div className="h-1 w-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"></div>
-              <div className="h-1 w-12 bg-gradient-to-r from-pink-500 to-blue-500 rounded-full"></div>
+            <p className="text-xs sm:text-sm md:text-base lg:text-lg text-gray-600 font-medium">OPD Management System</p>
+            <div className="mt-1.5 sm:mt-2 flex items-center justify-center gap-1 sm:gap-1.5">
+              <div className="h-0.5 sm:h-0.5 md:h-1 w-6 sm:w-8 md:w-10 lg:w-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"></div>
+              <div className="h-0.5 sm:h-0.5 md:h-1 w-1 sm:w-1.5 md:w-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full"></div>
+              <div className="h-0.5 sm:h-0.5 md:h-1 w-6 sm:w-8 md:w-10 lg:w-12 bg-gradient-to-r from-pink-500 to-blue-500 rounded-full"></div>
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 py-12 sm:py-16">
-        <div className="text-center mb-12 sm:mb-16">
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-gray-800 mb-4">
+      <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-6 sm:py-8 md:py-10 lg:py-12">
+        <div className="text-center mb-6 sm:mb-8 md:mb-10 lg:mb-12">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-800 mb-2 sm:mb-3">
             Welcome to OPD System
           </h2>
-          <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto">
+          <p className="text-sm sm:text-base md:text-lg lg:text-xl text-gray-600 max-w-2xl mx-auto px-2">
             Please select your role to continue accessing the hospital management system
           </p>
         </div>
 
         {/* Login Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 md:gap-6">
           {loginCards.map((card, index) => (
             <div
               key={index}
               onClick={() => navigate(card.route)}
               className={`
                 group relative overflow-hidden
-                bg-white/90 backdrop-blur-sm rounded-3xl
-                border-2 ${card.borderColor}
-                shadow-xl hover:shadow-2xl
-                transform transition-all duration-500 cursor-pointer
-                hover:scale-105 hover:-translate-y-2
+                bg-white rounded-2xl sm:rounded-3xl
+                border border-gray-200 ${card.borderColor}
+                shadow-md hover:shadow-xl
+                transform transition-all duration-300 cursor-pointer
+                active:scale-[0.98] sm:hover:scale-[1.02] sm:hover:-translate-y-1
                 hover:border-opacity-100
               `}
               style={{
@@ -118,29 +118,29 @@ const Home = () => {
               {/* Animated Gradient Background */}
               <div className={`
                 absolute inset-0 bg-gradient-to-br ${card.gradient}
-                opacity-0 group-hover:opacity-5 transition-opacity duration-500
+                opacity-0 group-hover:opacity-5 transition-opacity duration-300
               `}></div>
               
               {/* Shine Effect */}
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
               
               {/* Content */}
-              <div className="relative p-6 sm:p-8">
+              <div className="relative p-3 sm:p-4 md:p-5">
                 {/* Icon Container */}
-                <div className="flex justify-center mb-6">
+                <div className="flex justify-center mb-2.5 sm:mb-3">
                   <div className={`
-                    relative w-20 h-20 ${card.iconBg} rounded-2xl
-                    shadow-lg ${card.iconShadow}
+                    relative w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 ${card.iconBg} rounded-xl sm:rounded-xl md:rounded-2xl
+                    shadow-md ${card.iconShadow}
                     flex items-center justify-center
-                    transform group-hover:scale-110 group-hover:rotate-6
+                    transform group-active:scale-95 sm:group-hover:scale-110 sm:group-hover:rotate-6
                     transition-all duration-300
                   `}>
-                    <span className="text-4xl transform group-hover:scale-110 transition-transform duration-300">
+                    <span className="text-2xl sm:text-3xl md:text-4xl transform group-active:scale-95 sm:group-hover:scale-110 transition-transform duration-300">
                       {card.icon}
                     </span>
                     {/* Icon Glow */}
                     <div className={`
-                      absolute inset-0 ${card.iconBg} rounded-2xl
+                      absolute inset-0 ${card.iconBg} rounded-xl sm:rounded-2xl
                       opacity-0 group-hover:opacity-50 blur-xl
                       transition-opacity duration-300
                     `}></div>
@@ -148,21 +148,21 @@ const Home = () => {
                 </div>
                 
                 {/* Title */}
-                <h3 className="text-xl sm:text-2xl font-bold text-gray-800 mb-3 text-center group-hover:text-gray-900 transition-colors">
+                <h3 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-gray-800 mb-1.5 sm:mb-2 text-center group-hover:text-gray-900 transition-colors">
                   {card.title}
                 </h3>
                 
                 {/* Description */}
-                <p className="text-gray-600 text-center mb-6 text-sm sm:text-base leading-relaxed">
+                <p className="text-gray-600 text-center mb-3 sm:mb-3.5 text-xs sm:text-sm md:text-base leading-snug sm:leading-relaxed px-1">
                   {card.description}
                 </p>
                 
                 {/* Features List */}
-                <div className="mb-6 space-y-2">
+                <div className="mb-3 space-y-1 sm:space-y-1.5">
                   {card.features.map((feature, idx) => (
-                    <div key={idx} className="flex items-center justify-center gap-2 text-xs sm:text-sm text-gray-500">
-                      <div className={`w-1.5 h-1.5 rounded-full bg-gradient-to-r ${card.gradient}`}></div>
-                      <span>{feature}</span>
+                    <div key={idx} className="flex items-center justify-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs md:text-sm text-gray-500">
+                      <div className={`w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-gradient-to-r ${card.gradient} flex-shrink-0`}></div>
+                      <span className="leading-tight">{feature}</span>
                     </div>
                   ))}
                 </div>
@@ -170,18 +170,25 @@ const Home = () => {
                 {/* Button */}
                 <button
                   className={`
-                    w-full py-3.5 px-6 rounded-xl font-semibold text-white
+                    w-full py-2.5 sm:py-3 px-4 sm:px-5 rounded-lg font-semibold text-white text-xs sm:text-sm md:text-base
                     bg-gradient-to-r ${card.gradient} ${card.hoverGradient}
                     transform transition-all duration-300
-                    shadow-lg group-hover:shadow-xl
+                    shadow-md hover:shadow-lg active:shadow-sm
                     relative overflow-hidden
-                    group-hover:scale-105
+                    active:scale-[0.97] sm:hover:scale-[1.02]
+                    touch-manipulation
+                    flex items-center justify-center
+                    min-h-[40px] sm:min-h-[44px]
                   `}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    navigate(card.route)
+                  }}
                 >
-                  <span className="relative z-10 flex items-center justify-center gap-2">
+                  <span className="relative z-10 flex items-center justify-center gap-1.5 sm:gap-2">
                     <span>Login</span>
-                    <svg className="w-5 h-5 transform group-hover:translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 transform group-hover:translate-x-0.5 sm:group-hover:translate-x-1 transition-transform duration-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                     </svg>
                   </span>
                   {/* Button Shine */}
@@ -191,7 +198,7 @@ const Home = () => {
               
               {/* Corner Accent */}
               <div className={`
-                absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${card.gradient}
+                absolute top-0 right-0 w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-gradient-to-br ${card.gradient}
                 opacity-0 group-hover:opacity-10 rounded-bl-full
                 transition-opacity duration-500
               `}></div>
@@ -200,14 +207,14 @@ const Home = () => {
         </div>
 
         {/* Footer Info */}
-        <div className="mt-20 text-center">
-          <div className="inline-flex items-center gap-2 px-6 py-3 bg-white/60 backdrop-blur-sm rounded-full shadow-lg border border-gray-200/50">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <p className="text-gray-600 text-sm font-medium">
+        <div className="mt-8 sm:mt-12 md:mt-16 lg:mt-20 text-center">
+          <div className="inline-flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 md:px-6 py-2 sm:py-2.5 md:py-3 bg-white/80 backdrop-blur-sm rounded-full shadow-md border border-gray-200/50">
+            <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full animate-pulse flex-shrink-0"></div>
+            <p className="text-gray-600 text-xs sm:text-sm font-medium">
               Secure • Reliable • Professional
             </p>
           </div>
-          <p className="text-gray-500 text-xs mt-4">
+          <p className="text-gray-500 text-[10px] sm:text-xs mt-3 sm:mt-4">
             © 2025 Tekisky Hospital +. All rights reserved.
           </p>
         </div>

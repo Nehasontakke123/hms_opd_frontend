@@ -446,6 +446,204 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
                     )}
                   </div>
                 )}
+
+                {/* Complete Visit History - All Previous Visits */}
+                {medicalHistory.medicalHistory && medicalHistory.medicalHistory.length > 0 && (
+                  <div className="visit-history-section">
+                    <h3 className="section-title">Complete Visit History</h3>
+                    <div className="visits-timeline">
+                      {medicalHistory.medicalHistory
+                        .filter((visit) => {
+                          // Exclude current visit if it's already shown above
+                          if (currentPatient && visit.patientId === currentPatient._id) {
+                            const visitDate = new Date(visit.visitDate || visit.registrationDate || 0)
+                            const currentDate = new Date(currentPatient.registrationDate || currentPatient.createdAt || 0)
+                            return visitDate.getTime() !== currentDate.getTime()
+                          }
+                          return true
+                        })
+                        .map((visit, index) => {
+                          const visitDate = new Date(visit.visitDate || visit.registrationDate)
+                          const dateLabel = visitDate.toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })
+                          const timeLabel = visitDate.toLocaleTimeString('en-IN', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: true
+                          })
+                          const tokenDisplay = visit.tokenNumber ? `Token #${visit.tokenNumber.toString().padStart(2, '0')}` : null
+                          const isExpanded = expandedCards[index] || false
+                          
+                          return (
+                            <div key={index} className="visit-history-card">
+                              <div 
+                                className="visit-card-header"
+                                onClick={() => toggleCard(index)}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault()
+                                    toggleCard(index)
+                                  }
+                                }}
+                              >
+                                <div className="visit-header-info">
+                                  <div className="visit-date-info">
+                                    <span className="visit-date">{dateLabel}</span>
+                                    <span className="visit-separator">—</span>
+                                    <span className="visit-time">{timeLabel}</span>
+                                  </div>
+                                  {tokenDisplay && <span className="visit-token-badge">{tokenDisplay}</span>}
+                                </div>
+                                <div className="visit-header-meta">
+                                  {visit.visitDetails?.status && (
+                                    <span className={`status-badge ${visit.visitDetails.status}`}>
+                                      {visit.visitDetails.status === 'completed' ? 'Completed' : visit.visitDetails.status === 'in-progress' ? 'In Progress' : 'Waiting'}
+                                    </span>
+                                  )}
+                                  {visit.visitDetails?.feeStatus && visit.visitDetails.feeStatus !== 'not_required' && (
+                                    <span className={`fee-status-badge ${visit.visitDetails.feeStatus}`}>
+                                      {visit.visitDetails.feeStatus === 'paid' ? '✓ Paid' : 'Pending'}
+                                    </span>
+                                  )}
+                                  {visit.visitDetails?.isRecheck && (
+                                    <span className="recheck-badge">🔄 Recheck</span>
+                                  )}
+                                </div>
+                                <svg 
+                                  className={`expand-icon ${isExpanded ? 'expanded' : ''}`}
+                                  fill="none" 
+                                  stroke="currentColor" 
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              </div>
+                              
+                              {isExpanded && (
+                                <div className="visit-card-content">
+                                  {/* Diagnosis */}
+                                  {visit.patientInfo?.disease && (
+                                    <div className="visit-field">
+                                      <span className="field-label">Diagnosis</span>
+                                      <span className="field-value">{visit.patientInfo.disease}</span>
+                                    </div>
+                                  )}
+
+                                  {/* Vitals */}
+                                  {(visit.vitals?.bloodPressure || visit.vitals?.sugarLevel) && (
+                                    <div className="visit-field-group">
+                                      {visit.vitals.bloodPressure && (
+                                        <div className="visit-field">
+                                          <span className="field-label">Blood Pressure</span>
+                                          <span className="field-value">{visit.vitals.bloodPressure}</span>
+                                        </div>
+                                      )}
+                                      {visit.vitals.sugarLevel && (
+                                        <div className="visit-field">
+                                          <span className="field-label">Sugar Level</span>
+                                          <span className="field-value">{visit.vitals.sugarLevel} mg/dL</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Prescription Medicines */}
+                                  {visit.prescription?.medicines && visit.prescription.medicines.length > 0 && (
+                                    <div className="prescription-section">
+                                      <div className="section-label">Prescribed Medicines</div>
+                                      <div className="table-wrapper">
+                                        <table className="medicines-table">
+                                          <thead>
+                                            <tr>
+                                              <th>Medicine</th>
+                                              <th>Dosage</th>
+                                              <th>Frequency</th>
+                                              <th>Duration</th>
+                                              <th>Instructions</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {visit.prescription.medicines.map((med, medIdx) => (
+                                              <tr key={medIdx}>
+                                                <td className="medicine-name">{med.name || 'Not recorded'}</td>
+                                                <td>{med.dosage || getFrequencyLabel(med) || '—'}</td>
+                                                <td>
+                                                  <span className="frequency-badge">{getFrequencyLabel(med)}</span>
+                                                </td>
+                                                <td>{med.duration || '—'}</td>
+                                                <td>{med.dosageInstructions || med.dosageNotes || 'No instructions'}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Inventory Items */}
+                                  {visit.prescription?.inventoryItems && visit.prescription.inventoryItems.length > 0 && (
+                                    <div className="inventory-section">
+                                      <div className="section-label">Injections & Surgical Items</div>
+                                      <div className="injections-list">
+                                        {visit.prescription.inventoryItems.map((item, itemIdx) => (
+                                          <div key={itemIdx} className="injection-item">
+                                            <span className="injection-name">{item.name}</span>
+                                            <span className="injection-details">
+                                              {[item.dosage, item.usage].filter(Boolean).join(' • ') || 'Usage not recorded'}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Doctor Notes */}
+                                  {visit.prescription?.notes && (
+                                    <div className="notes-section">
+                                      <div className="section-label">Doctor Notes / Instructions</div>
+                                      <p className="notes-text">{visit.prescription.notes}</p>
+                                    </div>
+                                  )}
+
+                                  {/* Tests Required */}
+                                  {visit.prescription?.selectedTests && visit.prescription.selectedTests.length > 0 && (
+                                    <div className="tests-section">
+                                      <div className="section-label">Tests Required</div>
+                                      <div className="tests-list">
+                                        {visit.prescription.selectedTests.map((test, testIdx) => (
+                                          <span key={testIdx} className="test-item">
+                                            {typeof test === 'string' ? test : test.name || test}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Doctor Information */}
+                                  {visit.doctor && (
+                                    <div className="doctor-section">
+                                      <div className="section-label">Consulting Doctor</div>
+                                      <div className="doctor-info">
+                                        <span className="doctor-name">{visit.doctor.name}</span>
+                                        {visit.doctor.specialization && (
+                                          <span className="doctor-specialization">{visit.doctor.specialization}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="empty-history">
@@ -969,6 +1167,233 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
           margin-top: 0.5rem;
         }
 
+        /* Visit History Section */
+        .visit-history-section {
+          margin-top: 1.5rem;
+        }
+
+        .section-title {
+          font-size: 1.25rem;
+          font-weight: 700;
+          color: #1F2937;
+          margin-bottom: 1.5rem;
+        }
+
+        .visits-timeline {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+
+        .visit-history-card {
+          background: #FFFFFF;
+          border: 1px solid #E5E7EB;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+          transition: box-shadow 0.2s ease;
+        }
+
+        .visit-history-card:hover {
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .visit-card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1rem 1.25rem;
+          background: #F9FAFB;
+          border-bottom: 1px solid #E5E7EB;
+          cursor: pointer;
+          transition: background 0.2s ease;
+        }
+
+        .visit-card-header:hover {
+          background: #F3F4F6;
+        }
+
+        .visit-header-info {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+
+        .visit-date-info {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 0.9375rem;
+          font-weight: 600;
+          color: #1F2937;
+        }
+
+        .visit-separator {
+          color: #6B7280;
+        }
+
+        .visit-token-badge {
+          background: linear-gradient(135deg, #3B82F6, #8B5CF6);
+          color: #FFFFFF;
+          padding: 0.25rem 0.75rem;
+          border-radius: 9999px;
+          font-size: 0.8125rem;
+          font-weight: 600;
+        }
+
+        .visit-header-meta {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        }
+
+        .status-badge {
+          padding: 0.25rem 0.75rem;
+          border-radius: 9999px;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
+        .status-badge.completed {
+          background: #D1FAE5;
+          color: #065F46;
+        }
+
+        .status-badge.in-progress {
+          background: #FEF3C7;
+          color: #92400E;
+        }
+
+        .status-badge.waiting {
+          background: #E0E7FF;
+          color: #3730A3;
+        }
+
+        .fee-status-badge {
+          padding: 0.25rem 0.75rem;
+          border-radius: 9999px;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
+        .fee-status-badge.paid {
+          background: #D1FAE5;
+          color: #065F46;
+        }
+
+        .fee-status-badge.pending {
+          background: #FEE2E2;
+          color: #991B1B;
+        }
+
+        .recheck-badge {
+          background: #DBEAFE;
+          color: #1E40AF;
+          padding: 0.25rem 0.75rem;
+          border-radius: 9999px;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
+
+        .expand-icon {
+          width: 1.25rem;
+          height: 1.25rem;
+          color: #6B7280;
+          transition: transform 0.2s ease;
+        }
+
+        .expand-icon.expanded {
+          transform: rotate(180deg);
+        }
+
+        .visit-card-content {
+          padding: 1.25rem;
+          background: #FFFFFF;
+        }
+
+        .visit-field {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+          margin-bottom: 1rem;
+        }
+
+        .visit-field-group {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+          gap: 1rem;
+          margin-bottom: 1rem;
+        }
+
+        .field-label {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: #6B7280;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+
+        .field-value {
+          font-size: 0.9375rem;
+          font-weight: 600;
+          color: #1F2937;
+        }
+
+        .prescription-section {
+          margin-top: 1rem;
+        }
+
+        .inventory-section {
+          margin-top: 1rem;
+        }
+
+        .tests-section {
+          margin-top: 1rem;
+        }
+
+        .tests-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+          margin-top: 0.5rem;
+        }
+
+        .test-item {
+          background: #FEF3C7;
+          color: #92400E;
+          padding: 0.375rem 0.75rem;
+          border-radius: 6px;
+          font-size: 0.8125rem;
+          font-weight: 600;
+          border: 1px solid #FDE68A;
+        }
+
+        .doctor-section {
+          margin-top: 1rem;
+          padding-top: 1rem;
+          border-top: 1px solid #E5E7EB;
+        }
+
+        .doctor-info {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+          margin-top: 0.5rem;
+        }
+
+        .doctor-name {
+          font-size: 0.9375rem;
+          font-weight: 600;
+          color: #1F2937;
+        }
+
+        .doctor-specialization {
+          font-size: 0.8125rem;
+          color: #6B7280;
+        }
+
         /* Empty States */
         .empty-state,
         .empty-history {
@@ -1260,6 +1685,39 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
 
           .notes-text {
             font-size: 0.875rem;
+          }
+
+          .visit-history-section {
+            margin-top: 1rem;
+          }
+
+          .section-title {
+            font-size: 1.125rem;
+          }
+
+          .visit-card-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.75rem;
+          }
+
+          .visit-header-info {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+            width: 100%;
+          }
+
+          .visit-header-meta {
+            width: 100%;
+          }
+
+          .visit-card-content {
+            padding: 1rem;
+          }
+
+          .visit-field-group {
+            grid-template-columns: 1fr;
           }
 
           .loading-state {

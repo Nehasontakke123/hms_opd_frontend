@@ -59,7 +59,16 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
       {/* Popup Card */}
       <div className={`patient-success-container ${isClosing ? 'popup-closing' : 'popup-opening'}`}>
         <div className="patient-success-card">
-          {/* Close Button */}
+          {/* Success Icon - Floating Effect */}
+          <div className="success-icon-wrapper">
+            <div className="success-icon-circle">
+              <svg className="success-checkmark" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          </div>
+
+          {/* Close Button - Top Right */}
           <button
             onClick={handleClose}
             className="patient-success-close-btn"
@@ -69,15 +78,6 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-
-          {/* Success Icon */}
-          <div className="success-icon-wrapper">
-            <div className="success-icon-circle">
-              <svg className="success-checkmark" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-          </div>
 
           {/* Header */}
           <div className="popup-header">
@@ -161,14 +161,14 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
           animation: popupFadeSlideDown 0.3s ease-in forwards;
         }
 
-        /* Popup Card - Compact */
+        /* Popup Card - Premium */
         .patient-success-card {
           background: rgba(255, 255, 255, 0.98);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
-          border-radius: 24px;
-          padding: 1.75rem 1.5rem;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+          border-radius: 28px;
+          padding: 2.5rem 1.75rem 1.75rem;
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
           max-width: 420px;
           min-width: 340px;
           width: 100%;
@@ -178,30 +178,32 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
           margin: 0;
           animation: popupScaleUp 0.3s ease-out 0.2s forwards;
           transform: scale(0.96);
+          overflow: visible;
         }
 
-        /* Close Button - Small & Clean */
+        /* Close Button - Premium Alignment */
         .patient-success-close-btn {
           position: absolute;
-          top: 1rem;
-          right: 1rem;
-          width: 1.75rem;
-          height: 1.75rem;
-          min-width: 1.75rem;
-          min-height: 1.75rem;
+          top: 1.25rem;
+          right: 1.25rem;
+          width: 2rem;
+          height: 2rem;
+          min-width: 2rem;
+          min-height: 2rem;
           border-radius: 50%;
-          background: #F7F7F7;
-          border: none;
+          background: #FFFFFF;
+          border: 1px solid #E5E7EB;
           display: flex;
           align-items: center;
           justify-content: center;
-          color: #1A1A1A;
+          color: #4B5563;
           cursor: pointer;
           transition: all 0.2s ease;
-          z-index: 10;
+          z-index: 20;
           padding: 0;
           margin: 0;
           box-sizing: border-box;
+          box-shadow: none;
         }
 
         .close-icon-svg {
@@ -215,7 +217,9 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
         }
 
         .patient-success-close-btn:hover {
-          background: #E9F8F1;
+          background: #F9FAFB;
+          border-color: #D1D5DB;
+          color: #1F2937;
           transform: scale(1.05);
         }
 
@@ -223,52 +227,61 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
           transform: scale(0.95);
         }
 
-        /* Success Icon - Compact */
+        /* Success Icon - Premium Floating */
         .success-icon-wrapper {
-          position: relative;
+          position: absolute;
+          top: -1.25rem;
+          left: 50%;
+          transform: translateX(-50%);
           display: inline-flex;
-          margin-bottom: 1rem;
+          z-index: 15;
+          margin-bottom: 0;
         }
 
         .success-icon-circle {
           position: relative;
-          width: 56px;
-          height: 56px;
-          background: #0E9F6E;
+          width: 5rem;
+          height: 5rem;
+          background: #1FAD62;
           border-radius: 50%;
           display: flex;
           align-items: center;
-          justify-center;
-          box-shadow: 0 4px 12px rgba(14, 159, 110, 0.25);
+          justify-content: center;
+          box-shadow: 0 8px 24px rgba(31, 173, 98, 0.3);
           animation: iconPopIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) 0.15s forwards, iconPulse 1s ease-in-out 0.7s;
           transform: scale(0);
+          border: 4px solid #FFFFFF;
         }
 
         .success-checkmark {
-          width: 28px;
-          height: 28px;
+          width: 2.25rem;
+          height: 2.25rem;
           color: #FFFFFF;
         }
 
-        /* Header - Compact */
+        /* Header - Premium Spacing */
         .popup-header {
-          margin-bottom: 1.25rem;
+          margin-top: 2rem;
+          margin-bottom: 1.5rem;
+          padding: 0 0.5rem;
           animation: contentFadeIn 0.3s ease-out 0.4s forwards;
           opacity: 0;
         }
 
         .popup-header-title {
-          font-size: 1.25rem;
+          font-size: 1.375rem;
           font-weight: 700;
           color: #1A1A1A;
-          margin-bottom: 0.375rem;
-          letter-spacing: -0.01em;
+          margin-bottom: 0.5rem;
+          letter-spacing: -0.02em;
+          line-height: 1.3;
         }
 
         .popup-header-subtitle {
           font-size: 0.875rem;
           color: #6B7280;
           font-weight: 500;
+          letter-spacing: 0.01em;
         }
 
         /* Token Card - Compact */
@@ -446,24 +459,33 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
         /* Responsive Design */
         @media (max-width: 640px) {
           .patient-success-card {
-            padding: 1.5rem 1.25rem;
+            padding: 2.25rem 1.25rem 1.5rem;
             max-width: 90%;
             min-width: unset;
-            border-radius: 20px;
+            border-radius: 24px;
+          }
+
+          .success-icon-wrapper {
+            top: -1rem;
           }
 
           .success-icon-circle {
-            width: 52px;
-            height: 52px;
+            width: 4.5rem;
+            height: 4.5rem;
+            border-width: 3px;
           }
 
           .success-checkmark {
-            width: 26px;
-            height: 26px;
+            width: 2rem;
+            height: 2rem;
+          }
+
+          .popup-header {
+            margin-top: 1.75rem;
           }
 
           .popup-header-title {
-            font-size: 1.125rem;
+            font-size: 1.25rem;
           }
 
           .popup-header-subtitle {
@@ -494,12 +516,12 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
           }
 
           .patient-success-close-btn {
-            top: 0.875rem;
-            right: 0.875rem;
-            width: 1.625rem;
-            height: 1.625rem;
-            min-width: 1.625rem;
-            min-height: 1.625rem;
+            top: 1rem;
+            right: 1rem;
+            width: 1.875rem;
+            height: 1.875rem;
+            min-width: 1.875rem;
+            min-height: 1.875rem;
           }
 
           .close-icon-svg {
@@ -510,8 +532,26 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
 
         @media (max-width: 480px) {
           .patient-success-card {
-            padding: 1.375rem 1rem;
-            border-radius: 18px;
+            padding: 2rem 1rem 1.375rem;
+            border-radius: 20px;
+          }
+
+          .success-icon-wrapper {
+            top: -0.875rem;
+          }
+
+          .success-icon-circle {
+            width: 4rem;
+            height: 4rem;
+          }
+
+          .success-checkmark {
+            width: 1.75rem;
+            height: 1.75rem;
+          }
+
+          .popup-header {
+            margin-top: 1.5rem;
           }
 
           .token-number {
@@ -519,7 +559,7 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
           }
 
           .popup-header-title {
-            font-size: 1.0625rem;
+            font-size: 1.125rem;
           }
         }
       `}</style>
