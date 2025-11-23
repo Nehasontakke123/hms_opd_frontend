@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import LoginSuccessPopup from '../components/LoginSuccessPopup'
 
 const DoctorLogin = () => {
   const [formData, setFormData] = useState({
@@ -9,6 +10,7 @@ const DoctorLogin = () => {
   })
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
 
@@ -26,15 +28,20 @@ const DoctorLogin = () => {
     const result = await login(formData.email, formData.password, 'doctor')
     
     if (result.success) {
-      navigate('/doctor/dashboard')
+      setShowSuccessPopup(true)
+      setTimeout(() => {
+        navigate('/doctor/dashboard')
+      }, 3500)
     }
     
     setLoading(false)
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-100 px-4 py-8">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
+    <>
+      {showSuccessPopup && <LoginSuccessPopup loginType="doctor" onClose={() => setShowSuccessPopup(false)} />}
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-100 px-4 py-8">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
         <div className="text-center mb-6 sm:mb-8">
           <h1 className="text-2xl sm:text-4xl font-bold text-gray-800 mb-2">Tekisky Hospital +</h1>
           <p className="text-lg sm:text-xl text-gray-600">Doctor Login</p>
@@ -87,6 +94,7 @@ const DoctorLogin = () => {
         </form>
       </div>
     </div>
+    </>
   )
 }
 

@@ -43,7 +43,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('user', JSON.stringify(data.user))
       setUser(data.user)
 
-      toast.success('Login successful!')
+      // Don't show default toast - use centered popup instead
       return { success: true }
     } catch (error) {
       console.log(error)

@@ -356,33 +356,67 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-white/90 backdrop-blur shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <div className="flex items-baseline gap-3">
-              <span className="text-3xl sm:text-4xl font-black tracking-tight text-blue-600">Tekisky</span>
-              <span className="text-2xl sm:text-3xl font-semibold text-slate-800">Hospital +</span>
-            </div>
-            <p className="mt-1 inline-flex items-center gap-2 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-700 bg-blue-50 rounded-full">Admin Dashboard</p>
-            <p className="text-xs sm:text-sm text-slate-500 mt-2">Manage staff, track patient registrations, and keep Tekisky Hospital + running smoothly.</p>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
-            <div className="hidden sm:flex items-center gap-3 px-4 py-2 rounded-xl bg-slate-100 text-slate-600">
-              <div className="w-8 h-8 rounded-full bg-slate-300 text-slate-700 flex items-center justify-center text-sm font-semibold">
-                {user?.fullName?.[0]?.toUpperCase() || 'A'}
+      {/* Top Header with Hospital Branding */}
+      <header className="bg-white shadow-md border-b border-gray-100 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            {/* Hospital Logo and Title */}
+            <div className="flex items-center gap-3 sm:gap-4">
+              {/* Medical Cross Icon */}
+              <div className="flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-blue-500 to-teal-600 rounded-xl shadow-lg flex items-center justify-center transform hover:scale-105 transition-transform duration-200">
+                <svg className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
               </div>
-              <div className="leading-tight">
-                <p className="text-sm font-semibold text-slate-700">{user?.fullName}</p>
-                <p className="text-xs text-slate-500">Administrator</p>
+              <div>
+                <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap">
+                  <span className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight bg-gradient-to-r from-blue-600 to-teal-600 bg-clip-text text-transparent">
+                    Tekisky
+                  </span>
+                  <span className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-700">
+                    Hospital +
+                  </span>
+                </div>
+                <p className="mt-1 text-xs sm:text-sm text-slate-500 font-medium">
+                  Admin Dashboard
+                </p>
+                <p className="mt-1 text-xs sm:text-sm text-slate-500 font-medium">
+                  Manage staff, track patient registrations, and keep Tekisky Hospital + running smoothly.
+                </p>
               </div>
             </div>
-            <button
-              onClick={logout}
-              className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm whitespace-nowrap shadow-sm"
-            >
-              Logout
-            </button>
+            
+            {/* User Info and Logout Section */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+              {/* Logged-in User Name */}
+              {user?.fullName && (
+                <div className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg bg-gradient-to-r from-blue-50 to-teal-50 border border-blue-200/50 shadow-sm">
+                  {/* Profile Icon */}
+                  <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-blue-500 to-teal-600 flex items-center justify-center shadow-sm">
+                    <span className="text-xs sm:text-sm font-semibold text-white">
+                      {user.fullName?.[0]?.toUpperCase() || 'A'}
+                    </span>
+                  </div>
+                  {/* User Name */}
+                  <div className="flex flex-col">
+                    <span className="text-sm sm:text-base font-semibold text-slate-800 truncate max-w-[150px] sm:max-w-none">
+                      {user.fullName}
+                    </span>
+                    <span className="text-xs sm:text-sm font-medium text-slate-500">
+                      Administrator
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Logout Button */}
+              <button 
+                onClick={logout} 
+                className="self-start sm:self-auto px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg bg-slate-800 text-white hover:bg-slate-700 transition-all duration-200 shadow-sm hover:shadow-md font-medium text-sm sm:text-base active:scale-95 whitespace-nowrap"
+              >
+                Logout
+              </button>
+            </div>
           </div>
         </div>
       </header>

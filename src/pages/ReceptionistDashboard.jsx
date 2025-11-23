@@ -4,6 +4,7 @@ import api from '../utils/api'
 import toast from 'react-hot-toast'
 import PatientLimitModal from '../components/PatientLimitModal'
 import MedicalHistoryModal from '../components/MedicalHistoryModal'
+import PatientRegistrationSuccessPopup from '../components/PatientRegistrationSuccessPopup'
 import CreatableSelect from 'react-select/creatable'
 import generatePatientHistoryPDF from '../utils/generatePatientHistoryPDF'
 import { Html5Qrcode } from 'html5-qrcode'
@@ -7163,42 +7164,10 @@ const ReceptionistDashboard = () => {
       )}
 
       {showTokenModal && generatedToken && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-8 text-center">
-            <div className="mb-6">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-4">
-                <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                </svg>
-              </div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-2">Patient Registered!</h3>
-              <p className="text-gray-600">Token Number Generated</p>
-            </div>
-
-            <div className="bg-green-50 rounded-lg p-6 mb-6">
-              <p className="text-sm text-gray-600 mb-2">Token Number</p>
-              <p className="text-6xl font-bold text-green-600">{generatedToken.tokenNumber}</p>
-            </div>
-
-            <div className="text-left mb-6 space-y-2 text-sm">
-              <p><span className="font-semibold">Patient:</span> {generatedToken.fullName}</p>
-              <p><span className="font-semibold">Doctor:</span> {generatedToken.doctor?.fullName}</p>
-              <p>
-                <span className="font-semibold">Visit:</span>{' '}
-                {generatedTokenDateTime
-                  ? `${generatedTokenDateTime.dateLabel} • ${generatedTokenDateTime.timeLabel}`
-                  : new Date(generatedToken.registrationDate).toLocaleString()}
-              </p>
-            </div>
-
-            <button
-              onClick={closeTokenModal}
-              className="w-full bg-green-600 text-white py-3 rounded-lg font-semibold hover:bg-green-700 transition"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+        <PatientRegistrationSuccessPopup
+          tokenData={generatedToken}
+          onClose={closeTokenModal}
+        />
       )}
 
       {/* Appointment Success Modal */}
