@@ -31,6 +31,10 @@ const AdminDashboard = () => {
   const [importUrl, setImportUrl] = useState('')
   const [importJsonData, setImportJsonData] = useState('')
   const [importFile, setImportFile] = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const usersPerPage = 10
+  const [filteredDataPage, setFilteredDataPage] = useState(1)
+  const filteredDataPerPage = 10
 
   useEffect(() => {
     fetchUsers()
@@ -188,6 +192,17 @@ const AdminDashboard = () => {
     })
   }, [users, userSearch])
 
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredUsers.length / usersPerPage)
+  const startIndex = (currentPage - 1) * usersPerPage
+  const endIndex = startIndex + usersPerPage
+  const paginatedUsers = filteredUsers.slice(startIndex, endIndex)
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [userSearch])
+
   const filteredPatients = useMemo(() => {
     const term = patientSearch.trim().toLowerCase()
     return patients.filter((patient) => {
@@ -310,6 +325,8 @@ const AdminDashboard = () => {
 
   const handleMetricClick = (metricId) => {
     setSelectedMetric(metricId === selectedMetric ? null : metricId)
+    // Reset pagination when metric changes
+    setFilteredDataPage(1)
     // Smooth scroll to data view
     setTimeout(() => {
       const dataSection = document.getElementById('metric-data-section')
@@ -318,6 +335,24 @@ const AdminDashboard = () => {
       }
     }, 100)
   }
+
+  // Pagination for filtered data table
+  const filteredDataTotalPages = useMemo(() => {
+    if (!filteredData) return 1
+    return Math.ceil(filteredData.length / filteredDataPerPage)
+  }, [filteredData, filteredDataPerPage])
+
+  const paginatedFilteredData = useMemo(() => {
+    if (!filteredData) return []
+    const startIndex = (filteredDataPage - 1) * filteredDataPerPage
+    const endIndex = startIndex + filteredDataPerPage
+    return filteredData.slice(startIndex, endIndex)
+  }, [filteredData, filteredDataPage, filteredDataPerPage])
+
+  // Reset to page 1 when filteredData changes
+  useEffect(() => {
+    setFilteredDataPage(1)
+  }, [selectedMetric])
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -407,6 +442,9 @@ const AdminDashboard = () => {
                       {metrics.find(m => m.id === selectedMetric)?.label}
                       <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
                         {filteredData.length} {selectedMetric === 'patients' ? 'records' : 'users'}
+                        {filteredDataTotalPages > 1 && (
+                          <span className="ml-2 text-xs">(Page {filteredDataPage} of {filteredDataTotalPages})</span>
+                        )}
                       </span>
                     </h3>
                     <p className="text-sm text-slate-600 mt-1">
@@ -431,158 +469,285 @@ const AdminDashboard = () => {
                 <p className="text-sm text-slate-500">No data available for this selection.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Email</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Role</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Date Joined</th>
-                      <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
-                      {selectedMetric !== 'patients' && (
-                        <>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Specialization</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Mobile</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Actions</th>
-                        </>
-                      )}
-                      {selectedMetric === 'patients' && (
-                        <>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
-                          <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
-                        </>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-slate-100">
-                    {filteredData.map((item, index) => (
-                      <tr 
-                        key={item._id} 
-                        className="hover:bg-slate-50 transition animate-slideIn"
-                        style={{ animationDelay: `${index * 0.05}s` }}
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-md ${
-                              selectedMetric === 'doctors' ? 'bg-gradient-to-br from-green-500 to-emerald-600'
-                              : selectedMetric === 'receptionists' ? 'bg-gradient-to-br from-purple-500 to-indigo-600'
-                              : selectedMetric === 'patients' ? 'bg-gradient-to-br from-blue-500 to-indigo-600'
-                              : 'bg-gradient-to-br from-blue-500 to-blue-600'
-                            }`}>
-                              {item.displayName?.[0]?.toUpperCase() || 'U'}
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">{item.displayName}</p>
-                              {item.type === 'user' && (
-                                <p className="text-xs text-slate-400">ID: {item._id.slice(-6)}</p>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-slate-900">{item.displayEmail}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${
-                            item.displayRole === 'doctor'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : item.displayRole === 'receptionist'
-                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                              : item.displayRole === 'Patient'
-                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                              : 'bg-slate-100 text-slate-600 border border-slate-200'
-                          }`}>
-                            <span className={`w-2 h-2 rounded-full ${
-                              item.displayRole === 'doctor' ? 'bg-emerald-500'
-                              : item.displayRole === 'receptionist' ? 'bg-purple-500'
-                              : item.displayRole === 'Patient' ? 'bg-blue-500'
-                              : 'bg-slate-400'
-                            }`}></span>
-                            {item.displayRole}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-slate-900 flex items-center gap-2">
-                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            {item.displayDate}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
-                            item.displayStatus === 'Active' || item.displayStatus === 'active'
-                              ? 'bg-green-100 text-green-700 border-green-200'
-                              : item.displayStatus === 'completed'
-                              ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                              : 'bg-slate-100 text-slate-700 border-slate-200'
-                          }`}>
-                            <span className={`w-2 h-2 rounded-full ${
-                              item.displayStatus === 'Active' || item.displayStatus === 'active' || item.displayStatus === 'completed'
-                                ? 'bg-green-500'
-                                : 'bg-slate-400'
-                            }`}></span>
-                            {item.displayStatus}
-                          </span>
-                        </td>
+              <>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Email</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Role</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Date Joined</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
                         {selectedMetric !== 'patients' && (
                           <>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-slate-600">{item.specialization || '—'}</div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-slate-600">{item.mobileNumber || '—'}</div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => handleEdit(item)}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition"
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L7.5 21H3v-4.5L16.732 3.732z" />
-                                  </svg>
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(item._id)}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 text-xs font-semibold border border-red-200 transition"
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0V5a2 2 0 012-2h2a2 2 0 012 2v2" />
-                                  </svg>
-                                  Delete
-                                </button>
-                              </div>
-                            </td>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Specialization</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Mobile</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Actions</th>
                           </>
                         )}
                         {selectedMetric === 'patients' && (
                           <>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm font-semibold text-slate-900">{item.doctor?.fullName || 'N/A'}</div>
-                              <div className="text-xs text-slate-500">{item.doctor?.specialization || '—'}</div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">
-                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                {item.disease || 'Not specified'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-full font-bold text-sm border border-blue-200 shadow-sm">
-                                #{item.tokenNumber}
-                              </span>
-                            </td>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
+                            <th className="px-6 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
                           </>
                         )}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-slate-100">
+                      {paginatedFilteredData.map((item, index) => (
+                        <tr 
+                          key={item._id} 
+                          className="hover:bg-slate-50 transition animate-slideIn"
+                          style={{ animationDelay: `${index * 0.05}s` }}
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-md ${
+                                selectedMetric === 'doctors' ? 'bg-gradient-to-br from-green-500 to-emerald-600'
+                                : selectedMetric === 'receptionists' ? 'bg-gradient-to-br from-purple-500 to-indigo-600'
+                                : selectedMetric === 'patients' ? 'bg-gradient-to-br from-blue-500 to-indigo-600'
+                                : 'bg-gradient-to-br from-blue-500 to-blue-600'
+                              }`}>
+                                {item.displayName?.[0]?.toUpperCase() || 'U'}
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{item.displayName}</p>
+                                {item.type === 'user' && (
+                                  <p className="text-xs text-slate-400">ID: {item._id.slice(-6)}</p>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-slate-900">{item.displayEmail}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${
+                              item.displayRole === 'doctor'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : item.displayRole === 'receptionist'
+                                ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                : item.displayRole === 'Patient'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
+                            }`}>
+                              <span className={`w-2 h-2 rounded-full ${
+                                item.displayRole === 'doctor' ? 'bg-emerald-500'
+                                : item.displayRole === 'receptionist' ? 'bg-purple-500'
+                                : item.displayRole === 'Patient' ? 'bg-blue-500'
+                                : 'bg-slate-400'
+                              }`}></span>
+                              {item.displayRole}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-slate-900 flex items-center gap-2">
+                              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                              </svg>
+                              {item.displayDate}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                              item.displayStatus === 'Active' || item.displayStatus === 'active'
+                                ? 'bg-green-100 text-green-700 border-green-200'
+                                : item.displayStatus === 'completed'
+                                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                            }`}>
+                              <span className={`w-2 h-2 rounded-full ${
+                                item.displayStatus === 'Active' || item.displayStatus === 'active' || item.displayStatus === 'completed'
+                                  ? 'bg-green-500'
+                                  : 'bg-slate-400'
+                              }`}></span>
+                              {item.displayStatus}
+                            </span>
+                          </td>
+                          {selectedMetric !== 'patients' && (
+                            <>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-slate-600">{item.specialization || '—'}</div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-slate-600">{item.mobileNumber || '—'}</div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleEdit(item)}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L7.5 21H3v-4.5L16.732 3.732z" />
+                                    </svg>
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(item._id)}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 text-xs font-semibold border border-red-200 transition"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7h6m-7 0V5a2 2 0 012-2h2a2 2 0 012 2v2" />
+                                    </svg>
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </>
+                          )}
+                          {selectedMetric === 'patients' && (
+                            <>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm font-semibold text-slate-900">{item.doctor?.fullName || 'N/A'}</div>
+                                <div className="text-xs text-slate-500">{item.doctor?.specialization || '—'}</div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">
+                                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                  {item.disease || 'Not specified'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className="px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-full font-bold text-sm border border-blue-200 shadow-sm">
+                                  #{item.tokenNumber}
+                                </span>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination Controls */}
+                {filteredDataTotalPages > 1 && (
+                <div className="border-t border-slate-200 bg-slate-50 px-6 py-4">
+                  {/* Desktop: Full Pagination with Page Numbers */}
+                  <div className="hidden md:flex items-center justify-between">
+                    <div className="text-sm text-slate-600">
+                      Showing <span className="font-semibold text-slate-800">{(filteredDataPage - 1) * filteredDataPerPage + 1}</span> to{' '}
+                      <span className="font-semibold text-slate-800">{Math.min(filteredDataPage * filteredDataPerPage, filteredData.length)}</span> of{' '}
+                      <span className="font-semibold text-slate-800">{filteredData.length}</span> {selectedMetric === 'patients' ? 'records' : 'users'}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setFilteredDataPage(prev => Math.max(1, prev - 1))}
+                        disabled={filteredDataPage === 1}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                          filteredDataPage === 1
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                            : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-300 hover:border-slate-400 shadow-sm hover:shadow-md'
+                        }`}
+                        aria-label="Previous page"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                        </svg>
+                        Previous
+                      </button>
+
+                      {/* Page Number Buttons */}
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: filteredDataTotalPages }, (_, i) => i + 1).map((pageNum) => {
+                          // Show first page, last page, current page, and pages around current
+                          if (
+                            pageNum === 1 ||
+                            pageNum === filteredDataTotalPages ||
+                            (pageNum >= filteredDataPage - 1 && pageNum <= filteredDataPage + 1)
+                          ) {
+                            return (
+                              <button
+                                key={pageNum}
+                                onClick={() => setFilteredDataPage(pageNum)}
+                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                  filteredDataPage === pageNum
+                                    ? 'bg-blue-600 text-white shadow-md'
+                                    : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-300 hover:border-slate-400 shadow-sm hover:shadow-md'
+                                }`}
+                                aria-label={`Go to page ${pageNum}`}
+                              >
+                                {pageNum}
+                              </button>
+                            )
+                          } else if (
+                            pageNum === filteredDataPage - 2 ||
+                            pageNum === filteredDataPage + 2
+                          ) {
+                            return (
+                              <span key={pageNum} className="px-2 text-slate-400">
+                                ...
+                              </span>
+                            )
+                          }
+                          return null
+                        })}
+                      </div>
+
+                      <button
+                        onClick={() => setFilteredDataPage(prev => Math.min(filteredDataTotalPages, prev + 1))}
+                        disabled={filteredDataPage === filteredDataTotalPages}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                          filteredDataPage === filteredDataTotalPages
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                            : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-300 hover:border-slate-400 shadow-sm hover:shadow-md'
+                        }`}
+                        aria-label="Next page"
+                      >
+                        Next
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Mobile: Compact Pagination */}
+                  <div className="md:hidden flex items-center justify-between gap-3">
+                    <button
+                      onClick={() => setFilteredDataPage(prev => Math.max(1, prev - 1))}
+                      disabled={filteredDataPage === 1}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 touch-manipulation ${
+                        filteredDataPage === 1
+                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                          : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-300 shadow-sm active:scale-95'
+                      }`}
+                      aria-label="Previous page"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                      </svg>
+                      <span className="hidden sm:inline">Previous</span>
+                    </button>
+
+                    <div className="flex-1 text-center">
+                      <span className="text-sm text-slate-600">
+                        Page <span className="font-semibold text-slate-800">{filteredDataPage}</span> of <span className="font-semibold text-slate-800">{filteredDataTotalPages}</span>
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => setFilteredDataPage(prev => Math.min(filteredDataTotalPages, prev + 1))}
+                      disabled={filteredDataPage === filteredDataTotalPages}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 touch-manipulation ${
+                        filteredDataPage === filteredDataTotalPages
+                          ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                          : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-300 shadow-sm active:scale-95'
+                      }`}
+                      aria-label="Next page"
+                    >
+                      <span className="hidden sm:inline">Next</span>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              )}
+              </>
             )}
           </div>
         )}
@@ -632,7 +797,7 @@ const AdminDashboard = () => {
                 <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
                   <span>User Management</span>
                   <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold uppercase tracking-wide">
-                    {userSearch ? `${filteredUsers.length} of ${users.length}` : `${users.length} active`}
+                    {users.length} active
                   </span>
                 </h2>
                 <p className="mt-2 text-sm text-slate-500">Onboard, edit, and manage Tekisky staff centrally.</p>
@@ -703,7 +868,7 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-slate-100">
-                  {filteredUsers.map((u) => (
+                  {paginatedUsers.map((u) => (
                     <tr key={u._id} className="hover:bg-blue-50/40 transition">
                       <td className="px-6 py-4 text-sm font-semibold text-slate-800 flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold">
@@ -773,7 +938,7 @@ const AdminDashboard = () => {
 
             {/* Mobile Card View */}
             <div className="md:hidden">
-              {filteredUsers.map((u) => (
+              {paginatedUsers.map((u) => (
                 <div key={u._id} className="p-4 border-b border-slate-200 bg-white">
                   <div className="flex justify-between items-start mb-2">
                     <div>
@@ -813,6 +978,84 @@ const AdminDashboard = () => {
                 </div>
               ))}
             </div>
+
+            {/* Pagination Controls */}
+            {filteredUsers.length > usersPerPage && (
+              <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 bg-slate-50 border-t border-slate-200">
+                <div className="text-sm text-slate-600">
+                  Showing <span className="font-semibold text-slate-800">{startIndex + 1}</span> to{' '}
+                  <span className="font-semibold text-slate-800">{Math.min(endIndex, filteredUsers.length)}</span> of{' '}
+                  <span className="font-semibold text-slate-800">{filteredUsers.length}</span> users
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                      currentPage === 1
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-300 hover:border-slate-400 shadow-sm hover:shadow-md'
+                    }`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Previous
+                  </button>
+
+                  {/* Page Numbers */}
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+                      // Show first page, last page, current page, and pages around current
+                      if (
+                        pageNum === 1 ||
+                        pageNum === totalPages ||
+                        (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                      ) {
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setCurrentPage(pageNum)}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                              currentPage === pageNum
+                                ? 'bg-blue-600 text-white shadow-md'
+                                : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-300 hover:border-slate-400 shadow-sm hover:shadow-md'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        )
+                      } else if (
+                        pageNum === currentPage - 2 ||
+                        pageNum === currentPage + 2
+                      ) {
+                        return (
+                          <span key={pageNum} className="px-2 text-slate-400">
+                            ...
+                          </span>
+                        )
+                      }
+                      return null
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                      currentPage === totalPages
+                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                        : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-300 hover:border-slate-400 shadow-sm hover:shadow-md'
+                    }`}
+                  >
+                    Next
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
           </>
