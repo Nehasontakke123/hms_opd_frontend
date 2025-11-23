@@ -3195,28 +3195,64 @@ const ReceptionistDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm overflow-hidden">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
-          <div className="flex flex-col gap-3 sm:gap-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
-              <div className="flex-1 min-w-0">
+      {/* Top Header with Hospital Branding */}
+      <header className="bg-white shadow-md border-b border-gray-100 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            {/* Hospital Logo and Title */}
+            <div className="flex items-center gap-3 sm:gap-4">
+              {/* Medical Cross Icon */}
+              <div className="flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl shadow-lg flex items-center justify-center transform hover:scale-105 transition-transform duration-200">
+                <svg className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <div>
                 <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap">
-                  <span className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-green-600 whitespace-nowrap">Tekisky</span>
-                  <span className="text-xl sm:text-2xl md:text-3xl font-semibold text-slate-800 whitespace-nowrap">Hospital +</span>
+                  <span className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                    Tekisky
+                  </span>
+                  <span className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-700">
+                    Hospital +
+                  </span>
                 </div>
-                <p className="mt-1 inline-flex items-center gap-2 px-2 sm:px-3 py-1 text-xs font-semibold uppercase tracking-wide text-green-700 bg-green-50 rounded-full whitespace-nowrap">Receptionist Hub</p>
-                <p className="mt-2 text-xs sm:text-sm text-slate-500 break-words">Manage arrivals, generate tokens, and coordinate with doctors seamlessly.</p>
+                <p className="mt-1 text-xs sm:text-sm text-slate-500 font-medium">
+                  Receptionist Hub
+                </p>
+                <p className="mt-1 text-xs sm:text-sm text-slate-500 font-medium">
+                  Manage arrivals, generate tokens, and coordinate with doctors seamlessly.
+                </p>
               </div>
-              <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto flex-shrink-0">
-                <span className="text-xs sm:text-sm text-gray-700 truncate max-w-[120px] sm:max-w-none">{user?.fullName}</span>
-                <button
-                  onClick={logout}
-                  className="px-3 sm:px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
-                >
-                  Logout
-                </button>
-              </div>
+            </div>
+            
+            {/* User Info and Logout Section */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+              {/* Logged-in User Name */}
+              {user?.fullName && (
+                <div className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200/50 shadow-sm">
+                  {/* Profile Icon */}
+                  <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-sm">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  {/* User Name */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2">
+                    <span className="text-xs sm:text-sm font-medium text-slate-600 hidden sm:inline">Logged in as</span>
+                    <span className="text-sm sm:text-base font-semibold text-slate-800 truncate max-w-[150px] sm:max-w-none">
+                      {user.fullName.toLowerCase()}
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Logout Button */}
+              <button 
+                onClick={logout} 
+                className="self-start sm:self-auto px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg bg-green-800 text-white hover:bg-green-700 transition-all duration-200 shadow-sm hover:shadow-md font-medium text-sm sm:text-base active:scale-95 whitespace-nowrap"
+              >
+                Logout
+              </button>
             </div>
           </div>
         </div>
