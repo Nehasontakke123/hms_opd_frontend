@@ -1319,8 +1319,9 @@ const ReceptionistDashboard = () => {
       return
     }
     
-    // Navigate to registration tab and pre-fill the selected doctor
+    // Navigate to registration tab, set view to 'today', and pre-fill the selected doctor
     setActiveTab('registration')
+    setPatientsRegisterView('today') // Ensure the form view is set to 'today'
     setFormData((prev) => ({
       ...prev,
       doctor: doctor._id,
@@ -1328,6 +1329,9 @@ const ReceptionistDashboard = () => {
     }))
     clearFieldError('doctor')
     clearFieldError('disease')
+    
+    // Open the registration modal automatically
+    setShowRegistrationModal(true)
   }
 
   const [focusedField, setFocusedField] = useState(null)
@@ -5034,16 +5038,16 @@ const ReceptionistDashboard = () => {
                     </div>
                   ) : (
                 <>
-                  <div className="flex-1 overflow-y-auto">
-                    <table className="w-full divide-y divide-green-100 table-fixed">
+                  <div className="flex-1 overflow-y-auto overflow-x-auto pb-4">
+                    <table className="w-full divide-y divide-green-100 table-fixed min-w-[1200px]">
                       <thead className="bg-green-50 sticky top-0 z-10">
                         <tr>
                           <th className="w-16 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
                           <th className="w-48 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
                           <th className="w-40 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient ID</th>
                           <th className="w-48 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor Profile</th>
-                          <th className="w-36 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
-                          <th className="w-24 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
+                          <th className="w-44 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
+                          <th className="w-28 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
                           <th className="w-36 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
                           <th className="w-32 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
                           <th className="w-32 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
@@ -5150,14 +5154,14 @@ const ReceptionistDashboard = () => {
                                     <div className="text-sm font-semibold text-slate-400">N/A</div>
                                 )}
                               </td>
-                              <td className="px-4 py-4">
-                                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200">
+                              <td className="px-4 py-4 pr-6">
+                                <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-medium border border-blue-200 whitespace-nowrap">
                                   <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></span>
-                                  <span className="truncate">{patient.disease || 'Not specified'}</span>
+                                  <span className="truncate max-w-[140px] sm:max-w-none">{patient.disease || 'Not specified'}</span>
                                 </span>
                               </td>
-                              <td className="px-4 py-4">
-                                <span className="px-3 py-1.5 bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 rounded-full font-bold text-sm border border-green-200 shadow-sm">
+                              <td className="px-4 py-4 pl-6">
+                                <span className="inline-flex items-center justify-center px-3 py-1.5 bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 rounded-full font-bold text-sm border border-green-200 shadow-sm whitespace-nowrap min-w-[60px]">
                                   #{patient.tokenNumber}
                                 </span>
                               </td>
@@ -5347,16 +5351,16 @@ const ReceptionistDashboard = () => {
                     </div>
                   ) : (
                     <>
-                      <div className="flex-1 overflow-y-auto">
-                        <table className="w-full divide-y divide-slate-200 table-fixed">
+                      <div className="flex-1 overflow-y-auto overflow-x-auto pb-4">
+                        <table className="w-full divide-y divide-slate-200 table-fixed min-w-[1200px]">
                           <thead className="bg-slate-50 sticky top-0 z-10">
                             <tr>
                               <th className="w-16 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">#</th>
                               <th className="w-48 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient</th>
                               <th className="w-40 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Patient ID</th>
                               <th className="w-48 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Doctor Profile</th>
-                              <th className="w-36 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
-                              <th className="w-24 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
+                              <th className="w-44 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Issue</th>
+                              <th className="w-28 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Token</th>
                               <th className="w-36 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Date</th>
                               <th className="w-32 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Visit Time</th>
                               <th className="w-32 px-4 py-3 text-left text-xs font-bold text-slate-700 uppercase tracking-wider">Status</th>
@@ -5463,14 +5467,14 @@ const ReceptionistDashboard = () => {
                                       <div className="text-sm font-semibold text-slate-400">N/A</div>
                                     )}
                                   </td>
-                                  <td className="px-4 py-4">
-                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-sm font-medium border border-purple-200">
+                                  <td className="px-4 py-4 pr-6">
+                                    <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-sm font-medium border border-purple-200 whitespace-nowrap">
                                       <span className="w-2 h-2 rounded-full bg-purple-500 flex-shrink-0"></span>
-                                      <span className="truncate">{patient.disease || 'Not specified'}</span>
+                                      <span className="truncate max-w-[140px] sm:max-w-none">{patient.disease || 'Not specified'}</span>
                                     </span>
                                   </td>
-                                  <td className="px-4 py-4">
-                                    <span className="px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-full font-bold text-sm border border-blue-200 shadow-sm">
+                                  <td className="px-4 py-4 pl-6">
+                                    <span className="inline-flex items-center justify-center px-3 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 rounded-full font-bold text-sm border border-blue-200 shadow-sm whitespace-nowrap min-w-[60px]">
                                       #{patient.tokenNumber}
                                     </span>
                                   </td>
