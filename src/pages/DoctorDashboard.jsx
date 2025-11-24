@@ -497,6 +497,8 @@ const DoctorDashboard = () => {
   const [showStatsNotification, setShowStatsNotification] = useState(true)
   const [showCompletedPatientsPanel, setShowCompletedPatientsPanel] = useState(false)
   const [doctorStats, setDoctorStats] = useState(null)
+  const [openInstructionsDropdown, setOpenInstructionsDropdown] = useState(null) // Track which medicine dropdown is open
+  const [showPrescriptionSuccessToast, setShowPrescriptionSuccessToast] = useState(false)
   const [searchToday, setSearchToday] = useState('')
   const [searchHistory, setSearchHistory] = useState('')
   const [searchMedical, setSearchMedical] = useState('')
@@ -1618,6 +1620,21 @@ const handleToggleCompletedPatients = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Close instructions dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      // Check if click is outside any dropdown button or menu
+      const isOutside = !event.target.closest('[data-instructions-dropdown]')
+      if (isOutside) {
+        setOpenInstructionsDropdown(null)
+      }
+    }
+    if (openInstructionsDropdown !== null) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [openInstructionsDropdown])
+
   const fetchMedicalRecords = useCallback(async () => {
     if (!user?.id) return
     setLoadingMedical(true)
@@ -2294,7 +2311,7 @@ const handleToggleCompletedPatients = () => {
         pdfData: pdfBase64 // Send PDF as base64
       })
 
-      toast.success(response.data.message || 'Prescription saved, PDF generated and stored in medical section!')
+      setShowPrescriptionSuccessToast(true)
       
       // Update selected patient with the response data if it's the same patient
       if (selectedPatient && response.data.data) {
@@ -2756,6 +2773,13 @@ const handleToggleCompletedPatients = () => {
 
   return (
     <>
+      {showPrescriptionSuccessToast && (
+        <CenteredPrescriptionToast
+          message="Prescription saved and PDF stored in medical section"
+          onClose={() => setShowPrescriptionSuccessToast(false)}
+        />
+      )}
+
       {/* CSS Animations for Modal */}
       <style>{`
         @keyframes fadeIn {
@@ -2772,6 +2796,290 @@ const handleToggleCompletedPatients = () => {
             transform: scale(1) translateY(0);
           }
         }
+        @keyframes dropdown-fade-in {
+          0% {
+            opacity: 0;
+            transform: translateY(-8px) scale(0.98);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .animate-dropdown-fade-in {
+          animation: dropdown-fade-in 0.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        /* Centered toast & overlay */
+        .toast-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.2);
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          z-index: 950;
+          animation: toastOverlayIn 0.3s ease forwards;
+        }
+
+        .toast-overlay-hide {
+          animation: toastOverlayOut 0.3s ease forwards;
+        }
+
+        .toast-wrapper {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          pointer-events: none;
+          z-index: 1000;
+          width: 100%;
+          max-width: 100vw;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .centered-prescription-toast {
+          width: 90%;
+          max-width: 580px;
+          min-width: 320px;
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(240, 253, 250, 0.95) 50%, rgba(236, 253, 245, 0.95) 100%);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-radius: 20px;
+          padding: clamp(1.125rem, 2vw, 1.375rem) clamp(1.125rem, 2vw, 1.5rem);
+          box-shadow:
+            0 25px 60px rgba(16, 185, 129, 0.15),
+            0 10px 30px rgba(16, 185, 129, 0.1),
+            inset 0 1px 0 rgba(255, 255, 255, 0.8);
+          position: relative;
+          overflow: visible;
+          pointer-events: auto;
+          border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+
+        .toast-enter {
+          animation: toastIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        .toast-exit {
+          animation: toastOut 0.3s ease forwards;
+        }
+
+        .toast-icon-shell {
+          position: relative;
+          width: 56px;
+          height: 56px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #10b981, #059669);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4),
+                      0 0 0 4px rgba(255, 255, 255, 0.3);
+          flex-shrink: 0;
+          z-index: 2;
+        }
+
+        /* 3-step pulse animation with glowing ring */
+        .toast-icon-shell::before {
+          content: '';
+          position: absolute;
+          inset: -10px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(16, 185, 129, 0.4), rgba(16, 185, 129, 0.2), transparent 70%);
+          animation: iconPulse3Step 2s ease-in-out infinite;
+          z-index: -1;
+        }
+
+        .toast-icon-shell svg {
+          position: relative;
+          width: 26px;
+          height: 26px;
+          color: white;
+          stroke-width: 3.5;
+          z-index: 1;
+        }
+
+        .toast-close-btn {
+          position: absolute;
+          top: 1rem;
+          right: 1rem;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: rgba(107, 114, 128, 0.1);
+          color: #6b7280;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+          cursor: pointer;
+          z-index: 10;
+        }
+
+        .toast-close-btn:hover {
+          transform: scale(1.05);
+          background: rgba(107, 114, 128, 0.15);
+          color: #374151;
+        }
+
+        .toast-close-btn:active {
+          transform: scale(0.95);
+        }
+
+        .toast-body {
+          display: flex;
+          align-items: flex-start;
+          gap: clamp(0.875rem, 2vw, 1.125rem);
+        }
+
+        .toast-text {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .toast-text h4 {
+          font-size: clamp(1rem, 2vw, 1.125rem);
+          font-weight: 700;
+          color: #0f172a;
+          margin-bottom: 0.375rem;
+          line-height: 1.3;
+        }
+
+        .toast-text p {
+          font-size: clamp(0.875rem, 1.8vw, 0.9375rem);
+          color: #475569;
+          line-height: 1.5;
+          margin: 0;
+          word-wrap: break-word;
+        }
+
+        /* Tablet Responsive */
+        @media (min-width: 641px) and (max-width: 1024px) {
+          .centered-prescription-toast {
+            width: 420px;
+            max-width: 420px;
+            min-width: 420px;
+          }
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 640px) {
+          .centered-prescription-toast {
+            border-radius: 18px;
+            min-width: unset;
+            width: 90%;
+            max-width: 90%;
+            padding: 1rem 1.125rem;
+          }
+
+          .toast-icon-shell {
+            width: 44px;
+            height: 44px;
+          }
+
+          .toast-icon-shell svg {
+            width: 22px;
+            height: 22px;
+          }
+
+          .toast-icon-shell::before {
+            inset: -8px;
+          }
+
+          .toast-close-btn {
+            width: 28px;
+            height: 28px;
+            top: 0.75rem;
+            right: 0.75rem;
+          }
+
+          .toast-close-btn svg {
+            width: 14px;
+            height: 14px;
+          }
+
+          .toast-body {
+            gap: 0.875rem;
+          }
+        }
+
+        /* Small Mobile */
+        @media (max-width: 360px) {
+          .toast-icon-shell {
+            width: 36px;
+            height: 36px;
+          }
+
+          .toast-icon-shell svg {
+            width: 18px;
+            height: 18px;
+          }
+
+          .toast-text h4 {
+            font-size: 0.9375rem;
+          }
+
+          .toast-text p {
+            font-size: 0.8125rem;
+          }
+        }
+
+        @keyframes toastIn {
+          0% {
+            opacity: 0;
+            transform: translateY(20px) scale(0.9);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        @keyframes toastOut {
+          0% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+          100% {
+            opacity: 0;
+            transform: translateY(18px) scale(0.95);
+          }
+        }
+
+        @keyframes toastOverlayIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes toastOverlayOut {
+          from { opacity: 1; }
+          to { opacity: 0; }
+        }
+
+        /* 3-step pulse animation */
+        @keyframes iconPulse3Step {
+          0% {
+            transform: scale(1);
+            opacity: 0.5;
+          }
+          33% {
+            transform: scale(1.2);
+            opacity: 0.7;
+          }
+          66% {
+            transform: scale(1.1);
+            opacity: 0.8;
+          }
+          100% {
+            transform: scale(1);
+            opacity: 0.5;
+          }
+        }
+
         @keyframes slideUp {
           from {
             opacity: 0;
@@ -5352,27 +5660,71 @@ const handleToggleCompletedPatients = () => {
                                 <p className="text-xs text-red-600 mt-1 animate-fade-in font-medium">{medicineErrors[index].times}</p>
                               )}
                               
-                              {/* Additional Instructions Dropdown */}
-                              <div className="mt-2">
-                                <select
-                                  value={medicine.dosageInstructions || ''}
-                                  onChange={(e) => handleMedicineChange(index, 'dosageInstructions', e.target.value)}
-                                  className="w-full px-2.5 py-2 border border-gray-200 rounded-[8px] focus:ring-2 focus:ring-[#3A9EC2]/20 focus:border-[#3A9EC2] outline-none text-xs bg-white transition-all"
+                              {/* Additional Instructions Dropdown - Custom */}
+                              <div className="relative mt-2" data-instructions-dropdown>
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenInstructionsDropdown(openInstructionsDropdown === index ? null : index)}
+                                  className={`w-full px-3 sm:px-4 py-2.5 sm:py-2.5 border border-gray-200 rounded-xl sm:rounded-[12px] focus:ring-2 focus:ring-[#3A9EC2]/20 focus:border-[#3A9EC2] outline-none text-xs sm:text-sm bg-white transition-all text-left flex items-center justify-between hover:border-gray-300 shadow-sm ${
+                                    openInstructionsDropdown === index ? 'border-[#3A9EC2] ring-2 ring-[#3A9EC2]/20' : ''
+                                  }`}
                                 >
-                                  <option value="">Additional Instructions...</option>
-                                  <option value="Take the tablet after meals | जेवणानंतर गोळी घ्या | भोजन के बाद टैबलेट लें">
-                                    Take the tablet after meals | जेवणानंतर गोळी घ्या | भोजन के बाद टैबलेट लें
-                                  </option>
-                                  <option value="Take the tablet before meals | जेवणापूर्वी गोळी घ्या | भोजन से पहले टैबलेट लें">
-                                    Take the tablet before meals | जेवणापूर्वी गोळी घ्या | भोजन से पहले टैबलेट लें
-                                  </option>
-                                  <option value="Take the tablet with water | पाण्यासोबत गोळी घ्या | पानी के साथ टैबलेट लें">
-                                    Take the tablet with water | पाण्यासोबत गोळी घ्या | पानी के साथ टैबलेट लें
-                                  </option>
-                                  <option value="Take the tablet on an empty stomach | रिकाम्या पोटी गोळी घ्या | खाली पेट टैबलेट लें">
-                                    Take the tablet on an empty stomach | रिकाम्या पोटी गोळी घ्या | खाली पेट टैबलेट लें
-                                  </option>
-                                </select>
+                                  <span className={`truncate flex-1 ${medicine.dosageInstructions ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                                    {medicine.dosageInstructions || 'Additional Instructions...'}
+                                  </span>
+                                  <svg
+                                    className={`w-4 h-4 text-gray-400 ml-2 flex-shrink-0 transition-transform duration-200 ${
+                                      openInstructionsDropdown === index ? 'transform rotate-180' : ''
+                                    }`}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </button>
+
+                                {/* Dropdown Menu */}
+                                {openInstructionsDropdown === index && (
+                                  <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl sm:rounded-[12px] shadow-lg max-h-60 overflow-y-auto animate-dropdown-fade-in">
+                                    <div className="py-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          handleMedicineChange(index, 'dosageInstructions', '')
+                                          setOpenInstructionsDropdown(null)
+                                        }}
+                                        className={`w-full px-3 sm:px-4 py-2.5 sm:py-2.5 text-left text-xs sm:text-sm transition-colors hover:bg-gray-50 ${
+                                          !medicine.dosageInstructions ? 'bg-[#3A9EC2]/10 text-[#3A9EC2] font-medium' : 'text-gray-500'
+                                        }`}
+                                      >
+                                        Additional Instructions...
+                                      </button>
+                                      {[
+                                        'Take the tablet after meals | जेवणानंतर गोळी घ्या | भोजन के बाद टैबलेट लें',
+                                        'Take the tablet before meals | जेवणापूर्वी गोळी घ्या | भोजन से पहले टैबलेट लें',
+                                        'Take the tablet with water | पाण्यासोबत गोळी घ्या | पानी के साथ टैबलेट लें',
+                                        'Take the tablet on an empty stomach | रिकाम्या पोटी गोळी घ्या | खाली पेट टैबलेट लें'
+                                      ].map((option, optIndex) => (
+                                        <button
+                                          key={optIndex}
+                                          type="button"
+                                          onClick={() => {
+                                            handleMedicineChange(index, 'dosageInstructions', option)
+                                            setOpenInstructionsDropdown(null)
+                                          }}
+                                          className={`w-full px-3 sm:px-4 py-2.5 sm:py-2.5 text-left text-xs sm:text-sm transition-colors hover:bg-gray-50 border-t border-gray-100 break-words ${
+                                            medicine.dosageInstructions === option
+                                              ? 'bg-[#3A9EC2]/10 text-[#3A9EC2] font-medium'
+                                              : 'text-gray-700'
+                                          }`}
+                                        >
+                                          {option}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                               
                               {/* Custom Instructions Input */}
@@ -6152,3 +6504,55 @@ const handleToggleCompletedPatients = () => {
 }
 
 export default DoctorDashboard
+
+const CenteredPrescriptionToast = ({ message, onClose }) => {
+  const [isClosing, setIsClosing] = useState(false)
+
+  const handleClose = useCallback(() => {
+    if (isClosing) return
+    setIsClosing(true)
+    setTimeout(() => {
+      if (onClose) onClose()
+    }, 320)
+  }, [isClosing, onClose])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      handleClose()
+    }, 2500)
+
+    return () => clearTimeout(timer)
+  }, [handleClose])
+
+  return (
+    <>
+      <div className={`toast-overlay ${isClosing ? 'toast-overlay-hide' : ''}`} />
+      <div className="toast-wrapper">
+        <div className={`centered-prescription-toast ${isClosing ? 'toast-exit' : 'toast-enter'}`}>
+          <button
+            type="button"
+            aria-label="Close"
+            className="toast-close-btn"
+            onClick={handleClose}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          <div className="toast-body">
+            <div className="toast-icon-shell">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div className="toast-text">
+              <h4>Success</h4>
+              <p>{message}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}

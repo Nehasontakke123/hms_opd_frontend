@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
   const [isVisible, setIsVisible] = useState(true)
   const [isClosing, setIsClosing] = useState(false)
+  const [showCenteredToast, setShowCenteredToast] = useState(false)
 
   useEffect(() => {
     // Handle ESC key
@@ -20,8 +21,10 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
     setIsClosing(true)
     setTimeout(() => {
       setIsVisible(false)
+      // Show centered toast when popup closes
+      setShowCenteredToast(true)
       if (onClose) onClose()
-    }, 300)
+    }, 400)
   }
 
   if (!isVisible || !tokenData) return null
@@ -50,19 +53,36 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
 
   return (
     <>
-      {/* Backdrop */}
-      <div 
-        className={`patient-success-backdrop ${isClosing ? 'backdrop-closing' : 'backdrop-opening'}`}
-        onClick={handleClose}
-      />
+      {/* Centered Success Toast */}
+      {showCenteredToast && (
+        <CenteredSuccessToast 
+          message="Patient registered successfully! Cash payment received."
+          onClose={() => setShowCenteredToast(false)}
+        />
+      )}
 
-      {/* Popup Card */}
+      {/* No backdrop - removed gradient background */}
+
+      {/* Popup Container */}
       <div className={`patient-success-container ${isClosing ? 'popup-closing' : 'popup-opening'}`}>
-        <div className="patient-success-card">
-          {/* Success Icon - Floating Effect */}
+        <div 
+          className="patient-success-card"
+          style={{
+            '--success-green': '#10B981',
+            '--success-green-dark': '#059669',
+            '--success-green-light': '#D1FAE5',
+            '--success-green-glow': 'rgba(16, 185, 129, 0.4)',
+            '--border-glow': 'rgba(16, 185, 129, 0.6)'
+          }}
+        >
+          {/* Animated Border - 360° Border Run Effect */}
+          <div className="animated-border-ring"></div>
+
+          {/* Success Icon - Floating Above Card */}
           <div className="success-icon-wrapper">
+            <div className="success-icon-glow"></div>
             <div className="success-icon-circle">
-              <svg className="success-checkmark" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
+              <svg className="success-checkmark" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
@@ -73,7 +93,9 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
             onClick={handleClose}
             className="patient-success-close-btn"
             aria-label="Close"
+            type="button"
           >
+            <div className="close-btn-border"></div>
             <svg className="close-icon-svg" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -112,164 +134,244 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
             onClick={handleClose}
             className="patient-success-primary-btn"
           >
-            Close
+            <div className="primary-btn-border"></div>
+            <span>Close</span>
           </button>
         </div>
       </div>
 
       {/* CSS Styles */}
       <style>{`
-        /* Backdrop */
-        .patient-success-backdrop {
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.25);
-          backdrop-filter: blur(6px);
-          -webkit-backdrop-filter: blur(6px);
-          z-index: 50;
+        /* CSS Variables */
+        :root {
+          --success-green: #10B981;
+          --success-green-dark: #059669;
+          --success-green-light: #D1FAE5;
+          --success-green-glow: rgba(16, 185, 129, 0.4);
+          --border-glow: rgba(16, 185, 129, 0.6);
         }
 
-        .backdrop-opening {
-          animation: backdropFadeIn 0.3s ease-out forwards;
-        }
+        /* Backdrop removed - no background blur */
 
-        .backdrop-closing {
-          animation: backdropFadeOut 0.3s ease-in forwards;
-        }
 
         /* Popup Container */
         .patient-success-container {
           position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
+          inset: 0;
           z-index: 50;
           display: flex;
           align-items: center;
           justify-content: center;
           padding: 1rem;
           pointer-events: none;
-          margin: 0;
         }
 
         .popup-opening {
-          animation: popupFadeSlideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+          animation: containerFadeIn 0.4s ease-out forwards;
         }
 
         .popup-closing {
-          animation: popupFadeSlideDown 0.3s ease-in forwards;
+          animation: containerFadeOut 0.4s ease-in forwards;
         }
 
-        /* Popup Card - Premium */
+        /* Popup Card - Glass Morphism */
         .patient-success-card {
-          background: rgba(255, 255, 255, 0.98);
-          backdrop-filter: blur(12px);
-          -webkit-backdrop-filter: blur(12px);
+          background: transparent;
           border-radius: 28px;
-          padding: 2.5rem 1.75rem 1.75rem;
-          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
-          max-width: 420px;
-          min-width: 340px;
+          padding: 2.5rem 2rem 2rem;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15),
+                      0 0 40px var(--success-green-glow);
+          max-width: 450px;
           width: 100%;
           text-align: center;
           position: relative;
           pointer-events: auto;
-          margin: 0;
-          animation: popupScaleUp 0.3s ease-out 0.2s forwards;
-          transform: scale(0.96);
+          animation: popupScaleIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+          transform: scale(0.92) translateY(20px);
+          opacity: 0;
           overflow: visible;
+          z-index: 1;
         }
 
-        /* Close Button - Premium Alignment */
-        .patient-success-close-btn {
+        .patient-success-card::before {
+          content: '';
           position: absolute;
-          top: 1.25rem;
-          right: 1.25rem;
-          width: 2rem;
-          height: 2rem;
-          min-width: 2rem;
-          min-height: 2rem;
-          border-radius: 50%;
-          background: #FFFFFF;
-          border: 1px solid #E5E7EB;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: #4B5563;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          z-index: 20;
-          padding: 0;
-          margin: 0;
-          box-sizing: border-box;
-          box-shadow: none;
+          inset: 0;
+          border-radius: 28px;
+          background: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(30px);
+          -webkit-backdrop-filter: blur(30px);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8),
+                      0 0 0 1px rgba(255, 255, 255, 0.6);
+          z-index: -1;
         }
 
-        .close-icon-svg {
-          width: 1rem;
-          height: 1rem;
-          display: block;
-          margin: 0;
-          padding: 0;
-          flex-shrink: 0;
+        /* Animated Border Ring - 360° Border Run Effect */
+        .animated-border-ring {
+          position: absolute;
+          inset: -4px;
+          border-radius: 32px;
+          z-index: 0;
           pointer-events: none;
+          overflow: hidden;
         }
 
-        .patient-success-close-btn:hover {
-          background: #F9FAFB;
-          border-color: #D1D5DB;
-          color: #1F2937;
-          transform: scale(1.05);
+        .animated-border-ring::before {
+          content: '';
+          position: absolute;
+          width: calc(100% + 8px);
+          height: calc(100% + 8px);
+          top: -4px;
+          left: -4px;
+          background: conic-gradient(
+            from 0deg,
+            transparent 45deg,
+            var(--border-glow) 75deg,
+            var(--border-glow) 105deg,
+            transparent 135deg,
+            transparent 225deg,
+            transparent 315deg,
+            transparent 360deg
+          );
+          animation: borderSpin 3s linear infinite;
+          filter: drop-shadow(0 0 8px var(--success-green-glow));
         }
 
-        .patient-success-close-btn:active {
-          transform: scale(0.95);
+        .animated-border-ring::after {
+          content: '';
+          position: absolute;
+          inset: 4px;
+          border-radius: 28px;
+          background: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(30px);
+          -webkit-backdrop-filter: blur(30px);
         }
 
-        /* Success Icon - Premium Floating */
+        @keyframes borderSpin {
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(360deg);
+          }
+        }
+
+        /* Success Icon - Floating Above */
         .success-icon-wrapper {
           position: absolute;
-          top: -1.25rem;
+          top: -2rem;
           left: 50%;
           transform: translateX(-50%);
           display: inline-flex;
-          z-index: 15;
-          margin-bottom: 0;
+          z-index: 10;
+        }
+
+        .success-icon-glow {
+          position: absolute;
+          inset: -12px;
+          background: radial-gradient(circle, var(--success-green-glow) 0%, transparent 70%);
+          border-radius: 50%;
+          filter: blur(16px);
+          animation: iconGlow 2.5s ease-in-out infinite;
+          pointer-events: none;
         }
 
         .success-icon-circle {
           position: relative;
           width: 5rem;
           height: 5rem;
-          background: #1FAD62;
+          background: linear-gradient(135deg, var(--success-green) 0%, var(--success-green-dark) 100%);
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 8px 24px rgba(31, 173, 98, 0.3);
-          animation: iconPopIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) 0.15s forwards, iconPulse 1s ease-in-out 0.7s;
+          box-shadow: 0 8px 24px var(--success-green-glow),
+                      0 0 0 4px rgba(255, 255, 255, 0.1);
+          animation: iconPopBounce 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55) 0.3s forwards;
           transform: scale(0);
+          z-index: 1;
           border: 4px solid #FFFFFF;
         }
 
         .success-checkmark {
           width: 2.25rem;
           height: 2.25rem;
-          color: #FFFFFF;
+          color: white;
+          stroke-width: 3.5;
         }
 
-        /* Header - Premium Spacing */
+        /* Close Button - Top Right */
+        .patient-success-close-btn {
+          position: absolute;
+          top: 1rem;
+          right: 1rem;
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.9);
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          border: 1px solid rgba(0, 0, 0, 0.1);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          z-index: 10;
+          transition: all 0.2s ease;
+          color: #64748b;
+          overflow: hidden;
+        }
+
+        .close-btn-border {
+          position: absolute;
+          inset: -2px;
+          border-radius: 50%;
+          background: conic-gradient(
+            from 0deg,
+            transparent 60deg,
+            var(--border-glow) 90deg,
+            var(--border-glow) 120deg,
+            transparent 150deg,
+            transparent 240deg,
+            transparent 330deg,
+            transparent 360deg
+          );
+          animation: borderSpin 2s linear infinite;
+          z-index: -1;
+        }
+
+        .close-icon-svg {
+          width: 18px;
+          height: 18px;
+          stroke-width: 2.5;
+          position: relative;
+          z-index: 1;
+        }
+
+        .patient-success-close-btn:hover {
+          background: rgba(255, 255, 255, 1);
+          color: var(--success-green);
+          transform: scale(1.1);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .patient-success-close-btn:active {
+          transform: scale(0.95);
+        }
+
+        /* Header */
         .popup-header {
           margin-top: 2rem;
           margin-bottom: 1.5rem;
           padding: 0 0.5rem;
-          animation: contentFadeIn 0.3s ease-out 0.4s forwards;
+          animation: contentFadeIn 0.5s ease-out 0.5s forwards;
           opacity: 0;
+          position: relative;
+          z-index: 1;
         }
 
         .popup-header-title {
-          font-size: 1.375rem;
+          font-size: 1.5rem;
           font-weight: 700;
           color: #1A1A1A;
           margin-bottom: 0.5rem;
@@ -278,54 +380,61 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
         }
 
         .popup-header-subtitle {
-          font-size: 0.875rem;
+          font-size: 0.9375rem;
           color: #6B7280;
           font-weight: 500;
           letter-spacing: 0.01em;
         }
 
-        /* Token Card - Compact */
+        /* Token Card */
         .token-card {
-          background: #E9F8F1;
-          border-radius: 12px;
-          padding: 1.25rem 1rem;
-          margin-bottom: 1.25rem;
-          animation: contentFadeIn 0.3s ease-out 0.5s forwards;
+          background: var(--success-green-light);
+          border-radius: 16px;
+          padding: 1.5rem 1.25rem;
+          margin-bottom: 1.5rem;
+          animation: contentFadeIn 0.5s ease-out 0.6s forwards;
           opacity: 0;
+          position: relative;
+          z-index: 1;
+          border: 1px solid rgba(16, 185, 129, 0.2);
         }
 
         .token-label {
           font-size: 0.75rem;
           color: #6B7280;
           font-weight: 600;
-          margin-bottom: 0.5rem;
+          margin-bottom: 0.75rem;
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }
 
         .token-number {
-          font-size: 3rem;
+          font-size: 3.5rem;
           font-weight: 700;
-          color: #0E9F6E;
+          color: var(--success-green-dark);
           line-height: 1;
+          letter-spacing: -0.02em;
         }
 
-        /* Patient Details - Compact */
+        /* Patient Details */
         .patient-details {
           text-align: left;
-          margin-bottom: 1.5rem;
-          padding: 1rem;
-          background: #F7F7F7;
-          border-radius: 10px;
-          animation: contentFadeIn 0.3s ease-out 0.6s forwards;
+          margin-bottom: 1.75rem;
+          padding: 1.25rem;
+          background: #F9FAFB;
+          border-radius: 12px;
+          animation: contentFadeIn 0.5s ease-out 0.7s forwards;
           opacity: 0;
+          position: relative;
+          z-index: 1;
+          border: 1px solid rgba(0, 0, 0, 0.05);
         }
 
         .detail-row {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 0.5rem;
+          margin-bottom: 0.75rem;
         }
 
         .detail-row:last-child {
@@ -333,40 +442,66 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
         }
 
         .detail-label {
-          font-size: 0.8125rem;
+          font-size: 0.875rem;
           font-weight: 600;
           color: #1A1A1A;
           min-width: 70px;
         }
 
         .detail-value {
-          font-size: 0.8125rem;
+          font-size: 0.875rem;
           font-weight: 500;
           color: #4B5563;
           text-align: right;
           flex: 1;
         }
 
-        /* Primary Button - Compact */
+        /* Primary Button with Animated Border */
         .patient-success-primary-btn {
           width: 100%;
-          padding: 0.75rem 1.25rem;
-          background: #0E9F6E;
+          padding: 0.875rem 1.5rem;
+          background: var(--success-green);
           color: #FFFFFF;
           border: none;
-          border-radius: 10px;
-          font-size: 0.9375rem;
+          border-radius: 12px;
+          font-size: 1rem;
           font-weight: 600;
           cursor: pointer;
           transition: all 0.2s ease;
-          animation: contentFadeIn 0.3s ease-out 0.7s forwards;
+          animation: contentFadeIn 0.5s ease-out 0.8s forwards;
           opacity: 0;
-          box-shadow: 0 2px 8px rgba(14, 159, 110, 0.25);
+          box-shadow: 0 4px 12px rgba(14, 159, 110, 0.3);
+          position: relative;
+          z-index: 1;
+          overflow: hidden;
+        }
+
+        .primary-btn-border {
+          position: absolute;
+          inset: -2px;
+          border-radius: 12px;
+          background: conic-gradient(
+            from 0deg,
+            transparent 50deg,
+            rgba(255, 255, 255, 0.4) 80deg,
+            rgba(255, 255, 255, 0.4) 100deg,
+            transparent 130deg,
+            transparent 230deg,
+            transparent 330deg,
+            transparent 360deg
+          );
+          animation: borderSpin 2s linear infinite;
+          z-index: -1;
+        }
+
+        .patient-success-primary-btn span {
+          position: relative;
+          z-index: 1;
         }
 
         .patient-success-primary-btn:hover {
-          background: #0D8E5F;
-          box-shadow: 0 4px 12px rgba(14, 159, 110, 0.35);
+          background: var(--success-green-dark);
+          box-shadow: 0 6px 16px rgba(14, 159, 110, 0.4);
           transform: translateY(-1px);
         }
 
@@ -375,80 +510,55 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
         }
 
         /* Keyframe Animations */
-        @keyframes backdropFadeIn {
+
+        @keyframes containerFadeIn {
+          0% { opacity: 0; }
+          100% { opacity: 1; }
+        }
+
+        @keyframes containerFadeOut {
+          0% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+
+        @keyframes popupScaleIn {
           0% {
+            transform: scale(0.92) translateY(20px);
             opacity: 0;
           }
           100% {
+            transform: scale(1) translateY(0);
             opacity: 1;
           }
         }
 
-        @keyframes backdropFadeOut {
-          0% {
-            opacity: 1;
-          }
-          100% {
-            opacity: 0;
-          }
-        }
-
-        @keyframes popupFadeSlideUp {
-          0% {
-            opacity: 0;
-            transform: translateY(14px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes popupFadeSlideDown {
-          0% {
-            opacity: 1;
-            transform: translateY(0);
-          }
-          100% {
-            opacity: 0;
-            transform: translateY(14px);
-          }
-        }
-
-        @keyframes popupScaleUp {
-          0% {
-            transform: scale(0.96);
-          }
-          100% {
-            transform: scale(1);
-          }
-        }
-
-        @keyframes iconPopIn {
+        @keyframes iconPopBounce {
           0% {
             transform: scale(0);
           }
           50% {
-            transform: scale(1.1);
+            transform: scale(1.15);
           }
           100% {
             transform: scale(1);
           }
         }
 
-        @keyframes iconPulse {
+        @keyframes iconGlow {
           0%, 100% {
+            opacity: 0.5;
             transform: scale(1);
           }
           50% {
-            transform: scale(1.05);
+            opacity: 0.8;
+            transform: scale(1.15);
           }
         }
 
         @keyframes contentFadeIn {
           0% {
             opacity: 0;
-            transform: translateY(6px);
+            transform: translateY(10px);
           }
           100% {
             opacity: 1;
@@ -457,16 +567,27 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
         }
 
         /* Responsive Design */
-        @media (max-width: 640px) {
+        @media (max-width: 768px) {
           .patient-success-card {
-            padding: 2.25rem 1.25rem 1.5rem;
+            padding: 2.25rem 1.75rem 1.75rem;
             max-width: 90%;
-            min-width: unset;
+            border-radius: 24px;
+          }
+
+          .patient-success-card::before {
+            border-radius: 24px;
+          }
+
+          .animated-border-ring {
+            border-radius: 28px;
+          }
+
+          .animated-border-ring::after {
             border-radius: 24px;
           }
 
           .success-icon-wrapper {
-            top: -1rem;
+            top: -1.75rem;
           }
 
           .success-icon-circle {
@@ -482,6 +603,75 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
 
           .popup-header {
             margin-top: 1.75rem;
+          }
+
+          .popup-header-title {
+            font-size: 1.375rem;
+          }
+
+          .popup-header-subtitle {
+            font-size: 0.875rem;
+          }
+
+          .token-number {
+            font-size: 3rem;
+          }
+
+          .token-card {
+            padding: 1.25rem 1rem;
+          }
+
+          .patient-details {
+            padding: 1rem;
+          }
+
+          .patient-success-close-btn {
+            width: 32px;
+            height: 32px;
+            top: 0.75rem;
+            right: 0.75rem;
+          }
+
+          .close-icon-svg {
+            width: 16px;
+            height: 16px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .patient-success-card {
+            padding: 2rem 1.5rem 1.5rem;
+            border-radius: 20px;
+          }
+
+          .patient-success-card::before {
+            border-radius: 20px;
+          }
+
+          .animated-border-ring {
+            border-radius: 24px;
+          }
+
+          .animated-border-ring::after {
+            border-radius: 20px;
+          }
+
+          .success-icon-wrapper {
+            top: -1.5rem;
+          }
+
+          .success-icon-circle {
+            width: 4rem;
+            height: 4rem;
+          }
+
+          .success-checkmark {
+            width: 1.75rem;
+            height: 1.75rem;
+          }
+
+          .popup-header {
+            margin-top: 1.5rem;
           }
 
           .popup-header-title {
@@ -516,50 +706,239 @@ const PatientRegistrationSuccessPopup = ({ tokenData, onClose }) => {
           }
 
           .patient-success-close-btn {
-            top: 1rem;
-            right: 1rem;
-            width: 1.875rem;
-            height: 1.875rem;
-            min-width: 1.875rem;
-            min-height: 1.875rem;
+            width: 30px;
+            height: 30px;
+            top: 0.5rem;
+            right: 0.5rem;
           }
 
           .close-icon-svg {
-            width: 0.9375rem;
-            height: 0.9375rem;
+            width: 14px;
+            height: 14px;
+          }
+
+          .patient-success-primary-btn {
+            padding: 0.75rem 1.25rem;
+            font-size: 0.9375rem;
           }
         }
 
-        @media (max-width: 480px) {
+        @media (max-width: 360px) {
           .patient-success-card {
-            padding: 2rem 1rem 1.375rem;
-            border-radius: 20px;
+            padding: 1.75rem 1.25rem 1.25rem;
+            border-radius: 18px;
           }
 
-          .success-icon-wrapper {
-            top: -0.875rem;
+          .patient-success-card::before {
+            border-radius: 18px;
+          }
+
+          .animated-border-ring {
+            border-radius: 22px;
+          }
+
+          .animated-border-ring::after {
+            border-radius: 18px;
           }
 
           .success-icon-circle {
-            width: 4rem;
-            height: 4rem;
+            width: 3.5rem;
+            height: 3.5rem;
           }
 
           .success-checkmark {
-            width: 1.75rem;
-            height: 1.75rem;
+            width: 1.5rem;
+            height: 1.5rem;
           }
 
-          .popup-header {
-            margin-top: 1.5rem;
+          .popup-header-title {
+            font-size: 1.125rem;
           }
 
           .token-number {
             font-size: 2.25rem;
           }
+        }
 
-          .popup-header-title {
-            font-size: 1.125rem;
+        /* Reduced motion support */
+        @media (prefers-reduced-motion: reduce) {
+          .popup-opening,
+          .popup-closing,
+          .patient-success-card,
+          .success-icon-circle,
+          .success-icon-glow,
+          .popup-header,
+          .token-card,
+          .patient-details,
+          .patient-success-primary-btn,
+          .animated-border-ring::before,
+          .close-btn-border,
+          .primary-btn-border {
+            animation: none;
+          }
+
+          .patient-success-card {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+          }
+
+          .popup-header,
+          .token-card,
+          .patient-details,
+          .patient-success-primary-btn {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
+    </>
+  )
+}
+
+// Centered Success Toast Component
+const CenteredSuccessToast = ({ message, onClose }) => {
+  const [isVisible, setIsVisible] = useState(true)
+  const [isClosing, setIsClosing] = useState(false)
+
+  useEffect(() => {
+    // Auto-dismiss after 2.5 seconds
+    const timer = setTimeout(() => {
+      setIsClosing(true)
+      setTimeout(() => {
+        setIsVisible(false)
+        if (onClose) onClose()
+      }, 300)
+    }, 2500)
+
+    return () => clearTimeout(timer)
+  }, [onClose])
+
+  if (!isVisible) return null
+
+  return (
+    <>
+      <div className={`centered-toast-container ${isClosing ? 'toast-closing' : 'toast-opening'}`}>
+        <div className="centered-toast">
+          <div className="toast-icon-wrapper">
+            <svg className="toast-checkmark" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <p className="toast-message">{message}</p>
+        </div>
+      </div>
+
+      <style>{`
+        .centered-toast-container {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          z-index: 9999;
+          pointer-events: none;
+        }
+
+        .toast-opening {
+          animation: toastFadeSlideUp 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+
+        .toast-closing {
+          animation: toastFadeSlideDown 0.3s ease-in forwards;
+        }
+
+        .centered-toast {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          background: rgba(255, 255, 255, 0.98);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          padding: 1rem 1.5rem;
+          border-radius: 12px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15),
+                      0 0 0 1px rgba(255, 255, 255, 0.8),
+                      0 0 20px rgba(16, 185, 129, 0.2);
+          min-width: 300px;
+          max-width: 90vw;
+          pointer-events: auto;
+        }
+
+        .toast-icon-wrapper {
+          flex-shrink: 0;
+          width: 2rem;
+          height: 2rem;
+          background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .toast-checkmark {
+          width: 1.125rem;
+          height: 1.125rem;
+          color: white;
+          stroke-width: 3;
+        }
+
+        .toast-message {
+          font-size: 0.9375rem;
+          font-weight: 500;
+          color: #1A1A1A;
+          margin: 0;
+          line-height: 1.5;
+        }
+
+        @keyframes toastFadeSlideUp {
+          0% {
+            opacity: 0;
+            transform: translate(-50%, -40%) scale(0.9);
+          }
+          100% {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+          }
+        }
+
+        @keyframes toastFadeSlideDown {
+          0% {
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+          }
+          100% {
+            opacity: 0;
+            transform: translate(-50%, -60%) scale(0.9);
+          }
+        }
+
+        @media (max-width: 640px) {
+          .centered-toast {
+            padding: 0.875rem 1.25rem;
+            min-width: 280px;
+          }
+
+          .toast-icon-wrapper {
+            width: 1.75rem;
+            height: 1.75rem;
+          }
+
+          .toast-checkmark {
+            width: 1rem;
+            height: 1rem;
+          }
+
+          .toast-message {
+            font-size: 0.875rem;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .toast-opening,
+          .toast-closing {
+            animation: none;
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
           }
         }
       `}</style>

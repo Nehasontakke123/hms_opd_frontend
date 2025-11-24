@@ -2057,7 +2057,7 @@ const ReceptionistDashboard = () => {
         setUploadedPDF(null) // Clear uploaded PDF
         setScannedData(null) // Clear scanned data
         setShowRegistrationModal(false) // Close registration modal
-        toast.success('Patient registered successfully! Cash payment received.')
+        // Centered toast will be shown by popup component when it closes
         fetchTodayPatients()
         fetchPatientHistory()
         fetchDoctors()
