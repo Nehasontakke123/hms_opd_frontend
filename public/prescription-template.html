@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tekisky Hospital - Doctor Prescription Template</title>
+    <style>
+        /* Print-ready A4 prescription template with clean design */
+        @page {
+            size: A4;
+            margin: 15mm;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background: #ffffff;
+            color: #444444;
+            line-height: 1.6;
+            font-size: 10pt;
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            padding: 15mm;
+            background-color: #ffffff;
+        }
+
+        /* Header Section */
+        .header {
+            text-align: center;
+            margin-bottom: 10mm;
+        }
+
+        .hospital-name {
+            font-size: 22pt;
+            font-weight: 700;
+            color: #14B8A6;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4mm;
+        }
+
+        .prescription-title {
+            font-size: 14pt;
+            font-weight: 700;
+            color: #1F2937;
+            text-transform: uppercase;
+            margin-bottom: 6mm;
+        }
+
+        .teal-accent-line {
+            width: 100%;
+            height: 0.8mm;
+            background-color: #14B8A6;
+            margin: 0 auto 8mm;
+        }
+
+        /* Top Section - Two Columns */
+        .top-section {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10mm;
+            gap: 4%;
+        }
+
+        .column {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .section-label {
+            font-size: 11pt;
+            font-weight: 700;
+            color: #1F2937;
+            margin-bottom: 6mm;
+            text-transform: uppercase;
+        }
+
+        .section-content {
+            font-size: 10pt;
+            color: #444444;
+            line-height: 1.8;
+        }
+
+        .section-content p {
+            margin-bottom: 6.5mm;
+        }
+
+        .section-content strong {
+            font-weight: 600;
+        }
+
+        /* Divider Line */
+        .divider {
+            width: 100%;
+            height: 0.5mm;
+            background-color: #E5E7EB;
+            margin: 10mm 0;
+        }
+
+        /* Middle Section - Patient Details & Diagnosis */
+        .middle-section {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10mm;
+            gap: 4%;
+        }
+
+        /* Prescription Section */
+        .prescription-section {
+            margin-bottom: 10mm;
+        }
+
+        .medicine-entry {
+            margin-bottom: 7mm;
+            padding-left: 5mm;
+        }
+
+        .medicine-name {
+            font-weight: 700;
+            color: #444444;
+        }
+
+        /* Tests Section */
+        .tests-section {
+            margin-bottom: 10mm;
+        }
+
+        /* Advice Section */
+        .advice-section {
+            margin-bottom: 10mm;
+        }
+
+        .general-instructions {
+            font-style: italic;
+            color: #4B5563;
+            margin-bottom: 4mm;
+        }
+
+        /* Signature & Stamp Section */
+        .signature-section {
+            margin-top: 15mm;
+        }
+
+        .signature-area {
+            margin-bottom: 12mm;
+        }
+
+        .signature-line {
+            width: 60mm;
+            height: 0.5mm;
+            background-color: #1F2937;
+            margin: 3mm 0 2mm 30mm;
+        }
+
+        .signature-name {
+            font-style: italic;
+            font-size: 9pt;
+            color: #444444;
+            margin-left: 30mm;
+        }
+
+        .stamp-area {
+            margin-top: 5mm;
+        }
+
+        .stamp-box {
+            width: 52mm;
+            height: 22mm;
+            border: 1mm dashed #14B8A6;
+            border-radius: 2mm;
+            padding: 2mm;
+            margin-left: 28mm;
+            background-color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .stamp-hospital {
+            font-weight: 700;
+            font-size: 8pt;
+            color: #14B8A6;
+            text-transform: uppercase;
+            margin-bottom: 2mm;
+        }
+
+        .stamp-authorized {
+            font-size: 6pt;
+            color: #4B5563;
+            margin-bottom: 1mm;
+        }
+
+        .stamp-reg {
+            font-weight: 700;
+            font-size: 5.5pt;
+            color: #14B8A6;
+            text-transform: uppercase;
+        }
+
+        /* Print Styles */
+        @media print {
+            body {
+                width: 210mm;
+                min-height: 297mm;
+                margin: 0;
+                padding: 15mm;
+                background: #ffffff;
+            }
+
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="hospital-name">TEKISKY HOSPITAL</div>
+        <div class="prescription-title">DOCTOR PRESCRIPTION</div>
+        <div class="teal-accent-line"></div>
+    </div>
+
+    <!-- Top Section: Clinic & Doctor -->
+    <div class="top-section">
+        <div class="column">
+            <div class="section-label">CLINIC/HOSPITAL NAME</div>
+            <div class="section-content">
+                <p><strong>Clinic/Hospital Name:</strong> Tekisky Hospital</p>
+                <p><strong>Address:</strong> WorkshopNanded</p>
+                <p><strong>Phone:</strong> 9359481880</p>
+                <p><strong>Email / Website:</strong> monu@gmail.com</p>
+            </div>
+        </div>
+        <div class="column">
+            <div class="section-label">DOCTOR NAME</div>
+            <div class="section-content">
+                <p><strong>Doctor Name:</strong> Dr. Monu</p>
+                <p><strong>Qualification:</strong> MD</p>
+                <p><strong>Registration No.:</strong> REG-12345</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Middle Section: Patient Details & Diagnosis -->
+    <div class="middle-section">
+        <div class="column">
+            <div class="section-label">PATIENT DETAILS</div>
+            <div class="section-content">
+                <p><strong>Patient Name:</strong> Amisha</p>
+                <p><strong>Gender:</strong> Female</p>
+                <p><strong>Patient ID:</strong> TH-PT-000059</p>
+            </div>
+        </div>
+        <div class="column">
+            <div class="section-label">DIAGNOSIS / NOTES</div>
+            <div class="section-content">
+                <p><strong>Age:</strong> 20</p>
+                <p><strong>Date:</strong> 25/11/2025</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Prescription Section -->
+    <div class="prescription-section">
+        <div class="section-label">PRESCRIPTION (Rx)</div>
+        <div class="medicine-entry">
+            <p><strong>1. Medicine Name:</strong> <span class="medicine-name">ALIVHER ES 2 TABLET</span></p>
+            <p><strong>Dosage:</strong> Morning, Afternoon, Night - Take the tablet after meals</p>
+            <p><strong>Frequency:</strong> Three times daily (Once-daily / Twice-daily / After food / Before food)</p>
+            <p><strong>Duration:</strong> 10 days</p>
+        </div>
+        <div class="medicine-entry">
+            <p><strong>2. Medicine Name:</strong> <span class="medicine-name">AC Bose 50mg Tablet</span></p>
+            <p><strong>Dosage:</strong> Morning, Night - Take the tablet on an empty stomach</p>
+            <p><strong>Frequency:</strong> Once daily (Once-daily / Twice-daily / After food / Before food)</p>
+            <p><strong>Duration:</strong> 10 days</p>
+        </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Tests Section -->
+    <div class="tests-section">
+        <div class="section-label">TESTS / LAB INVESTIGATIONS</div>
+        <div class="section-content">
+            <p>CBC (Complete Blood Count)</p>
+        </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Advice Section -->
+    <div class="advice-section">
+        <div class="section-label">ADVICE / NEXT VISIT</div>
+        <div class="section-content">
+            <p class="general-instructions">(General Instructions)</p>
+            <p>High Fever and BP Low</p>
+            <p><strong>Next Visit Date:</strong> _________________________________</p>
+        </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Signature & Stamp Section -->
+    <div class="signature-section">
+        <div class="section-label">DOCTOR SIGNATURE & STAMP</div>
+        <div class="signature-area">
+            <p><strong>Signature:</strong></p>
+            <div class="signature-line"></div>
+            <div class="signature-name">monu</div>
+        </div>
+        <div class="stamp-area">
+            <p><strong>Stamp:</strong></p>
+            <div class="stamp-box">
+                <div class="stamp-hospital">TEKISKY HOSPITAL</div>
+                <div class="stamp-authorized">AUTHORIZED</div>
+                <div class="stamp-authorized">MEDICAL PRACTITIONER</div>
+                <div class="stamp-reg">REG-12345</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+

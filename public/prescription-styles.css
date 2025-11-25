@@ -1,0 +1,175 @@
+/* 
+ * Prescription Template CSS Snippet
+ * Clean, print-ready A4 prescription design with teal accent
+ * Use with HTML structure matching prescription-template.html
+ */
+
+@page {
+    size: A4;
+    margin: 15mm;
+}
+
+/* Base Styles */
+.prescription-container {
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    background: #ffffff;
+    color: #444444;
+    line-height: 1.6;
+    font-size: 10pt;
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    padding: 15mm;
+    background-color: #ffffff;
+}
+
+/* Header Section */
+.prescription-header {
+    text-align: center;
+    margin-bottom: 10mm;
+}
+
+.hospital-name {
+    font-size: 22pt;
+    font-weight: 700;
+    color: #14B8A6; /* Teal accent color */
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4mm;
+}
+
+.prescription-title {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #1F2937;
+    text-transform: uppercase;
+    margin-bottom: 6mm;
+}
+
+.teal-accent-line {
+    width: 100%;
+    height: 0.8mm;
+    background-color: #14B8A6;
+    margin: 0 auto 8mm;
+}
+
+/* Two-Column Layout */
+.prescription-top-section {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10mm;
+    gap: 4%;
+}
+
+.prescription-column {
+    flex: 1;
+    min-width: 0;
+}
+
+.section-label {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #1F2937;
+    margin-bottom: 6mm;
+    text-transform: uppercase;
+}
+
+.section-content {
+    font-size: 10pt;
+    color: #444444;
+    line-height: 1.8;
+}
+
+.section-content p {
+    margin-bottom: 6.5mm;
+}
+
+.section-content strong {
+    font-weight: 600;
+}
+
+/* Divider */
+.prescription-divider {
+    width: 100%;
+    height: 0.5mm;
+    background-color: #E5E7EB;
+    margin: 10mm 0;
+}
+
+/* Medicine Entry */
+.medicine-entry {
+    margin-bottom: 7mm;
+    padding-left: 5mm;
+}
+
+.medicine-name {
+    font-weight: 700;
+    color: #444444;
+}
+
+/* Signature & Stamp */
+.signature-section {
+    margin-top: 15mm;
+}
+
+.signature-line {
+    width: 60mm;
+    height: 0.5mm;
+    background-color: #1F2937;
+    margin: 3mm 0 2mm 30mm;
+}
+
+.signature-name {
+    font-style: italic;
+    font-size: 9pt;
+    color: #444444;
+    margin-left: 30mm;
+}
+
+.stamp-box {
+    width: 52mm;
+    height: 22mm;
+    border: 1mm dashed #14B8A6; /* Teal dashed border */
+    border-radius: 2mm;
+    padding: 2mm;
+    margin-left: 28mm;
+    background-color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.stamp-hospital {
+    font-weight: 700;
+    font-size: 8pt;
+    color: #14B8A6;
+    text-transform: uppercase;
+    margin-bottom: 2mm;
+}
+
+.stamp-authorized {
+    font-size: 6pt;
+    color: #4B5563;
+    margin-bottom: 1mm;
+}
+
+.stamp-reg {
+    font-weight: 700;
+    font-size: 5.5pt;
+    color: #14B8A6;
+    text-transform: uppercase;
+}
+
+/* Print Styles */
+@media print {
+    .prescription-container {
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0;
+        padding: 15mm;
+        background: #ffffff;
+    }
+}
+

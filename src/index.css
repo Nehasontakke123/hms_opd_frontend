@@ -162,6 +162,41 @@ code {
   animation: slideInFromRight 0.3s ease-out;
 }
 
+/* Professional Test Dropdown Animations */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-\[slideDown_0\.2s_ease-out\] {
+  animation: slideDown 0.2s ease-out;
+}
+
+/* Custom Scrollbar for Dropdown */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, #3A9EC2, #14B8A6);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to bottom, #2A8EAC, #0D9488);
+}
+
 /* Hide scrollbar for mobile tab navigation */
 .scrollbar-hide {
   -ms-overflow-style: none;

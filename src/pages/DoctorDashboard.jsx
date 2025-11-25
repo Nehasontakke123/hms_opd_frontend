@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import generatePrescriptionPDF from '../utils/generatePrescriptionPDF'
+import generateTraditionalPrescriptionPDF from '../utils/generateTraditionalPrescriptionPDF'
 import PatientLimitModal from '../components/PatientLimitModal'
 import DoctorStatsNotification from '../components/DoctorStatsNotification'
 import MedicalHistoryModal from '../components/MedicalHistoryModal'
@@ -499,6 +500,7 @@ const DoctorDashboard = () => {
   const [doctorStats, setDoctorStats] = useState(null)
   const [openInstructionsDropdown, setOpenInstructionsDropdown] = useState(null) // Track which medicine dropdown is open
   const [showPrescriptionSuccessToast, setShowPrescriptionSuccessToast] = useState(false)
+  const [savedPrescriptionData, setSavedPrescriptionData] = useState(null)
   const [searchToday, setSearchToday] = useState('')
   const [searchHistory, setSearchHistory] = useState('')
   const [searchMedical, setSearchMedical] = useState('')
@@ -523,8 +525,10 @@ const DoctorDashboard = () => {
   const [showMobileMenu, setShowMobileMenu] = useState(false)
   const PAGE_SIZE_TODAY = 5
   const PAGE_SIZE_HISTORY = 6
+  const PAGE_SIZE_MEDICAL = 10 // Default items per page for Medical Records
   const [todayPage, setTodayPage] = useState(1)
   const [historyPage, setHistoryPage] = useState(1)
+  const [medicalPage, setMedicalPage] = useState(1)
   const [prescriptionData, setPrescriptionData] = useState({
     diagnosis: '',
     diagnosisNotes: '',
@@ -556,6 +560,9 @@ const DoctorDashboard = () => {
   const [patientInlineHistoryLoading, setPatientInlineHistoryLoading] = useState({})
   const todaysPatientsRef = useRef(null)
   const testInputRef = useRef(null)
+  const [showTestDropdown, setShowTestDropdown] = useState(false)
+  const [testSearchValue, setTestSearchValue] = useState('')
+  const testDropdownRef = useRef(null)
 
   const completedPatients = useMemo(
     () => patients.filter((patient) => patient.status === 'completed'),
@@ -2239,6 +2246,8 @@ const handleToggleCompletedPatients = () => {
     setSelectedInventoryItems([])
     setShowInventorySummary(true)
     // Clear test input
+    setTestSearchValue('')
+    setShowTestDropdown(false)
     if (testInputRef.current) {
       testInputRef.current.value = ''
     }
@@ -2309,6 +2318,28 @@ const handleToggleCompletedPatients = () => {
           dosage: item.dosage
         })),
         pdfData: pdfBase64 // Send PDF as base64
+      })
+
+      // Store prescription data for PDF generation
+      setSavedPrescriptionData({
+        patient: selectedPatient,
+        doctor: {
+          fullName: user.fullName,
+          specialization: user.specialization,
+          qualification: user.qualification,
+          mobileNumber: user.mobileNumber,
+          clinicAddress: user.clinicAddress,
+          registrationNo: user.registrationNo || user.registrationNumber || 'REG-12345',
+          clinicName: user.clinicName || user.hospitalName || 'Tekisky Hospital',
+          hospitalPhone: user.hospitalPhone || user.mobileNumber || '9359481880',
+          hospitalEmail: user.hospitalEmail || user.email || 'info@hospital.com',
+          hospitalAddress: user.clinicAddress || user.hospitalAddress || '123 Medical Center, City'
+        },
+        prescription: {
+          ...tempPrescription,
+          selectedTests: prescriptionData.selectedTests
+        },
+        responseData: response.data.data
       })
 
       setShowPrescriptionSuccessToast(true)
@@ -2680,6 +2711,59 @@ const handleToggleCompletedPatients = () => {
       return dateB - dateA
     })
   const filteredMedicalRecords = filterPatients(medicalRecords, searchMedical)
+  
+  // Pagination for Medical Records
+  const medicalTotalPages = Math.ceil(filteredMedicalRecords.length / PAGE_SIZE_MEDICAL) || 1
+  const paginatedMedicalRecords = useMemo(() => {
+    const startIndex = (medicalPage - 1) * PAGE_SIZE_MEDICAL
+    const endIndex = startIndex + PAGE_SIZE_MEDICAL
+    return filteredMedicalRecords.slice(startIndex, endIndex)
+  }, [filteredMedicalRecords, medicalPage])
+  
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setMedicalPage(1)
+  }, [searchMedical])
+  
+  // Scroll to top when page changes
+  const medicalRecordsRef = useRef(null)
+  useEffect(() => {
+    if (medicalRecordsRef.current && medicalPage > 1) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }, [medicalPage])
+  
+  const handleMedicalPageChange = (newPage) => {
+    setMedicalPage(newPage)
+  }
+  
+  const handleMedicalPrevious = () => {
+    if (medicalPage > 1) {
+      setMedicalPage(medicalPage - 1)
+    }
+  }
+  
+  const handleMedicalNext = () => {
+    if (medicalPage < medicalTotalPages) {
+      setMedicalPage(medicalPage + 1)
+    }
+  }
+
+  // Handle clicking outside test dropdown to close it
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (testDropdownRef.current && !testDropdownRef.current.contains(event.target)) {
+        setShowTestDropdown(false)
+      }
+    }
+
+    if (showTestDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside)
+      }
+    }
+  }, [showTestDropdown])
   const todayTotalPages = Math.max(1, Math.ceil(filteredTodayPatients.length / PAGE_SIZE_TODAY))
   const historyTotalPages = Math.max(1, Math.ceil(filteredHistoryPatients.length / PAGE_SIZE_HISTORY))
   const paginatedTodayPatients = useMemo(
@@ -2776,7 +2860,11 @@ const handleToggleCompletedPatients = () => {
       {showPrescriptionSuccessToast && (
         <CenteredPrescriptionToast
           message="Prescription saved and PDF stored in medical section"
-          onClose={() => setShowPrescriptionSuccessToast(false)}
+          onClose={() => {
+            setShowPrescriptionSuccessToast(false)
+            setSavedPrescriptionData(null)
+          }}
+          prescriptionData={savedPrescriptionData}
         />
       )}
 
@@ -2842,21 +2930,27 @@ const handleToggleCompletedPatients = () => {
 
         .centered-prescription-toast {
           width: 90%;
-          max-width: 580px;
+          max-width: 650px;
           min-width: 320px;
-          background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(240, 253, 250, 0.95) 50%, rgba(236, 253, 245, 0.95) 100%);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border-radius: 20px;
-          padding: clamp(1.125rem, 2vw, 1.375rem) clamp(1.125rem, 2vw, 1.5rem);
+          background: linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.95) 0%,
+            rgba(240, 253, 250, 0.92) 50%,
+            rgba(236, 253, 245, 0.92) 100%
+          );
+          backdrop-filter: blur(24px) saturate(180%);
+          -webkit-backdrop-filter: blur(24px) saturate(180%);
+          border-radius: 24px;
+          padding: clamp(1.25rem, 2.5vw, 1.5rem) clamp(1.25rem, 2.5vw, 1.75rem);
           box-shadow:
-            0 25px 60px rgba(16, 185, 129, 0.15),
-            0 10px 30px rgba(16, 185, 129, 0.1),
-            inset 0 1px 0 rgba(255, 255, 255, 0.8);
+            0 32px 64px rgba(16, 185, 129, 0.2),
+            0 16px 32px rgba(58, 158, 194, 0.15),
+            0 0 0 1px rgba(255, 255, 255, 0.8),
+            inset 0 1px 0 rgba(255, 255, 255, 0.9);
           position: relative;
           overflow: visible;
           pointer-events: auto;
-          border: 1px solid rgba(255, 255, 255, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.6);
         }
 
 
@@ -2877,19 +2971,44 @@ const handleToggleCompletedPatients = () => {
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4),
-                      0 0 0 4px rgba(255, 255, 255, 0.3);
+          box-shadow: 
+            0 8px 24px rgba(16, 185, 129, 0.4),
+            0 0 0 4px rgba(255, 255, 255, 0.3),
+            0 0 40px rgba(16, 185, 129, 0.3);
           flex-shrink: 0;
           z-index: 2;
+          animation: iconGlow 2s ease-in-out infinite;
+        }
+
+        /* Enhanced glow animation */
+        @keyframes iconGlow {
+          0%, 100% {
+            box-shadow: 
+              0 8px 24px rgba(16, 185, 129, 0.4),
+              0 0 0 4px rgba(255, 255, 255, 0.3),
+              0 0 40px rgba(16, 185, 129, 0.3);
+          }
+          50% {
+            box-shadow: 
+              0 8px 24px rgba(16, 185, 129, 0.6),
+              0 0 0 4px rgba(255, 255, 255, 0.4),
+              0 0 60px rgba(16, 185, 129, 0.5);
+          }
         }
 
         /* 3-step pulse animation with glowing ring */
         .toast-icon-shell::before {
           content: '';
           position: absolute;
-          inset: -10px;
+          inset: -12px;
           border-radius: 50%;
-          background: radial-gradient(circle, rgba(16, 185, 129, 0.4), rgba(16, 185, 129, 0.2), transparent 70%);
+          background: radial-gradient(
+            circle,
+            rgba(16, 185, 129, 0.5) 0%,
+            rgba(16, 185, 129, 0.3) 40%,
+            rgba(16, 185, 129, 0.1) 70%,
+            transparent 100%
+          );
           animation: iconPulse3Step 2s ease-in-out infinite;
           z-index: -1;
         }
@@ -2949,8 +3068,100 @@ const handleToggleCompletedPatients = () => {
           line-height: 1.3;
         }
 
-        .toast-text p {
+          .toast-text p {
+            font-size: clamp(0.875rem, 1.8vw, 0.9375rem);
+            color: #475569;
+            line-height: 1.5;
+          }
+
+        .toast-actions {
+          margin-top: clamp(0.875rem, 2vw, 1rem);
+          padding-top: clamp(0.875rem, 2vw, 1rem);
+          border-top: 1px solid rgba(229, 231, 235, 0.8);
+          display: flex;
+          gap: 0.75rem;
+        }
+
+        .toast-print-btn {
+          flex: 1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+          padding: clamp(0.625rem, 1.5vw, 0.75rem) clamp(1rem, 2vw, 1.25rem);
+          background: linear-gradient(135deg, #3A9EC2 0%, #14B8A6 100%);
+          color: white;
+          border: none;
+          border-radius: 12px;
           font-size: clamp(0.875rem, 1.8vw, 0.9375rem);
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 12px rgba(58, 158, 194, 0.3);
+          min-height: 44px;
+        }
+
+        .toast-print-btn:hover {
+          background: linear-gradient(135deg, #2A8EAC 0%, #0D9488 100%);
+          box-shadow: 0 6px 16px rgba(58, 158, 194, 0.4);
+          transform: translateY(-1px);
+        }
+
+        .toast-print-btn:active {
+          transform: translateY(0);
+          box-shadow: 0 2px 8px rgba(58, 158, 194, 0.3);
+        }
+
+        .toast-print-btn svg {
+          flex-shrink: 0;
+        }
+
+        .toast-preview-container {
+          margin-top: clamp(1rem, 2vw, 1.25rem);
+          padding-top: clamp(1rem, 2vw, 1.25rem);
+          border-top: 1px solid rgba(229, 231, 235, 0.8);
+        }
+
+        .toast-preview-label {
+          font-size: clamp(0.75rem, 1.5vw, 0.875rem);
+          font-weight: 600;
+          color: #475569;
+          margin-bottom: 0.5rem;
+        }
+
+        .toast-preview-wrapper {
+          width: 100%;
+          height: 180px;
+          border-radius: 12px;
+          overflow: hidden;
+          border: 2px solid rgba(229, 231, 235, 0.6);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+          background: white;
+          position: relative;
+        }
+
+        .toast-preview-iframe {
+          width: 100%;
+          height: 100%;
+          border: none;
+          transform: scale(0.3);
+          transform-origin: top left;
+          width: 333.33%;
+          height: 333.33%;
+          pointer-events: none;
+        }
+
+        @media (max-width: 640px) {
+          .toast-actions {
+            margin-top: 0.875rem;
+            padding-top: 0.875rem;
+          }
+
+          .toast-print-btn {
+            padding: 0.625rem 1rem;
+            min-height: 44px;
+          }
+        }
           color: #475569;
           line-height: 1.5;
           margin: 0;
@@ -3028,6 +3239,52 @@ const handleToggleCompletedPatients = () => {
           }
         }
 
+        .emergency-tab-label {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          padding-right: 1.5rem;
+          font-weight: inherit;
+        }
+
+        .emergency-count-badge {
+          position: absolute;
+          top: -0.45rem;
+          right: 0;
+          background: #ff4d4f;
+          color: #fff;
+          font-size: 0.75rem;
+          line-height: 1;
+          padding: 0.125rem 0.375rem;
+          border-radius: 50px;
+          font-weight: 700;
+          box-shadow: 0 2px 6px rgba(255, 77, 79, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.35);
+          transform-origin: top right;
+          animation: badgePop 0.18s ease-out;
+        }
+
+        .emergency-alert-dot {
+          position: absolute;
+          top: -0.2rem;
+          right: 0.2rem;
+          width: 0.45rem;
+          height: 0.45rem;
+          border-radius: 999px;
+          background: #ff4d4f;
+          box-shadow: 0 0 0 6px rgba(255, 77, 79, 0.15);
+        }
+
+        @keyframes badgePop {
+          0% {
+            transform: scale(0.6);
+            opacity: 0;
+          }
+          100% {
+            transform: scale(1);
+            opacity: 1;
+          }
+        }
+
         @keyframes toastIn {
           0% {
             opacity: 0;
@@ -3088,6 +3345,242 @@ const handleToggleCompletedPatients = () => {
           to {
             opacity: 1;
             transform: translateX(-50%) translateY(0);
+          }
+        }
+
+        /* Medical Records Pagination Styles */
+        .medical-pagination-wrapper {
+          padding: 1.5rem 0;
+          margin-top: 1.5rem;
+          border-top: 1px solid #E5E7EB;
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+
+        .pagination-info {
+          text-align: center;
+          padding: 0.5rem 0;
+        }
+
+        .pagination-info-text {
+          font-size: 0.875rem;
+          font-weight: 500;
+          color: #6B7280;
+        }
+
+        .medical-pagination {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+          flex-wrap: wrap;
+        }
+
+        .pagination-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+          padding: 0.625rem 1rem;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #374151;
+          background: transparent;
+          border: 1px solid #DDD;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          min-height: 40px;
+          min-width: 100px;
+        }
+
+        .pagination-btn:hover:not(.disabled) {
+          background: #F9FAFB;
+          border-color: #6C5CE7;
+          color: #6C5CE7;
+          box-shadow: 0 2px 8px rgba(108, 92, 231, 0.15);
+          transform: translateY(-1px);
+        }
+
+        .pagination-btn.disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          background: #F3F4F6;
+          color: #9CA3AF;
+        }
+
+        .pagination-icon {
+          width: 1rem;
+          height: 1rem;
+          flex-shrink: 0;
+        }
+
+        .pagination-btn-text {
+          font-size: 0.875rem;
+          font-weight: 600;
+        }
+
+        .pagination-numbers-desktop {
+          display: flex;
+          align-items: center;
+          gap: 0.375rem;
+          flex-wrap: wrap;
+        }
+
+        .pagination-number {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 40px;
+          height: 40px;
+          padding: 0 0.75rem;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #374151;
+          background: transparent;
+          border: 1px solid #DDD;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .pagination-number:hover {
+          background: #F9FAFB;
+          border-color: #6C5CE7;
+          color: #6C5CE7;
+          box-shadow: 0 2px 8px rgba(108, 92, 231, 0.15);
+          transform: translateY(-1px);
+        }
+
+        .pagination-number.active {
+          background: #6C5CE7;
+          border-color: #6C5CE7;
+          color: #FFFFFF;
+          box-shadow: 0 4px 12px rgba(108, 92, 231, 0.3);
+          transform: scale(1.05);
+          animation: paginationScaleIn 0.2s ease-out;
+        }
+
+        @keyframes paginationScaleIn {
+          0% {
+            transform: scale(0.9);
+            opacity: 0.7;
+          }
+          100% {
+            transform: scale(1.05);
+            opacity: 1;
+          }
+        }
+
+        .pagination-ellipsis {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 40px;
+          height: 40px;
+          padding: 0 0.5rem;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #6B7280;
+          user-select: none;
+        }
+
+        .pagination-numbers-mobile {
+          display: none;
+        }
+
+        .pagination-current-mobile {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 40px;
+          padding: 0 1rem;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        /* Medical Records Content Fade Animation */
+        .medical-records-content {
+          animation: paginationFadeIn 0.3s ease-out forwards;
+        }
+
+        @keyframes paginationFadeIn {
+          0% {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        /* Mobile Responsive - Pagination */
+        @media (max-width: 768px) {
+          .medical-pagination-wrapper {
+            padding: 1rem 0;
+            margin-top: 1rem;
+            gap: 0.875rem;
+          }
+
+          .pagination-info {
+            padding: 0.25rem 0;
+          }
+
+          .pagination-info-text {
+            font-size: 0.8125rem;
+          }
+
+          .pagination-numbers-desktop {
+            display: none;
+          }
+
+          .pagination-numbers-mobile {
+            display: block;
+          }
+
+          .pagination-btn {
+            min-width: 90px;
+            min-height: 44px;
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+          }
+
+          .pagination-current-mobile {
+            min-height: 44px;
+            font-size: 0.875rem;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .medical-pagination-wrapper {
+            padding: 0.875rem 0;
+            gap: 0.75rem;
+          }
+
+          .pagination-info-text {
+            font-size: 0.75rem;
+          }
+
+          .pagination-btn {
+            min-width: 80px;
+            padding: 0.625rem 0.875rem;
+            font-size: 0.8125rem;
+          }
+
+          .pagination-btn-text {
+            font-size: 0.8125rem;
+          }
+
+          .pagination-icon {
+            width: 0.875rem;
+            height: 0.875rem;
+          }
+
+          .pagination-current-mobile {
+            font-size: 0.8125rem;
           }
         }
       `}</style>
@@ -3636,18 +4129,20 @@ const handleToggleCompletedPatients = () => {
                 <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                <span className="flex-1">Emergency</span>
-                {emergencyPatients.length > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="px-2 py-0.5 bg-red-500 text-white rounded-full text-xs font-bold animate-pulse">
-                      {emergencyPatients.length}
-                    </span>
-                    <span className="flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                    </span>
-                  </div>
-                )}
+                <span className="flex-1 emergency-tab-label">
+                  Emergency
+                  {emergencyPatients.length > 0 && (
+                    <>
+                      <span
+                        key={emergencyPatients.length}
+                        className="emergency-count-badge"
+                      >
+                        {emergencyPatients.length}
+                      </span>
+                      <span className="emergency-alert-dot" aria-hidden="true"></span>
+                    </>
+                  )}
+                </span>
               </button>
               <button
                 onClick={() => {
@@ -3758,18 +4253,20 @@ const handleToggleCompletedPatients = () => {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              Emergency
-              {emergencyPatients.length > 0 && (
-                <>
-                  <span className="ml-1 sm:ml-2 px-1.5 sm:px-2 py-0.5 bg-red-500 text-white rounded-full text-xs font-bold animate-pulse">
-                    {emergencyPatients.length}
-                  </span>
-                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 sm:h-3 sm:w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-full w-full bg-red-500"></span>
-                  </span>
-                </>
-              )}
+              <span className="emergency-tab-label">
+                Emergency
+                {emergencyPatients.length > 0 && (
+                  <>
+                    <span
+                      key={emergencyPatients.length}
+                      className="emergency-count-badge"
+                    >
+                      {emergencyPatients.length}
+                    </span>
+                    <span className="emergency-alert-dot" aria-hidden="true"></span>
+                  </>
+                )}
+              </span>
             </button>
             <button
               onClick={() => setActiveTab('history')}
@@ -5163,7 +5660,7 @@ const handleToggleCompletedPatients = () => {
 
         {/* Medical Records Tab */}
         {activeTab === 'medical' && (
-          <div>
+          <div ref={medicalRecordsRef}>
             <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-800 mb-1.5 sm:mb-2 flex flex-wrap items-center gap-2 sm:gap-3">
               <span className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full bg-purple-50 text-purple-700 text-xs font-semibold uppercase tracking-wide">Tekisky Records</span>
               <span>Doctor View</span>
@@ -5195,7 +5692,9 @@ const handleToggleCompletedPatients = () => {
                     <p className="text-gray-500 text-sm sm:text-base md:text-lg">No matching records</p>
                   </div>
                 ) : (
-                  filteredMedicalRecords.map((patient) => (
+                  <>
+                  <div className="space-y-3 sm:space-y-4 medical-records-content" key={`medical-page-${medicalPage}`}>
+                  {paginatedMedicalRecords.map((patient) => (
                   <div key={patient._id} className="bg-white rounded-lg shadow p-3 sm:p-4 md:p-6 border-l-4 border-purple-500">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-3 sm:mb-4">
                       <div className="flex-1 min-w-0">
@@ -5312,23 +5811,139 @@ const handleToggleCompletedPatients = () => {
                         </div>
                       )}
                     </div>
-
-                    {prescriptionData.medicines.length > 1 && (
-                      <div className="mt-3 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => removeMedicineField(index)}
-                          className="text-red-600 hover:text-red-800 text-sm font-medium flex items-center gap-1"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                          Remove Medicine
-                        </button>
-                      </div>
-                    )}
                   </div>
-                  ))
+                  ))}
+                  </div>
+                  
+                  {/* Pagination Component */}
+                  {medicalTotalPages > 1 && (
+                    <div className="medical-pagination-wrapper">
+                      {/* Page Info */}
+                      <div className="pagination-info">
+                        <span className="pagination-info-text">
+                          Showing {((medicalPage - 1) * PAGE_SIZE_MEDICAL) + 1} - {Math.min(medicalPage * PAGE_SIZE_MEDICAL, filteredMedicalRecords.length)} of {filteredMedicalRecords.length} records
+                        </span>
+                      </div>
+                      <nav className="medical-pagination" aria-label="Medical Records Pagination">
+                        {/* Previous Button */}
+                        <button
+                          onClick={handleMedicalPrevious}
+                          disabled={medicalPage === 1}
+                          className={`pagination-btn pagination-prev ${medicalPage === 1 ? 'disabled' : ''}`}
+                          aria-label="Previous page"
+                        >
+                          <svg className="pagination-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                          <span className="pagination-btn-text">Previous</span>
+                        </button>
+                        
+                        {/* Page Numbers - Desktop */}
+                        <div className="pagination-numbers-desktop">
+                          {(() => {
+                            const pages = []
+                            const showEllipsis = medicalTotalPages > 7
+                            
+                            if (!showEllipsis) {
+                              // Show all pages if total pages <= 7
+                              for (let i = 1; i <= medicalTotalPages; i++) {
+                                pages.push(
+                                  <button
+                                    key={i}
+                                    onClick={() => handleMedicalPageChange(i)}
+                                    className={`pagination-number ${medicalPage === i ? 'active' : ''}`}
+                                    aria-label={`Go to page ${i}`}
+                                    aria-current={medicalPage === i ? 'page' : undefined}
+                                  >
+                                    {i}
+                                  </button>
+                                )
+                              }
+                            } else {
+                              // Show first page
+                              pages.push(
+                                <button
+                                  key={1}
+                                  onClick={() => handleMedicalPageChange(1)}
+                                  className={`pagination-number ${medicalPage === 1 ? 'active' : ''}`}
+                                  aria-label="Go to page 1"
+                                  aria-current={medicalPage === 1 ? 'page' : undefined}
+                                >
+                                  1
+                                </button>
+                              )
+                              
+                              // Show ellipsis and pages around current
+                              if (medicalPage > 3) {
+                                pages.push(<span key="ellipsis-start" className="pagination-ellipsis">...</span>)
+                              }
+                              
+                              // Show pages around current
+                              const start = Math.max(2, medicalPage - 1)
+                              const end = Math.min(medicalTotalPages - 1, medicalPage + 1)
+                              
+                              for (let i = start; i <= end; i++) {
+                                if (i !== 1 && i !== medicalTotalPages) {
+                                  pages.push(
+                                    <button
+                                      key={i}
+                                      onClick={() => handleMedicalPageChange(i)}
+                                      className={`pagination-number ${medicalPage === i ? 'active' : ''}`}
+                                      aria-label={`Go to page ${i}`}
+                                      aria-current={medicalPage === i ? 'page' : undefined}
+                                    >
+                                      {i}
+                                    </button>
+                                  )
+                                }
+                              }
+                              
+                              // Show ellipsis before last page if needed
+                              if (medicalPage < medicalTotalPages - 2) {
+                                pages.push(<span key="ellipsis-end" className="pagination-ellipsis">...</span>)
+                              }
+                              
+                              // Show last page
+                              if (medicalTotalPages > 1) {
+                                pages.push(
+                                  <button
+                                    key={medicalTotalPages}
+                                    onClick={() => handleMedicalPageChange(medicalTotalPages)}
+                                    className={`pagination-number ${medicalPage === medicalTotalPages ? 'active' : ''}`}
+                                    aria-label={`Go to page ${medicalTotalPages}`}
+                                    aria-current={medicalPage === medicalTotalPages ? 'page' : undefined}
+                                  >
+                                    {medicalTotalPages}
+                                  </button>
+                                )
+                              }
+                            }
+                            
+                            return pages
+                          })()}
+                        </div>
+                        
+                        {/* Current Page - Mobile Only */}
+                        <div className="pagination-numbers-mobile">
+                          <span className="pagination-current-mobile">Page {medicalPage} of {medicalTotalPages}</span>
+                        </div>
+                        
+                        {/* Next Button */}
+                        <button
+                          onClick={handleMedicalNext}
+                          disabled={medicalPage === medicalTotalPages}
+                          className={`pagination-btn pagination-next ${medicalPage === medicalTotalPages ? 'disabled' : ''}`}
+                          aria-label="Next page"
+                        >
+                          <span className="pagination-btn-text">Next</span>
+                          <svg className="pagination-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </nav>
+                    </div>
+                  )}
+                  </>
                 )}
               </div>
             )}
@@ -5793,82 +6408,278 @@ const handleToggleCompletedPatients = () => {
                   Additional Notes / Test Required
                 </label>
                 
-                {/* Test Dropdown - Based on Doctor's Specialization */}
+                {/* Professional Test Dropdown - Hospital Theme */}
                 <div className="mb-4">
-                  <div className="relative">
-                    <input
-                      ref={testInputRef}
-                      type="text"
-                      list="test-options"
-                      onChange={(e) => {
-                        // Handle datalist selection
-                        const selectedTest = e.target.value.trim()
-                        if (selectedTest && !prescriptionData.selectedTests.includes(selectedTest)) {
-                          setPrescriptionData({
-                            ...prescriptionData,
-                            selectedTests: [...prescriptionData.selectedTests, selectedTest]
-                          })
-                          // Clear the input
-                          if (testInputRef.current) {
-                            testInputRef.current.value = ''
-                          }
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          const selectedTest = e.target.value.trim()
-                          if (selectedTest && !prescriptionData.selectedTests.includes(selectedTest)) {
-                            setPrescriptionData({
-                              ...prescriptionData,
-                              selectedTests: [...prescriptionData.selectedTests, selectedTest]
-                            })
-                            // Clear the input
-                            if (testInputRef.current) {
-                              testInputRef.current.value = ''
+                  <div className="relative" ref={testDropdownRef}>
+                    <div className="relative">
+                      <input
+                        ref={testInputRef}
+                        type="text"
+                        value={testSearchValue}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          setTestSearchValue(value)
+                          setShowTestDropdown(true)
+                        }}
+                        onFocus={() => {
+                          setShowTestDropdown(true)
+                        }}
+                        onBlur={(e) => {
+                          // Delay to allow dropdown clicks
+                          setTimeout(() => {
+                            if (!testDropdownRef.current?.contains(document.activeElement)) {
+                              setShowTestDropdown(false)
                             }
+                          }, 200)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            const selectedTest = testSearchValue.trim()
+                            if (selectedTest && !prescriptionData.selectedTests.includes(selectedTest)) {
+                              setPrescriptionData({
+                                ...prescriptionData,
+                                selectedTests: [...prescriptionData.selectedTests, selectedTest]
+                              })
+                              setTestSearchValue('')
+                              setShowTestDropdown(false)
+                            }
+                          } else if (e.key === 'Escape') {
+                            setShowTestDropdown(false)
                           }
-                        }
-                      }}
-                      placeholder="Select or type test..."
-                      className="w-full px-4 py-3.5 border border-gray-200 rounded-[16px] focus:ring-2 focus:ring-[#3A9EC2]/20 focus:border-[#3A9EC2] outline-none bg-white transition-all text-sm font-medium placeholder:text-gray-400"
-                    />
-                    <datalist id="test-options">
-                      {(() => {
-                        const specialization = user?.specialization || ''
-                        const tests = getTestsForSpecialization(specialization)
-                        
-                        if (tests.length === 0) {
-                          return (
-                            <option value="No specific tests available. Please type your test." disabled>
-                              No specific tests available. Please type your test.
-                            </option>
-                          )
-                        }
-                        
-                        return tests.map((test) => (
-                          <option key={test} value={test}>
-                            {test}
-                          </option>
-                        ))
-                      })()}
-                    </datalist>
-                  </div>
-                  {user?.specialization && (() => {
-                    const tests = getTestsForSpecialization(user.specialization)
-                    if (tests.length > 0) {
+                        }}
+                        placeholder="Type to search or add custom test..."
+                        className="w-full px-4 sm:px-5 py-3 sm:py-3.5 pr-12 border-2 border-gray-200 rounded-xl sm:rounded-[16px] focus:ring-2 focus:ring-[#3A9EC2]/30 focus:border-[#3A9EC2] outline-none bg-white transition-all duration-200 text-sm sm:text-base font-medium placeholder:text-gray-400 shadow-sm hover:shadow-md hover:border-gray-300"
+                      />
+                      <div className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                        <svg 
+                          className={`w-5 h-5 text-[#3A9EC2] transition-transform duration-200 ${showTestDropdown ? 'rotate-180' : ''}`}
+                          fill="none" 
+                          stroke="currentColor" 
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Professional Dropdown Menu */}
+                    {showTestDropdown && (() => {
+                      const specialization = user?.specialization || ''
+                      const specializationTests = getTestsForSpecialization(specialization)
+                      
+                      // Common medical tests
+                      const commonTests = [
+                        'Blood Test',
+                        'Sugar Test',
+                        'Typhoid Test',
+                        'CBC (Complete Blood Count)',
+                        'Lipid Profile',
+                        'Urine Test',
+                        'X-Ray Chest',
+                        'ECG',
+                        'Ultrasound',
+                        'CT Scan',
+                        'MRI Scan',
+                        'Blood Sugar (Fasting)',
+                        'Blood Sugar (PP)',
+                        'Liver Function Test',
+                        'Kidney Function Test',
+                        'HbA1c',
+                        'Vitamin D',
+                        'Thyroid Function Test',
+                        'HIV Test',
+                        'Hepatitis B Test'
+                      ]
+                      
+                      const allTests = [...specializationTests, ...commonTests]
+                      const uniqueTests = [...new Set(allTests)]
+                      
+                      const filteredTests = uniqueTests.filter(test => {
+                        const isNotSelected = !prescriptionData.selectedTests.includes(test)
+                        const matchesSearch = test.toLowerCase().includes(testSearchValue.toLowerCase())
+                        return isNotSelected && matchesSearch
+                      }).slice(0, 10)
+                      
+                      const hasCustomInput = testSearchValue.trim() && 
+                        !filteredTests.some(test => test.toLowerCase() === testSearchValue.trim().toLowerCase()) &&
+                        !prescriptionData.selectedTests.some(test => test.toLowerCase() === testSearchValue.trim().toLowerCase())
+
                       return (
-                        <p className="mt-2.5 text-xs text-gray-500 font-medium">
-                          Test suggestions for <span className="font-semibold text-gray-700">{user.specialization}</span>. You can also type a custom test.
-                        </p>
+                        <div className="absolute z-50 mt-2 w-full bg-white border-2 border-gray-200 rounded-xl sm:rounded-[16px] shadow-xl max-h-[320px] sm:max-h-[360px] overflow-hidden animate-[slideDown_0.2s_ease-out]"
+                          style={{
+                            boxShadow: '0 8px 32px rgba(58, 158, 194, 0.15), 0 0 0 1px rgba(58, 158, 194, 0.1)'
+                          }}
+                        >
+                          {/* Dropdown Header with Close Button */}
+                          <div className="sticky top-0 bg-gradient-to-r from-white via-gray-50 to-white border-b-2 border-gray-200 px-4 sm:px-5 py-2.5 sm:py-3 flex items-center justify-between z-10 shadow-sm">
+                            <div className="flex items-center gap-2">
+                              <svg className="w-4 h-4 sm:w-5 sm:h-5 text-[#3A9EC2]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <p className="text-xs sm:text-sm font-semibold text-gray-700">
+                                Test Suggestions
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                setShowTestDropdown(false)
+                                if (testInputRef.current) {
+                                  testInputRef.current.blur()
+                                }
+                              }}
+                              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gray-100 hover:bg-red-50 text-gray-500 hover:text-red-600 flex items-center justify-center transition-all duration-200 flex-shrink-0 hover:scale-110 active:scale-95"
+                              aria-label="Close dropdown"
+                              title="Close dropdown"
+                            >
+                              <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="overflow-y-auto max-h-[260px] sm:max-h-[300px] custom-scrollbar">
+                            {/* Add Custom Test Option */}
+                            {hasCustomInput && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  const customTest = testSearchValue.trim()
+                                  if (!prescriptionData.selectedTests.includes(customTest)) {
+                                    setPrescriptionData({
+                                      ...prescriptionData,
+                                      selectedTests: [...prescriptionData.selectedTests, customTest]
+                                    })
+                                    setTestSearchValue('')
+                                    setShowTestDropdown(false)
+                                    if (testInputRef.current) {
+                                      testInputRef.current.focus()
+                                    }
+                                  }
+                                }}
+                                className="w-full px-4 sm:px-5 py-3 sm:py-3.5 text-left bg-gradient-to-r from-[#3A9EC2]/5 to-[#14B8A6]/5 border-b-2 border-gray-100 hover:from-[#3A9EC2]/10 hover:to-[#14B8A6]/10 transition-all duration-150 group min-h-[48px] sm:min-h-[52px] flex items-center"
+                              >
+                                <div className="flex items-center gap-3 flex-1">
+                                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gradient-to-br from-[#3A9EC2] to-[#14B8A6] flex items-center justify-center flex-shrink-0 shadow-sm">
+                                    <svg className="w-4 h-4 sm:w-5 sm:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                                    </svg>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm sm:text-base font-semibold text-[#3A9EC2] group-hover:text-[#2A8EAC] transition-colors">
+                                      Add "{testSearchValue.trim()}"
+                                    </p>
+                                    <p className="text-xs text-gray-500 mt-0.5">Press Enter or click to add custom test</p>
+                                  </div>
+                                </div>
+                              </button>
+                            )}
+
+                            {/* Test Suggestions */}
+                            {filteredTests.length > 0 ? (
+                              <>
+                                {specializationTests.length > 0 && filteredTests.some(test => specializationTests.includes(test)) && (
+                                  <div className="px-4 sm:px-5 py-2 bg-gray-50 border-b border-gray-100">
+                                    <p className="text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                      {specializationTests.length > 0 ? `Recommended for ${specialization}` : 'Common Tests'}
+                                    </p>
+                                  </div>
+                                )}
+                                {filteredTests.map((test, index) => {
+                                  const isSpecializationTest = specializationTests.includes(test)
+                                  return (
+                                    <button
+                                      key={`${test}-${index}`}
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        if (!prescriptionData.selectedTests.includes(test)) {
+                                          setPrescriptionData({
+                                            ...prescriptionData,
+                                            selectedTests: [...prescriptionData.selectedTests, test]
+                                          })
+                                          setTestSearchValue('')
+                                          setShowTestDropdown(false)
+                                          setTimeout(() => {
+                                            if (testInputRef.current) {
+                                              testInputRef.current.focus()
+                                            }
+                                          }, 100)
+                                        }
+                                      }}
+                                      className={`w-full px-4 sm:px-5 py-3 sm:py-3.5 text-left transition-all duration-150 border-b border-gray-50 last:border-b-0 hover:bg-gradient-to-r hover:from-[#3A9EC2]/5 hover:to-[#14B8A6]/5 group min-h-[48px] sm:min-h-[52px] flex items-center ${
+                                        isSpecializationTest ? 'bg-white' : ''
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-3 flex-1">
+                                        <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
+                                          isSpecializationTest 
+                                            ? 'bg-gradient-to-br from-[#3A9EC2]/20 to-[#14B8A6]/20 group-hover:from-[#3A9EC2]/30 group-hover:to-[#14B8A6]/30' 
+                                            : 'bg-gray-100 group-hover:bg-gray-200'
+                                        }`}>
+                                          <svg className={`w-4 h-4 sm:w-5 sm:h-5 ${isSpecializationTest ? 'text-[#3A9EC2]' : 'text-gray-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                          </svg>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className={`text-sm sm:text-base font-semibold transition-colors ${
+                                            isSpecializationTest 
+                                              ? 'text-[#3A9EC2] group-hover:text-[#2A8EAC]' 
+                                              : 'text-gray-800 group-hover:text-[#3A9EC2]'
+                                          }`}>
+                                            {test}
+                                          </p>
+                                          {isSpecializationTest && (
+                                            <p className="text-xs text-gray-500 mt-0.5">Recommended test</p>
+                                          )}
+                                        </div>
+                                        {isSpecializationTest && (
+                                          <span className="px-2 py-1 rounded-md bg-gradient-to-r from-[#3A9EC2]/10 to-[#14B8A6]/10 text-[10px] font-bold text-[#3A9EC2] uppercase tracking-wide flex-shrink-0">
+                                            Recommended
+                                          </span>
+                                        )}
+                                      </div>
+                                    </button>
+                                  )
+                                })}
+                              </>
+                            ) : (
+                              <div className="px-4 sm:px-5 py-6 sm:py-8 text-center">
+                                <svg className="w-12 h-12 sm:w-14 sm:h-14 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <p className="text-sm sm:text-base text-gray-500 font-medium">
+                                  {testSearchValue ? 'No matching tests found' : 'Start typing to search tests'}
+                                </p>
+                                {testSearchValue && (
+                                  <p className="text-xs text-gray-400 mt-1">Press Enter to add as custom test</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       )
-                    }
-                    return (
-                      <p className="mt-2.5 text-xs text-gray-500 font-medium">
-                        No specific tests available for <span className="font-semibold text-gray-700">{user.specialization}</span>. Please type your test.
-                      </p>
-                    )
-                  })()}
+                    })()}
+                  </div>
+                  
+                  {/* Helper Text */}
+                  {user?.specialization && (
+                    <p className="mt-2.5 text-xs sm:text-sm text-gray-500 font-medium">
+                      <span className="inline-flex items-center gap-1.5">
+                        <svg className="w-4 h-4 text-[#3A9EC2]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>
+                          Test suggestions for <span className="font-semibold text-gray-700">{user.specialization}</span>. You can type to search or add custom tests.
+                        </span>
+                      </span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Selected Tests Display with Remove Icons */}
@@ -6505,7 +7316,7 @@ const handleToggleCompletedPatients = () => {
 
 export default DoctorDashboard
 
-const CenteredPrescriptionToast = ({ message, onClose }) => {
+const CenteredPrescriptionToast = ({ message, onClose, prescriptionData }) => {
   const [isClosing, setIsClosing] = useState(false)
 
   const handleClose = useCallback(() => {
@@ -6513,16 +7324,92 @@ const CenteredPrescriptionToast = ({ message, onClose }) => {
     setIsClosing(true)
     setTimeout(() => {
       if (onClose) onClose()
+      setPdfPreviewUrl(null) // Clean up preview URL
     }, 320)
   }, [isClosing, onClose])
 
+  const handlePrintPDF = useCallback(() => {
+    if (!prescriptionData) return
+    
+    try {
+      // Generate traditional prescription PDF using the saved prescription data
+      const pdfBase64 = generateTraditionalPrescriptionPDF(
+        prescriptionData.patient,
+        prescriptionData.doctor,
+        prescriptionData.prescription
+      )
+      
+      // Create a blob from base64
+      const byteCharacters = atob(pdfBase64.split(',')[1])
+      const byteNumbers = new Array(byteCharacters.length)
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      const blob = new Blob([byteArray], { type: 'application/pdf' })
+      
+      // Open PDF in new window for printing
+      const url = URL.createObjectURL(blob)
+      const printWindow = window.open(url, '_blank')
+      
+      if (printWindow) {
+        printWindow.onload = () => {
+          setTimeout(() => {
+            printWindow.print()
+          }, 500)
+        }
+      } else {
+        // Fallback: Download PDF
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `Prescription_${prescriptionData.patient?.fullName || 'Patient'}_${new Date().toISOString().split('T')[0]}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+        toast.success('PDF downloaded. Please open and print it.')
+      }
+    } catch (error) {
+      console.error('PDF generation error:', error)
+      toast.error('Failed to generate PDF. Please try again.')
+    }
+  }, [prescriptionData])
+
+  // Generate PDF preview for thumbnail
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState(null)
+  const [isGeneratingPreview, setIsGeneratingPreview] = useState(false)
+
   useEffect(() => {
+    if (prescriptionData && !pdfPreviewUrl && !isGeneratingPreview) {
+      setIsGeneratingPreview(true)
+      try {
+        const pdfBase64 = generateTraditionalPrescriptionPDF(
+          prescriptionData.patient,
+          prescriptionData.doctor,
+          prescriptionData.prescription
+        )
+        setPdfPreviewUrl(pdfBase64)
+      } catch (error) {
+        console.error('Failed to generate PDF preview:', error)
+      } finally {
+        setIsGeneratingPreview(false)
+      }
+    }
+  }, [prescriptionData, pdfPreviewUrl, isGeneratingPreview])
+
+  useEffect(() => {
+    // Auto-close after 3.5s unless user interacts or has prescription data with preview
+    if (prescriptionData) {
+      // Don't auto-close if user has interacted or preview is showing
+      return
+    }
+    
     const timer = setTimeout(() => {
       handleClose()
-    }, 2500)
+    }, 3500)
 
     return () => clearTimeout(timer)
-  }, [handleClose])
+  }, [handleClose, prescriptionData])
 
   return (
     <>
@@ -6551,6 +7438,69 @@ const CenteredPrescriptionToast = ({ message, onClose }) => {
               <p>{message}</p>
             </div>
           </div>
+          
+          {/* Print PDF Button and Preview */}
+          {prescriptionData && (
+            <>
+              <div className="toast-actions">
+                <button
+                  type="button"
+                  onClick={handlePrintPDF}
+                  className="toast-print-btn"
+                  aria-label="Print PDF"
+                >
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  <span>Print PDF</span>
+                </button>
+              </div>
+              
+              {/* PDF Preview Thumbnail - Signature & Stamp Preview */}
+              {pdfPreviewUrl && (
+                <div className="toast-preview-container">
+                  <p className="toast-preview-label">📄 PDF Preview</p>
+                  <div className="toast-preview-wrapper">
+                    <iframe
+                      src={pdfPreviewUrl}
+                      className="toast-preview-iframe"
+                      title="PDF Preview"
+                    />
+                    {/* Overlay showing signature and stamp area */}
+                    <div className="toast-preview-overlay">
+                      <div className="toast-preview-highlight">
+                        <div className="toast-preview-sig-stamp">
+                          <div className="toast-preview-signature">
+                            <svg width="60" height="12" viewBox="0 0 60 12" fill="none">
+                              <path
+                                d="M 0 6 Q 10 2, 20 6 T 40 6 T 60 6"
+                                stroke="currentColor"
+                                strokeWidth="1"
+                                fill="none"
+                              />
+                            </svg>
+                            <span className="toast-preview-doc-name">
+                              {prescriptionData?.doctor?.fullName || 'Dr. Name'}
+                            </span>
+                          </div>
+                          <div className="toast-preview-stamp-box">
+                            <div className="toast-preview-stamp-border">
+                              <span className="toast-preview-stamp-text">
+                                {prescriptionData?.doctor?.clinicName || 'Tekisky Hospital'}
+                              </span>
+                              <span className="toast-preview-stamp-reg">
+                                {prescriptionData?.doctor?.registrationNo || 'REG-12345'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </>
