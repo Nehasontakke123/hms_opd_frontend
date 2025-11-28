@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
+import generateTraditionalPrescriptionPDF from '../utils/generateTraditionalPrescriptionPDF'
 
-const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientMobile, isRecheck, currentPatient }) => {
+const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientMobile, isRecheck, currentPatient, user }) => {
   const [medicalHistory, setMedicalHistory] = useState(null)
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -237,6 +238,83 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
     })
   }
 
+  const handlePrintPDF = () => {
+    if (!currentPatient || !currentPatient.prescription) {
+      toast.error('No prescription available for this patient')
+      return
+    }
+
+    try {
+      // Get doctor information from user prop or currentPatient
+      const doctorInfo = user ? {
+        fullName: user.fullName,
+        qualification: user.qualification,
+        specialization: user.specialization,
+        mobileNumber: user.mobileNumber,
+        clinicAddress: user.clinicAddress,
+        hospitalName: user.hospitalName || user.clinicName,
+        hospitalAddress: user.hospitalAddress || user.clinicAddress,
+        hospitalPhone: user.hospitalPhone || user.mobileNumber,
+        hospitalEmail: user.hospitalEmail || user.email,
+        registrationNo: user.registrationNo || user.registrationNumber,
+        signatureImage: user.signatureImage,
+        stampImage: user.stampImage
+      } : {
+        fullName: currentPatient.doctor?.fullName || currentPatient.doctor?.name || 'Doctor',
+        qualification: currentPatient.doctor?.qualification || 'MD',
+        specialization: currentPatient.doctor?.specialization,
+        mobileNumber: currentPatient.doctor?.mobileNumber || '9359481880',
+        clinicAddress: currentPatient.doctor?.clinicAddress || 'WorkshopNanded',
+        hospitalName: currentPatient.doctor?.hospitalName || currentPatient.doctor?.clinicName || 'Tekisky Hospital',
+        hospitalAddress: currentPatient.doctor?.hospitalAddress || currentPatient.doctor?.clinicAddress || 'WorkshopNanded',
+        hospitalPhone: currentPatient.doctor?.hospitalPhone || currentPatient.doctor?.mobileNumber || '9359481880',
+        hospitalEmail: currentPatient.doctor?.hospitalEmail || currentPatient.doctor?.email || 'monu@gmail.com',
+        registrationNo: currentPatient.doctor?.registrationNo || currentPatient.doctor?.registrationNumber || 'REG-12345'
+      }
+
+      // Generate PDF using the traditional prescription format
+      const pdfBase64 = generateTraditionalPrescriptionPDF(
+        currentPatient,
+        doctorInfo,
+        currentPatient.prescription
+      )
+
+      // Create a blob from base64
+      const byteCharacters = atob(pdfBase64.split(',')[1])
+      const byteNumbers = new Array(byteCharacters.length)
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      const blob = new Blob([byteArray], { type: 'application/pdf' })
+
+      // Open PDF in new window for printing
+      const url = URL.createObjectURL(blob)
+      const printWindow = window.open(url, '_blank')
+
+      if (printWindow) {
+        printWindow.onload = () => {
+          setTimeout(() => {
+            printWindow.print()
+          }, 500)
+        }
+      } else {
+        // Fallback: Download PDF
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `Prescription_${currentPatient.fullName || 'Patient'}_${new Date().toISOString().split('T')[0]}.pdf`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+        toast.success('PDF downloaded. Please open and print it.')
+      }
+    } catch (error) {
+      console.error('PDF generation error:', error)
+      toast.error('Failed to generate PDF. Please try again.')
+    }
+  }
+
   if (!isOpen) return null
 
   return (
@@ -264,15 +342,30 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
                   </div>
                 )}
               </div>
-              <button
-                onClick={handleClose}
-                className="close-button"
-                aria-label="Close modal"
-              >
-                <svg className="close-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <div className="header-right-actions">
+                {currentPatient?.prescription && (
+                  <button
+                    onClick={handlePrintPDF}
+                    className="print-pdf-button"
+                    aria-label="Print Prescription PDF"
+                    title="Print Prescription PDF"
+                  >
+                    <svg className="print-pdf-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                    <span>Print PDF</span>
+                  </button>
+                )}
+                <button
+                  onClick={handleClose}
+                  className="close-button"
+                  aria-label="Close modal"
+                >
+                  <svg className="close-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -753,7 +846,7 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
         .header-content {
           display: flex;
           justify-content: space-between;
-          align-items: flex-start;
+          align-items: center;
           gap: 1rem;
           position: relative;
           z-index: 1;
@@ -762,6 +855,12 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
         .header-left {
           flex: 1;
           min-width: 0;
+        }
+
+        .header-right-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
         }
 
         .header-title {
@@ -831,6 +930,43 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
           padding: 0;
           flex-shrink: 0;
           pointer-events: none;
+        }
+
+        /* Print PDF Button */
+        .print-pdf-button {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem 1rem;
+          background: linear-gradient(135deg, #8B5CF6 0%, #3B82F6 100%);
+          color: #FFFFFF;
+          border: none;
+          border-radius: 12px;
+          font-size: 0.875rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+          height: 2.5rem;
+          white-space: nowrap;
+        }
+
+        .print-pdf-button:hover {
+          background: linear-gradient(135deg, #7C3AED 0%, #2563EB 100%);
+          box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+          transform: translateY(-1px);
+        }
+
+        .print-pdf-button:active {
+          transform: translateY(0);
+          box-shadow: 0 2px 6px rgba(139, 92, 246, 0.3);
+        }
+
+        .print-pdf-icon {
+          width: 1rem;
+          height: 1rem;
+          opacity: 0.9;
+          flex-shrink: 0;
         }
 
         /* Search Section */
@@ -1517,8 +1653,25 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
           }
 
           .header-content {
-            flex-direction: column;
+            flex-direction: row;
+            align-items: flex-start;
             gap: 0.75rem;
+          }
+
+          .header-right-actions {
+            flex-direction: row;
+            gap: 0.5rem;
+          }
+
+          .print-pdf-button {
+            padding: 0.4375rem 0.875rem;
+            font-size: 0.8125rem;
+            height: 2.25rem;
+          }
+
+          .print-pdf-icon {
+            width: 0.9375rem;
+            height: 0.9375rem;
           }
 
           .header-left {
@@ -1746,6 +1899,21 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
 
           .header-subtitle {
             font-size: 0.8125rem;
+          }
+
+          .header-right-actions {
+            gap: 0.375rem;
+          }
+
+          .print-pdf-button {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.75rem;
+            height: 2rem;
+          }
+
+          .print-pdf-icon {
+            width: 0.875rem;
+            height: 0.875rem;
           }
 
           .close-button {

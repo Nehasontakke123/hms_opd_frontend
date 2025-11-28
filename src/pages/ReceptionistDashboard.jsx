@@ -3532,6 +3532,123 @@ const ReceptionistDashboard = () => {
           transform: translateZ(0);
           will-change: transform;
         }
+
+        /* Premium Doctor Avatar Styles */
+        .premium-avatar-container {
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .premium-avatar-container:hover .premium-doctor-avatar {
+          transform: translateY(-2px) translateZ(0);
+          box-shadow: 
+            0 4px 12px rgba(14, 165, 233, 0.15),
+            0 2px 8px rgba(0, 0, 0, 0.1),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+        }
+
+        .premium-doctor-avatar {
+          position: relative;
+          z-index: 1;
+        }
+
+        .premium-add-badge {
+          position: absolute;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .premium-add-badge:active {
+          transform: scale(0.98) !important;
+        }
+
+        .premium-add-badge svg {
+          pointer-events: none;
+        }
+
+        /* Mobile touch optimization */
+        @media (max-width: 640px) {
+          .premium-avatar-container:active .premium-doctor-avatar {
+            transform: translateY(-1px) translateZ(0);
+            box-shadow: 
+              0 3px 8px rgba(14, 165, 233, 0.12),
+              0 2px 6px rgba(0, 0, 0, 0.08),
+              inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+          }
+        }
+
+        /* Premium Select Fields - Select Doctor & Gender - Tekisky Hospital Theme */
+        .premium-select-wrapper {
+          position: relative;
+        }
+
+        .premium-select {
+          background-color: white;
+          background-image: none !important;
+          padding-right: 3rem;
+          cursor: pointer;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          font-family: 'Inter', 'Poppins', sans-serif;
+        }
+
+        .premium-select:hover {
+          border-color: #34d399;
+          box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.08);
+        }
+
+        .premium-select:focus {
+          border-color: #10b981;
+          box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12);
+          outline: none;
+        }
+
+        .premium-select-wrapper:focus-within .premium-select-arrow {
+          transform: rotate(180deg);
+          color: #10b981;
+        }
+
+        .premium-select-arrow {
+          transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s ease;
+          pointer-events: none;
+        }
+
+        .premium-select-wrapper:hover .premium-select-arrow {
+          color: #34d399;
+        }
+
+        /* Select option styling - Tekisky Hospital Theme */
+        .premium-select option {
+          padding: 12px 16px;
+          font-size: 14px;
+          font-weight: 500;
+          color: #1f2937;
+          background-color: white;
+          font-family: 'Inter', 'Poppins', sans-serif;
+        }
+
+        .premium-select option:disabled {
+          color: #9ca3af;
+          background-color: #f3f4f6;
+          font-style: italic;
+        }
+
+        .premium-select option:checked,
+        .premium-select option[selected] {
+          background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+          color: #059669;
+          font-weight: 600;
+        }
+
+        /* Enhanced focus state for select wrapper */
+        .premium-select-wrapper:focus-within {
+          z-index: 10;
+        }
+
+        /* Active state styling */
+        .premium-select:active {
+          border-color: #16a34a;
+        }
       `}</style>
 
       {/* Tab Content */}
@@ -3578,17 +3695,22 @@ const ReceptionistDashboard = () => {
                   <p className="text-gray-600" style={{ fontFamily: 'Poppins, sans-serif' }}>Loading doctors...</p>
                 </div>
               </div>
-            ) : (
-              <>
-                {/* Doctors Grid */}
-                <div 
-                  key={`page-${doctorsPage}`}
-                  className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 transition-all duration-300 ease-in-out"
-                  style={{
-                    animation: 'fadeInUp 0.3s ease-in-out'
-                  }}
-                >
-                  {doctors.map((doctor, index) => {
+            ) : (() => {
+              // Group doctors by availability status
+              const groupedDoctors = doctors.reduce((acc, doctor) => {
+                const stats = doctorStats[doctor._id] || {}
+                const isAvailable = stats.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
+                
+                if (isAvailable) {
+                  acc.available.push(doctor)
+                } else {
+                  acc.unavailable.push(doctor)
+                }
+                return acc
+              }, { available: [], unavailable: [] })
+
+              // Render doctor card component
+              const renderDoctorCard = (doctor, index, isUnavailable = false) => {
                 const stats = doctorStats[doctor._id] || {}
                 const dailyLimit = stats.dailyPatientLimit ?? doctor.dailyPatientLimit ?? 0
                 const todayCount = stats.todayPatientCount ?? 0
@@ -3626,9 +3748,16 @@ const ReceptionistDashboard = () => {
                   >
                     {/* Profile Image - Top Right Corner */}
                     <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-10">
-                      <div className="relative group">
+                      <div className="relative group premium-avatar-container">
+                        {/* Main Avatar Circle */}
                         <div 
-                          className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center shadow-lg border-2 border-white overflow-hidden"
+                          className="premium-doctor-avatar rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center overflow-hidden"
+                          style={{
+                            width: '48px',
+                            height: '48px',
+                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08), inset 0 0 0 1px rgba(255, 255, 255, 0.2)',
+                            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                          }}
                         >
                           {doctor.profileImage ? (
                             <img 
@@ -3644,13 +3773,13 @@ const ReceptionistDashboard = () => {
                             />
                           ) : null}
                           <span 
-                            className={`profile-fallback font-bold text-white ${doctor.profileImage ? 'hidden' : 'flex'} items-center justify-center w-full h-full text-sm sm:text-base md:text-xl`}
-                            style={{ fontWeight: 700 }}
+                            className={`profile-fallback font-bold text-white ${doctor.profileImage ? 'hidden' : 'flex'} items-center justify-center w-full h-full text-base`}
+                            style={{ fontWeight: 600 }}
                           >
                             {(doctor.fullName || 'D').charAt(0).toUpperCase()}
                           </span>
                         </div>
-                        {/* Upload Button Overlay */}
+                        {/* Premium Add Badge - Bottom Right */}
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -3658,17 +3787,56 @@ const ReceptionistDashboard = () => {
                             setProfileImagePreview(doctor.profileImage || null)
                             setShowProfileModal(true)
                           }}
-                          className="absolute bottom-0 right-0 w-5 h-5 sm:w-6 sm:h-6 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-md hover:bg-blue-700 active:bg-blue-800 transition-all duration-200 border-2 border-white touch-manipulation"
+                          className="premium-add-badge absolute rounded-full flex items-center justify-center touch-manipulation"
+                          style={{
+                            width: '15px',
+                            height: '15px',
+                            bottom: '-4px',
+                            right: '6px',
+                            background: 'linear-gradient(135deg, #14b8a6 0%, #06b6d4 100%)',
+                            border: '1.75px solid #ffffff',
+                            boxShadow: '0px 2px 6px rgba(0, 0, 0, 0.18)',
+                            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                            zIndex: 10
+                          }}
                           title="Upload Profile Photo"
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = 'scale(1.06)'
+                            e.currentTarget.style.boxShadow = '0px 3px 8px rgba(0, 0, 0, 0.22)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = 'scale(1)'
+                            e.currentTarget.style.boxShadow = '0px 2px 6px rgba(0, 0, 0, 0.18)'
+                          }}
                         >
-                          <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                          <svg 
+                            className="w-2.5 h-2.5" 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24" 
+                            strokeWidth={3}
+                            style={{ 
+                              strokeLinecap: 'round', 
+                              strokeLinejoin: 'round',
+                              color: '#ffffff'
+                            }}
+                          >
+                            <path d="M12 4v16m8-8H4" />
                           </svg>
                         </button>
                       </div>
                     </div>
 
                     <div className="p-2.5 sm:p-3">
+                      {/* Currently Unavailable Badge - Only for unavailable doctors */}
+                      {isUnavailable && (
+                        <div className="mb-2 flex justify-start">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold bg-orange-100 text-orange-700 border border-orange-200">
+                            Currently Unavailable
+                          </span>
+                        </div>
+                      )}
+
                       {/* Doctor Name */}
                       <div className="mb-2 pr-14 sm:pr-16 md:pr-20">
                         <h3 className="text-sm sm:text-base font-bold text-gray-900 leading-tight mb-1" style={{ fontWeight: 700 }}>
@@ -4020,81 +4188,140 @@ const ReceptionistDashboard = () => {
                     </div>
                   </div>
                 )
-                  })}
-                </div>
+              }
 
-                {/* Pagination Controls */}
-                {doctorsPagination.pages > 1 && (
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 pt-6 border-t border-gray-200 transition-all duration-300">
-                    {/* Pagination Info */}
-                    <div className="text-sm text-gray-600" style={{ fontFamily: 'Poppins, sans-serif' }}>
-                      Showing <span className="font-semibold text-gray-900">
-                        {doctors.length > 0 ? ((doctorsPage - 1) * doctorsLimit + 1) : 0}
-                      </span> to{' '}
-                      <span className="font-semibold text-gray-900">
-                        {Math.min(doctorsPage * doctorsLimit, doctorsPagination.total)}
-                      </span> of{' '}
-                      <span className="font-semibold text-gray-900">{doctorsPagination.total}</span> doctors
-                    </div>
-
-                    {/* Pagination Controls */}
-                    <div className="flex items-center gap-2">
-                      {/* Previous Button */}
-                      <button
-                        onClick={() => setDoctorsPage(prev => Math.max(1, prev - 1))}
-                        disabled={doctorsPage === 1 || loadingDoctors}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
-                          doctorsPage === 1 || loadingDoctors
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 hover:border-gray-400 shadow-sm hover:shadow-md'
-                        }`}
-                        style={{ fontFamily: 'Poppins, sans-serif' }}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                        </svg>
-                        Previous
-                      </button>
-
-                      {/* Page Info */}
-                      <div className="px-4 py-2 text-sm font-medium text-gray-700" style={{ fontFamily: 'Poppins, sans-serif' }}>
-                        Page {doctorsPage} of {doctorsPagination.pages}
+              return (
+                <>
+                  {/* Available Doctors Section */}
+                  {groupedDoctors.available.length > 0 && (
+                    <div className="mb-8">
+                      {/* Section Header */}
+                      <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-green-200">
+                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                          <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                          Available Doctors
+                          <span className="ml-2 px-2.5 py-0.5 text-xs font-semibold bg-green-100 text-green-700 rounded-full">
+                            {groupedDoctors.available.length}
+                          </span>
+                        </h3>
                       </div>
 
-                      {/* Next Button */}
-                      <button
-                        onClick={() => setDoctorsPage(prev => Math.min(doctorsPagination.pages, prev + 1))}
-                        disabled={doctorsPage >= doctorsPagination.pages || loadingDoctors}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
-                          doctorsPage >= doctorsPagination.pages || loadingDoctors
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 hover:border-gray-400 shadow-sm hover:shadow-md'
-                        }`}
-                        style={{ fontFamily: 'Poppins, sans-serif' }}
+                      {/* Available Doctors Grid */}
+                      <div 
+                        className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 transition-all duration-300 ease-in-out"
+                        style={{
+                          animation: 'fadeInUp 0.3s ease-in-out'
+                        }}
                       >
-                        Next
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                        </svg>
-                      </button>
+                        {groupedDoctors.available.map((doctor, index) => renderDoctorCard(doctor, index, false))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Empty State */}
-                {!loadingDoctors && doctors.length === 0 && (
-                  <div className="text-center py-12 transition-all duration-300">
-                    <div className="text-gray-400 text-4xl mb-4">🔍</div>
-                    <p className="text-gray-600 text-lg font-medium" style={{ fontFamily: 'Poppins, sans-serif' }}>
-                      {doctorsSearch.trim() ? 'No doctors found' : 'No doctors available'}
-                    </p>
-                    <p className="text-gray-500 text-sm mt-2" style={{ fontFamily: 'Poppins, sans-serif' }}>
-                      {doctorsSearch.trim() ? 'Try adjusting your search criteria' : 'Please contact admin'}
-                    </p>
-                  </div>
-                )}
-              </>
-            )}
+                  {/* Divider between sections */}
+                  {groupedDoctors.available.length > 0 && groupedDoctors.unavailable.length > 0 && (
+                    <div className="my-8 border-t-2 border-gray-200"></div>
+                  )}
+
+                  {/* Unavailable Doctors Section */}
+                  {groupedDoctors.unavailable.length > 0 && (
+                    <div className="mt-8">
+                      {/* Section Header */}
+                      <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-orange-200">
+                        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                          <span className="w-2 h-2 rounded-full bg-orange-500"></span>
+                          Unavailable Doctors
+                          <span className="ml-2 px-2.5 py-0.5 text-xs font-semibold bg-orange-100 text-orange-700 rounded-full">
+                            {groupedDoctors.unavailable.length}
+                          </span>
+                        </h3>
+                      </div>
+
+                      {/* Unavailable Doctors Grid */}
+                      <div 
+                        className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 transition-all duration-300 ease-in-out"
+                        style={{
+                          animation: 'fadeInUp 0.3s ease-in-out'
+                        }}
+                      >
+                        {groupedDoctors.unavailable.map((doctor, index) => renderDoctorCard(doctor, index, true))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Empty State - No doctors found */}
+                  {!loadingDoctors && groupedDoctors.available.length === 0 && groupedDoctors.unavailable.length === 0 && (
+                    <div className="text-center py-12 transition-all duration-300">
+                      <div className="text-gray-400 text-4xl mb-4">🔍</div>
+                      <p className="text-gray-600 text-lg font-medium" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                        {doctorsSearch.trim() ? 'No doctors found' : 'No doctors available'}
+                      </p>
+                      <p className="text-gray-500 text-sm mt-2" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                        {doctorsSearch.trim() ? 'Try adjusting your search criteria' : 'Please contact admin'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Pagination Controls */}
+                  {doctorsPagination.pages > 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-gray-200 transition-all duration-300">
+                      {/* Pagination Info */}
+                      <div className="text-sm text-gray-600" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                        Showing <span className="font-semibold text-gray-900">
+                          {doctors.length > 0 ? ((doctorsPage - 1) * doctorsLimit + 1) : 0}
+                        </span> to{' '}
+                        <span className="font-semibold text-gray-900">
+                          {Math.min(doctorsPage * doctorsLimit, doctorsPagination.total)}
+                        </span> of{' '}
+                        <span className="font-semibold text-gray-900">{doctorsPagination.total}</span> doctors
+                      </div>
+
+                      {/* Pagination Controls */}
+                      <div className="flex items-center gap-2">
+                        {/* Previous Button */}
+                        <button
+                          onClick={() => setDoctorsPage(prev => Math.max(1, prev - 1))}
+                          disabled={doctorsPage === 1 || loadingDoctors}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                            doctorsPage === 1 || loadingDoctors
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                              : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 hover:border-gray-400 shadow-sm hover:shadow-md'
+                          }`}
+                          style={{ fontFamily: 'Poppins, sans-serif' }}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                          </svg>
+                          Previous
+                        </button>
+
+                        {/* Page Info */}
+                        <div className="px-4 py-2 text-sm font-medium text-gray-700" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                          Page {doctorsPage} of {doctorsPagination.pages}
+                        </div>
+
+                        {/* Next Button */}
+                        <button
+                          onClick={() => setDoctorsPage(prev => Math.min(doctorsPagination.pages, prev + 1))}
+                          disabled={doctorsPage >= doctorsPagination.pages || loadingDoctors}
+                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1 ${
+                            doctorsPage >= doctorsPagination.pages || loadingDoctors
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                              : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-300 hover:border-gray-400 shadow-sm hover:shadow-md'
+                          }`}
+                          style={{ fontFamily: 'Poppins, sans-serif' }}
+                        >
+                          Next
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </div>
         )}
 
@@ -4394,20 +4621,37 @@ const ReceptionistDashboard = () => {
                 <label className={getLabelClasses('gender')}>
                   Gender <span className="text-red-500">*</span>
                 </label>
-                <select
-                  name="gender"
-                  ref={(el) => (inputRefs.current.gender = el)}
-                  value={formData.gender}
-                  onChange={handleChange}
-                  onFocus={() => handleFieldFocus('gender')}
-                  onBlur={handleFieldBlur}
-                  className={`${getFieldClasses('gender')} appearance-none pr-10`}
-                >
-                  <option value="">Select Gender</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
+                <div className="relative premium-select-wrapper">
+                  <select
+                    name="gender"
+                    ref={(el) => (inputRefs.current.gender = el)}
+                    value={formData.gender}
+                    onChange={handleChange}
+                    onFocus={() => handleFieldFocus('gender')}
+                    onBlur={handleFieldBlur}
+                    className={`${getFieldClasses('gender')} premium-select appearance-none pr-12`}
+                    style={{
+                      backgroundImage: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="">Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  {/* Custom Dropdown Arrow */}
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <svg 
+                      className="w-5 h-5 text-gray-400 transition-transform duration-200 premium-select-arrow" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
                 {formErrors.gender && (
                   <p className="text-xs text-red-600 break-words">{formErrors.gender}</p>
                 )}
@@ -4417,33 +4661,50 @@ const ReceptionistDashboard = () => {
                 <label className={getLabelClasses('doctor')}>
                   Select Doctor <span className="text-red-500">*</span>
                 </label>
-                <select
-                  name="doctor"
-                  ref={(el) => (inputRefs.current.doctor = el)}
-                  value={formData.doctor}
-                  onChange={handleChange}
-                  onFocus={() => handleFieldFocus('doctor')}
-                  onBlur={handleFieldBlur}
-                  className={`${getFieldClasses('doctor')} appearance-none pr-10`}
-                >
-                  <option value="">Select a doctor</option>
-                  {allDoctors.map((doctor) => {
-                    const stats = doctorStats[doctor._id]
-                    const slotsInfo = stats ? ` [${stats.remainingSlots} slots left]` : ''
-                    const isLimitReached = stats?.isLimitReached
-                    const isAvailable = stats?.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
-                    const isDisabled = isLimitReached || !isAvailable
-                    return (
-                      <option
-                        key={doctor._id}
-                        value={doctor._id}
-                        disabled={isDisabled}
-                      >
-                        {doctor.fullName} {doctor.specialization ? `- ${doctor.specialization}` : ''} {doctor.fees ? `(₹${doctor.fees})` : ''}{slotsInfo}{!isAvailable ? ' - NOT AVAILABLE' : ''}{isLimitReached ? ' - LIMIT REACHED' : ''}
-                      </option>
-                    )
-                  })}
-                </select>
+                <div className="relative premium-select-wrapper">
+                  <select
+                    name="doctor"
+                    ref={(el) => (inputRefs.current.doctor = el)}
+                    value={formData.doctor}
+                    onChange={handleChange}
+                    onFocus={() => handleFieldFocus('doctor')}
+                    onBlur={handleFieldBlur}
+                    className={`${getFieldClasses('doctor')} premium-select appearance-none pr-12`}
+                    style={{
+                      backgroundImage: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="">Select a doctor</option>
+                    {allDoctors.map((doctor) => {
+                      const stats = doctorStats[doctor._id]
+                      const slotsInfo = stats ? ` [${stats.remainingSlots} slots left]` : ''
+                      const isLimitReached = stats?.isLimitReached
+                      const isAvailable = stats?.isAvailable !== undefined ? stats.isAvailable : doctor.isAvailable !== undefined ? doctor.isAvailable : true
+                      const isDisabled = isLimitReached || !isAvailable
+                      return (
+                        <option
+                          key={doctor._id}
+                          value={doctor._id}
+                          disabled={isDisabled}
+                        >
+                          {doctor.fullName} {doctor.specialization ? `- ${doctor.specialization}` : ''} {doctor.fees ? `(₹${doctor.fees})` : ''}{slotsInfo}{!isAvailable ? ' - NOT AVAILABLE' : ''}{isLimitReached ? ' - LIMIT REACHED' : ''}
+                        </option>
+                      )
+                    })}
+                  </select>
+                  {/* Custom Dropdown Arrow */}
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                    <svg 
+                      className="w-5 h-5 text-gray-400 transition-transform duration-200 premium-select-arrow" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
                 {formErrors.doctor && (
                   <p className="text-xs text-red-600 break-words">{formErrors.doctor}</p>
                 )}

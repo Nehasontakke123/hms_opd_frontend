@@ -488,15 +488,20 @@ const DoctorDashboard = () => {
   const [loadingMedical, setLoadingMedical] = useState(false)
   const [selectedPatient, setSelectedPatient] = useState(null)
   const [activePatientFilter, setActivePatientFilter] = useState(null) // Patient ID to filter by
+  const [activeFilterManuallyCleared, setActiveFilterManuallyCleared] = useState(false)
   const [newPatients, setNewPatients] = useState([]) // Newly registered patients
   const seenPatientIdsRef = useRef(new Set()) // Track seen patients using ref to avoid dependency issues
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
   const [expandedInlineHistoryPanels, setExpandedInlineHistoryPanels] = useState({})
+  const [showWaitingPatientsPanel, setShowWaitingPatientsPanel] = useState(false)
   const notificationRef = useRef(null)
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [showStatsNotification, setShowStatsNotification] = useState(true)
   const [showCompletedPatientsPanel, setShowCompletedPatientsPanel] = useState(false)
+  const [completedPatientsList, setCompletedPatientsList] = useState([]) // Real-time completed patients list (auto-fetched)
+  const [loadingCompletedPatients, setLoadingCompletedPatients] = useState(false)
+  const [showBillingSummaryModal, setShowBillingSummaryModal] = useState(false)
   const [doctorStats, setDoctorStats] = useState(null)
   const [openInstructionsDropdown, setOpenInstructionsDropdown] = useState(null) // Track which medicine dropdown is open
   const [showPrescriptionSuccessToast, setShowPrescriptionSuccessToast] = useState(false)
@@ -564,10 +569,29 @@ const DoctorDashboard = () => {
   const [testSearchValue, setTestSearchValue] = useState('')
   const testDropdownRef = useRef(null)
 
-  const completedPatients = useMemo(
-    () => patients.filter((patient) => patient.status === 'completed'),
-    [patients]
-  )
+  // Completed patients - use separate state for real-time updates
+  // Fallback to computed list if API hasn't loaded yet
+  const completedPatients = useMemo(() => {
+    // If we have fetched completed patients, use those (they're sorted by completion time)
+    if (completedPatientsList.length > 0) {
+      return completedPatientsList
+    }
+    // Fallback: compute from patients list
+    return patients.filter((patient) => patient.status === 'completed')
+      .sort((a, b) => {
+        const timeA = new Date(a.prescription?.createdAt || a.updatedAt || a.createdAt || 0).getTime()
+        const timeB = new Date(b.prescription?.createdAt || b.updatedAt || b.createdAt || 0).getTime()
+        return timeB - timeA // Descending order (newest first)
+      })
+  }, [completedPatientsList, patients])
+  
+  // Calculate total collection amount
+  const totalCollectionAmount = useMemo(() => {
+    return completedPatients.reduce((sum, patient) => {
+      const fee = patient.consultationFee || patient.fees || 500
+      return sum + Number(fee)
+    }, 0)
+  }, [completedPatients])
 
   const remainingPatients = useMemo(
     () => patients.filter((patient) => patient.status !== 'completed'),
@@ -873,6 +897,49 @@ const DoctorDashboard = () => {
     }
   }, [user?.id])
 
+  const fetchCompletedPatients = useCallback(async () => {
+    if (!user?.id) return
+    
+    setLoadingCompletedPatients(true)
+    try {
+      // Try to fetch from backend API first - GET /patients/completed/:doctorId
+      const response = await api.get(`/patients/completed/${user.id}`)
+      const fetchedCompleted = response.data?.data || response.data || []
+      const completedList = Array.isArray(fetchedCompleted) ? fetchedCompleted : []
+      
+      // Sort by latest completed time (descending) - newest first
+      completedList.sort((a, b) => {
+        const timeA = new Date(a.completedTime || a.prescription?.createdAt || a.updatedAt || a.createdAt || 0).getTime()
+        const timeB = new Date(b.completedTime || b.prescription?.createdAt || b.updatedAt || b.createdAt || 0).getTime()
+        return timeB - timeA // Descending order (newest first)
+      })
+      
+      setCompletedPatientsList(completedList)
+    } catch (error) {
+      // If endpoint doesn't exist, use fallback from today's patients
+      if (error.response?.status === 404 || error.response?.status === 400) {
+        // Fallback: Get completed patients from today's patients list
+        const completedList = patients
+          .filter(p => 
+            (p.doctor?._id === user.id || p.doctor === user.id) &&
+            p.status === 'completed'
+          )
+          .sort((a, b) => {
+            const timeA = new Date(a.prescription?.createdAt || a.updatedAt || a.createdAt || 0).getTime()
+            const timeB = new Date(b.prescription?.createdAt || b.updatedAt || b.createdAt || 0).getTime()
+            return timeB - timeA // Descending order (newest first)
+          })
+        
+        setCompletedPatientsList(completedList)
+      } else {
+        console.error('Failed to fetch completed patients:', error)
+        // Don't clear existing data on error - preserve what we have
+      }
+    } finally {
+      setLoadingCompletedPatients(false)
+    }
+  }, [user?.id, patients])
+
   // Medicine search functions
   const fetchMedicines = useCallback(async (searchTerm = '', category = '') => {
     setLoadingMedicines(true)
@@ -1089,7 +1156,17 @@ const DoctorDashboard = () => {
       isMounted = false
       clearInterval(interval)
     }
-  }, [user?.id, activeTab, fetchTodayPatients, fetchDoctorStats, fetchEmergencyPatients])
+  }, [user?.id, activeTab, fetchTodayPatients, fetchDoctorStats, fetchEmergencyPatients, fetchCompletedPatients])
+  
+  // Fetch completed patients when patients list updates (to sync with latest data)
+  useEffect(() => {
+    if (user?.id && patients.length > 0) {
+      const timer = setTimeout(() => {
+        fetchCompletedPatients()
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [user?.id, patients.length, fetchCompletedPatients])
 
   const handleToggleAvailability = async () => {
     try {
@@ -1601,6 +1678,7 @@ const handleToggleCompletedPatients = () => {
 }
 
   const handlePatientNotificationClick = (patient) => {
+    setActiveFilterManuallyCleared(false)
     setActivePatientFilter(patient._id)
     setSelectedPatient(patient)
     setActiveTab('active')
@@ -1611,6 +1689,7 @@ const handleToggleCompletedPatients = () => {
   }
 
   const handleClearActiveFilter = () => {
+    setActiveFilterManuallyCleared(true)
     setActivePatientFilter(null)
     setSelectedPatient(null)
     setActiveTab('today')
@@ -2342,20 +2421,85 @@ const handleToggleCompletedPatients = () => {
         responseData: response.data.data
       })
 
-      setShowPrescriptionSuccessToast(true)
+      // Get updated patient data from response
+      const updatedPatient = response.data.data
       
-      // Update selected patient with the response data if it's the same patient
-      if (selectedPatient && response.data.data) {
-        setSelectedPatient(response.data.data)
+      // OPTIMISTIC UI UPDATE: Immediately update patient state across all tabs
+      if (selectedPatient && updatedPatient) {
+        // Create the completed patient object with prescription
+        const completedPatient = {
+          ...updatedPatient,
+          status: 'completed',
+          completedTime: new Date().toISOString(),
+          consultationFee: updatedPatient.fees || selectedPatient.fees || 500,
+          doctorId: user.id,
+          prescription: updatedPatient.prescription || response.data.data?.prescription || tempPrescription
+        }
+
+        // 1. Update patients list immediately (optimistic update)
+        setPatients(prev => prev.map(p => 
+          p._id === selectedPatient._id 
+            ? { ...p, ...completedPatient }
+            : p
+        ))
+
+        // 2. Update selectedPatient state
+        setSelectedPatient(completedPatient)
+
+        // 3. Add to completed patients list at the top (newest first)
+        setCompletedPatientsList(prev => {
+          const filtered = prev.filter(p => p._id !== completedPatient._id)
+          return [completedPatient, ...filtered]
+        })
+
+        // 4. Update medical records list if it exists
+        setMedicalRecords(prev => {
+          // Check if patient already exists in medical records
+          const existingIndex = prev.findIndex(p => p._id === selectedPatient._id)
+          if (existingIndex >= 0) {
+            // Update existing record
+            const updated = [...prev]
+            updated[existingIndex] = completedPatient
+            return updated
+          } else {
+            // Add new record at the beginning
+            return [completedPatient, ...prev]
+          }
+        })
       }
-      
+
+      // Update patient status in backend (non-blocking)
+      try {
+        await api.put(`/patient/${selectedPatient._id}/status`, { 
+          status: 'completed',
+          completedTime: new Date().toISOString(),
+          consultationFee: selectedPatient.fees || 500,
+          doctorId: user.id
+        })
+      } catch (error) {
+        console.error('Failed to update patient status to completed:', error)
+        // Continue even if status update fails - UI is already updated
+      }
+
+      // Close the prescription modal immediately
       handleClosePrescriptionModal()
-      fetchTodayPatients()
-      // Always refresh medical records so the badge count is updated
-      fetchMedicalRecords()
-      if (activeTab === 'history') {
-        fetchPatientHistory()
-      }
+      
+      // Close waiting patients panel if open
+      setShowWaitingPatientsPanel(false)
+
+      // Show success modal with PDF preview (same as Patients Today flow)
+      setShowPrescriptionSuccessToast(true)
+
+      // Refetch data in background to ensure consistency (non-blocking)
+      Promise.all([
+        fetchTodayPatients(),
+        fetchCompletedPatients(),
+        fetchMedicalRecords(),
+        activeTab === 'history' ? fetchPatientHistory() : Promise.resolve()
+      ]).catch(error => {
+        console.error('Error refetching data:', error)
+        // UI is already updated optimistically, so errors here are non-critical
+      })
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to save prescription')
     } finally {
@@ -2703,6 +2847,103 @@ const handleToggleCompletedPatients = () => {
     resolvePatientHistoryKey
   ])
 
+  useEffect(() => {
+    if (activeTab === 'active') {
+      setActiveFilterManuallyCleared(false)
+    }
+  }, [activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'active') return
+    if (!uniquePatients.length) {
+      setActivePatientFilter(null)
+      setSelectedPatient(null)
+      return
+    }
+    if (activeFilterManuallyCleared) return
+
+    const sortedByRecency = [...uniquePatients].sort((a, b) => {
+      const dateA = new Date(a.registrationDate || a.createdAt || 0).getTime()
+      const dateB = new Date(b.registrationDate || b.createdAt || 0).getTime()
+      return dateB - dateA
+    })
+
+    const prioritized =
+      sortedByRecency.find((patient) => patient.status === 'in-progress') ||
+      sortedByRecency.find((patient) => patient.status === 'waiting')
+    const fallbackPatient = prioritized || sortedByRecency[0]
+
+    if (!fallbackPatient?._id) return
+
+    const currentSelection = uniquePatients.find(
+      (patient) => patient._id === activePatientFilter && patient.status !== 'completed'
+    )
+
+    if (currentSelection) {
+      setSelectedPatient(currentSelection)
+      return
+    }
+
+    setActivePatientFilter(fallbackPatient._id)
+    setSelectedPatient(fallbackPatient)
+  }, [activeTab, uniquePatients, activePatientFilter, activeFilterManuallyCleared])
+
+  // Real-time polling for Active Patients tab (more frequent updates)
+  useEffect(() => {
+    if (activeTab !== 'active') return
+    fetchTodayPatients({ showLoader: false })
+    // Poll every 5 seconds for real-time feel (can be upgraded to WebSocket later)
+    const interval = setInterval(() => {
+      fetchTodayPatients({ showLoader: false })
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [activeTab, fetchTodayPatients])
+
+  // Calculate active patients queue (waiting + in-progress, excluding completed)
+  const activePatientsQueue = useMemo(() => {
+    return uniquePatients
+      .filter(patient => {
+        // Exclude completed patients and cancelled patients
+        if (patient.status === 'completed' || patient.isCancelled) return false
+        // Include waiting, in-progress, or undefined status (treat as waiting)
+        return true
+      })
+      .sort((a, b) => {
+        // Prioritize in-progress, then by registration date (FIFO queue)
+        if (a.status === 'in-progress' && b.status !== 'in-progress') return -1
+        if (b.status === 'in-progress' && a.status !== 'in-progress') return 1
+        const dateA = new Date(a.registrationDate || a.createdAt || 0).getTime()
+        const dateB = new Date(b.registrationDate || b.createdAt || 0).getTime()
+        return dateA - dateB // Oldest first (FIFO queue)
+      })
+  }, [uniquePatients])
+
+  // Calculate waiting count
+  const waitingCount = useMemo(() => {
+    return activePatientsQueue.filter(p => p.status === 'waiting' || !p.status).length
+  }, [activePatientsQueue])
+
+  // Filter and sort waiting patients for the panel
+  const waitingPatientsList = useMemo(() => {
+    return activePatientsQueue
+      .filter(p => p.status === 'waiting' || !p.status)
+      .sort((a, b) => {
+        // Sort by token number ascending
+        const tokenA = parseInt(a.tokenNumber || '0', 10)
+        const tokenB = parseInt(b.tokenNumber || '0', 10)
+        return tokenA - tokenB
+      })
+  }, [activePatientsQueue])
+
+  // Calculate wait time for each patient
+  const getWaitTime = useCallback((patient) => {
+    const registrationTime = new Date(patient.registrationDate || patient.createdAt || Date.now())
+    const now = new Date()
+    const diffMs = now - registrationTime
+    const diffMins = Math.floor(diffMs / 60000)
+    return diffMins
+  }, [])
+
   const filteredHistoryPatients = filterPatients(patientHistory, searchHistory)
     .slice()
     .sort((a, b) => {
@@ -2863,16 +3104,193 @@ const handleToggleCompletedPatients = () => {
           onClose={() => {
             setShowPrescriptionSuccessToast(false)
             setSavedPrescriptionData(null)
+            // Refresh Active Patients list after closing modal
+            if (activeTab === 'active' || activeTab === 'today') {
+              fetchTodayPatients({ showLoader: false })
+            }
           }}
           prescriptionData={savedPrescriptionData}
         />
       )}
 
+      {/* Billing Summary Modal */}
+      {showBillingSummaryModal && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => setShowBillingSummaryModal(false)}
+          />
+          
+          {/* Modal Content */}
+          <div className="relative w-full max-w-md bg-gradient-to-br from-white via-purple-50/50 to-blue-50/50 rounded-2xl shadow-2xl border border-purple-100 animate-scale-in">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => setShowBillingSummaryModal(false)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 transition-colors rounded-lg hover:bg-white/50"
+              aria-label="Close"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Header */}
+            <div className="px-6 pt-6 pb-4 border-b border-purple-100">
+              <h2 className="text-xl font-bold text-gray-900">Today's Total Collection</h2>
+              <p className="text-sm text-gray-500 mt-1">Complete billing summary for today</p>
+            </div>
+
+            {/* Content */}
+            <div className="px-6 py-4">
+              {/* Stats */}
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-white/60 rounded-xl p-4 border border-purple-100">
+                  <p className="text-xs text-gray-500 mb-1">Completed Patients</p>
+                  <p className="text-2xl font-bold text-purple-700">{completedPatients.length}</p>
+                </div>
+                <div className="bg-white/60 rounded-xl p-4 border border-purple-100">
+                  <p className="text-xs text-gray-500 mb-1">Total Amount</p>
+                  <p className="text-2xl font-bold text-emerald-700">{formatConsultationFee(totalCollectionAmount)}</p>
+                </div>
+              </div>
+
+              {/* Patient List */}
+              {completedPatients.length > 0 ? (
+                <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                  <p className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">Fee Breakdown</p>
+                  <div className="space-y-2">
+                    {completedPatients.map((patient, index) => {
+                      const consultationFee = patient.consultationFee || patient.fees || 500
+                      return (
+                        <div
+                          key={patient._id || index}
+                          className="flex items-center justify-between p-3 bg-white/40 rounded-lg border border-purple-50"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">
+                              {patient.fullName || 'Unnamed Patient'}
+                            </p>
+                            {patient.patientId && (
+                              <p className="text-xs text-gray-500 truncate">{patient.patientId}</p>
+                            )}
+                          </div>
+                          <p className="text-sm font-bold text-emerald-700 ml-3">
+                            {formatConsultationFee(consultationFee)}
+                          </p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-sm text-gray-500">No completed patients yet</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-blue-50 border-t border-purple-100 rounded-b-2xl">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-700">Grand Total:</span>
+                <span className="text-xl font-bold text-emerald-700">{formatConsultationFee(totalCollectionAmount)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* CSS Animations for Modal */}
       <style>{`
+        @keyframes fade-in {
+          0% {
+            opacity: 0;
+            transform: translateY(4px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes status-change {
+          0% {
+            opacity: 0;
+            transform: scale(0.9);
+          }
+          50% {
+            transform: scale(1.05);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        @keyframes slide-in {
+          0% {
+            opacity: 0;
+            transform: translateX(-10px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+
+        .animate-fade-in {
+          animation: fade-in 0.3s ease-out forwards;
+        }
+
+        .animate-status-change {
+          animation: status-change 0.4s ease-out forwards;
+        }
+
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out forwards;
+        }
+
         @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
+          from { 
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          to { 
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        @keyframes scaleIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        .completed-patient-fade-in {
+          animation: fadeIn 0.4s ease-out forwards;
+        }
+        .animate-scale-in {
+          animation: scaleIn 0.3s ease-out forwards;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
         }
         @keyframes slideIn {
           from {
@@ -2940,7 +3358,7 @@ const handleToggleCompletedPatients = () => {
           );
           backdrop-filter: blur(24px) saturate(180%);
           -webkit-backdrop-filter: blur(24px) saturate(180%);
-          border-radius: 24px;
+          border-radius: 32px;
           padding: clamp(1.25rem, 2.5vw, 1.5rem) clamp(1.25rem, 2.5vw, 1.75rem);
           box-shadow:
             0 32px 64px rgba(16, 185, 129, 0.2),
@@ -3945,23 +4363,44 @@ const handleToggleCompletedPatients = () => {
                         <p className="text-sm font-semibold text-purple-700">Completed Patients</p>
                         <p className="text-xs text-gray-500">Review completed consultations and pending names</p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleToggleCompletedPatients}
-                        className="text-xs font-semibold text-gray-500 hover:text-purple-600 transition"
-                      >
-                        Close
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowBillingSummaryModal(true)}
+                          className="px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all duration-150 shadow-sm hover:shadow-md"
+                        >
+                          View Today's Total Collection
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleToggleCompletedPatients}
+                          className="text-xs font-semibold text-gray-500 hover:text-purple-600 transition"
+                        >
+                          Close
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="mt-3 grid gap-3 max-h-56 overflow-y-auto pr-1">
-                      {completedPatients.length > 0 ? (
-                        completedPatients.map((patient) => {
+                    <div className="mt-3 grid gap-3 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
+                      {loadingCompletedPatients ? (
+                        <div className="text-center py-4">
+                          <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-emerald-200 border-t-emerald-600"></div>
+                          <p className="mt-2 text-xs text-gray-500">Loading completed patients...</p>
+                        </div>
+                      ) : completedPatients.length > 0 ? (
+                        completedPatients.map((patient, index) => {
                           const key = patient._id || patient.id || patient.patientId || patient.fullName
+                          // Get consultation fee from multiple possible sources (backend may update this)
+                          const consultationFee = patient.consultationFee || patient.fees || 500
+                          
                           return (
                             <div
                               key={key}
-                              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-gradient-to-r from-emerald-50 to-green-50 p-4"
+                              className="completed-patient-fade-in flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-gradient-to-r from-emerald-50 to-green-50 p-4 shadow-sm hover:shadow-md transition-all duration-200"
+                              style={{
+                                animation: `fadeIn 0.4s ease-out ${index * 0.05}s both`,
+                                transition: 'opacity 0.4s ease-out, transform 0.4s ease-out'
+                              }}
                             >
                               <div className="min-w-[160px]">
                                 <p className="text-sm font-semibold text-gray-900">
@@ -3972,12 +4411,12 @@ const handleToggleCompletedPatients = () => {
                                 )}
                               </div>
                               <div className="text-xs font-semibold uppercase tracking-wide text-emerald-600 flex items-center gap-2">
-                                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
-                                Status: Completed
+                                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                STATUS: COMPLETED
                               </div>
                               <p className="text-sm font-semibold text-gray-800">
                                 Consultation Fee:{' '}
-                                <span className="text-emerald-700">{formatConsultationFee(patient.fees)}</span>
+                                <span className="text-emerald-700">{formatConsultationFee(consultationFee)}</span>
                               </p>
                             </div>
                           )
@@ -4068,6 +4507,7 @@ const handleToggleCompletedPatients = () => {
             <nav className="flex flex-col">
               <button
                 onClick={() => {
+                  setActiveFilterManuallyCleared(false)
                   setActiveTab('active')
                   setShowMobileMenu(false)
                   try {
@@ -4207,6 +4647,7 @@ const handleToggleCompletedPatients = () => {
             {/* Active Patients first */}
             <button
               onClick={() => {
+                setActiveFilterManuallyCleared(false)
                 setActiveTab('active')
                 try {
                   if (patients && patients.length > 0) {
@@ -4444,7 +4885,7 @@ const handleToggleCompletedPatients = () => {
                               }}
                               className={`relative rounded-xl sm:rounded-2xl border ${
                                 hasPendingFees ? 'border-orange-200 bg-orange-50/40' : 'border-purple-100 bg-white'
-                              } shadow-sm transition-all duration-200 hover:shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-400/60 ${
+                              } shadow-sm transition-all duration-300 ease-in-out hover:shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-400/60 animate-fade-in ${
                                 isWaiting ? 'hover:border-purple-300' : ''
                               }`}
                             >
@@ -4607,13 +5048,13 @@ const handleToggleCompletedPatients = () => {
                                         event.stopPropagation()
                                         handleOpenPrescriptionModal(patient)
                                       }}
-                                      className="inline-flex items-center justify-center rounded-lg bg-purple-600 px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700"
+                                      className="inline-flex items-center justify-center rounded-lg bg-purple-600 px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-white shadow-sm transition-all duration-300 hover:bg-purple-700 animate-fade-in"
                                     >
                                       Add Prescription
                                     </button>
                                   )}
                                   {patient.status === 'completed' && patient.prescription && (
-                                    <span className="inline-flex items-center gap-0.5 sm:gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-semibold text-emerald-600">
+                                    <span className="inline-flex items-center gap-0.5 sm:gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-semibold text-emerald-600 animate-fade-in animate-status-change">
                                       ✓ Prescribed
                                     </span>
                                   )}
@@ -4682,58 +5123,287 @@ const handleToggleCompletedPatients = () => {
           </div>
         )}
 
-        {/* Active Patients Tab */}
+        {/* Active Patients Tab - Enhanced Real-time Queue */}
         {activeTab === 'active' && (
           <div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
-              <div className="flex-1">
-                <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800 mb-1">Active Patients</h2>
-                <p className="text-xs text-gray-500">Currently Treating Patient</p>
+            {/* Queue Header */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-6 mb-4 sm:mb-6" style={{ borderRadius: '16px' }}>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                <div className="flex-1">
+                  <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-800 mb-1">Active Patients</h2>
+                  <div className="flex items-center gap-2 sm:gap-3 flex-wrap mt-2">
+                    <p className="text-sm sm:text-base font-semibold text-gray-700">
+                      Today's Queue — <span className="text-purple-600 font-bold transition-all duration-300 animate-fade-in">{activePatientsQueue.length}</span> patients in line
+                    </p>
+                    <span className="text-gray-400">•</span>
+                    <button
+                      onClick={() => waitingCount > 0 && setShowWaitingPatientsPanel(true)}
+                      className={`text-sm sm:text-base transition-all duration-200 ${
+                        waitingCount > 0
+                          ? 'text-amber-600 hover:text-amber-700 font-semibold cursor-pointer hover:underline'
+                          : 'text-gray-600 font-semibold cursor-default'
+                      }`}
+                      disabled={waitingCount === 0}
+                      aria-label={`View ${waitingCount} waiting patients`}
+                    >
+                      <span className="font-semibold text-amber-600 transition-all duration-300 animate-fade-in">{waitingCount}</span> waiting
+                    </button>
+                  </div>
+                </div>
+                {activePatientFilter && (
+                  <button
+                    onClick={handleClearActiveFilter}
+                    className="px-4 py-2 text-sm font-semibold text-purple-700 bg-purple-100 hover:bg-purple-200 rounded-full transition-colors flex items-center gap-2 border border-purple-200 shadow-sm"
+                    aria-label="Clear patient filter"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Clear Filter
+                  </button>
+                )}
               </div>
-              {activePatientFilter && (
-                <button
-                  onClick={handleClearActiveFilter}
-                  className="px-4 py-2 text-sm font-semibold text-purple-700 bg-purple-100 hover:bg-purple-200 rounded-full transition-colors flex items-center gap-2 border border-purple-200 shadow-sm"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                  Clear Filter
-                </button>
-              )}
             </div>
 
+            {/* Active Patients Queue List */}
             {!activePatientFilter ? (
-              <div className="bg-gradient-to-br from-white via-purple-50 to-blue-50 border-2 border-dashed border-purple-200 rounded-2xl sm:rounded-3xl shadow-lg p-6 sm:p-8 md:p-12 text-center">
-                <div className="max-w-md mx-auto">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-3 sm:mb-4 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center">
-                    <svg className="w-8 h-8 sm:w-10 sm:h-10 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+              (activePatientsQueue.length === 0 ? (
+                <div className="bg-white rounded-2xl border-2 border-dashed border-gray-200 shadow-sm p-8 sm:p-12 md:p-16 text-center">
+                  <div className="max-w-md mx-auto">
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 rounded-full bg-gradient-to-br from-green-100 to-emerald-100 flex items-center justify-center">
+                      <svg className="w-10 h-10 sm:w-12 sm:h-12 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-2">No active patients right now.</h3>
+                    <p className="text-sm sm:text-base text-gray-600 mb-4">All clear! New patients will appear here automatically.</p>
                   </div>
-                  <h3 className="text-base sm:text-lg md:text-xl font-bold text-gray-800 mb-1.5 sm:mb-2">No Active Patient Selected</h3>
-                  <p className="text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
-                    Click on a patient from the notification dropdown or select a patient from "Patients Today" to view their details here.
-                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 sm:space-y-4">
+                  {activePatientsQueue.map((patient, index) => {
+                    const hasPendingFees = !patient.isRecheck && patient.feeStatus !== 'not_required' && patient.feeStatus === 'pending'
+                    const formattedToken = (patient.tokenNumber ?? '-').toString().padStart(2, '0')
+                    const waitTime = getWaitTime(patient)
+                    const hasLongWait = waitTime > 10
+                    const isWaiting = (patient.status === 'waiting' || !patient.status) && !patient.prescription
+                    const isInProgress = patient.status === 'in-progress'
+                    const isPrescribed = patient.status === 'completed' && patient.prescription
+                    const isMissed = patient.isCancelled || patient.status === 'missed'
+                    
+                    const sugarFormatted = patient.sugarLevel !== undefined && patient.sugarLevel !== null && patient.sugarLevel !== ''
+                      ? `${patient.sugarLevel} mg/dL`
+                      : 'N/A'
+
+                    return (
+                      <div
+                        key={patient._id}
+                        className={`bg-white rounded-xl sm:rounded-2xl border shadow-sm overflow-hidden transition-all duration-300 animate-slide-in ${
+                          hasLongWait ? 'border-l-4 border-l-orange-500 border-gray-200' : 'border-gray-200'
+                        } hover:shadow-md`}
+                        style={{
+                          animationDelay: `${index * 0.05}s`,
+                          borderRadius: '12px'
+                        }}
+                        role="article"
+                        aria-label={`Patient ${patient.fullName} - ${isPrescribed ? 'prescribed' : isInProgress ? 'in-progress' : isWaiting ? 'waiting' : 'missed'}`}
+                      >
+                        <div className="p-4 sm:p-5 md:p-6" style={{ padding: '16px' }}>
+                          <div className="flex items-start gap-3 sm:gap-4">
+                            {/* Avatar with Token Badge */}
+                            <div className="relative flex-shrink-0">
+                              <div className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center border-2 border-purple-200">
+                                <span className="text-lg sm:text-xl md:text-2xl font-bold text-purple-700">
+                                  {patient.fullName?.charAt(0).toUpperCase() || 'P'}
+                                </span>
+                              </div>
+                              {/* Token Badge Overlap */}
+                              <div className="absolute -bottom-1 -right-1 w-6 h-6 sm:w-7 sm:h-7 bg-purple-600 rounded-full border-2 border-white flex items-center justify-center shadow-md">
+                                <span className="text-xs sm:text-sm font-bold text-white">{formattedToken}</span>
+                              </div>
+                            </div>
+
+                            {/* Patient Info */}
+                            <div className="flex-1 min-w-0">
+                              {/* Name, ID, Age, Gender */}
+                              <div className="mb-2 sm:mb-3">
+                                <h3 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 mb-1 truncate">
+                                  {patient.fullName}
+                                </h3>
+                                <div className="flex items-center gap-2 sm:gap-3 flex-wrap text-xs sm:text-sm text-gray-600">
+                                  {patient.patientId && (
+                                    <span className="font-medium">{patient.patientId}</span>
+                                  )}
+                                  {patient.age && (
+                                    <span>{patient.age} yrs{patient.gender ? ` • ${patient.gender}` : ''}</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Health Issue, Vitals, Status */}
+                              <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                                {/* Health Issue Pill */}
+                                {patient.disease && (
+                                  <span className="inline-flex items-center px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs sm:text-sm font-medium text-blue-700">
+                                    <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-blue-500 mr-1.5 sm:mr-2"></span>
+                                    {patient.disease}
+                                  </span>
+                                )}
+
+                                {/* Vitals Chips */}
+                                {patient.bloodPressure && (
+                                  <span className="inline-flex items-center px-2 sm:px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200 text-xs font-medium text-gray-700">
+                                    BP: {patient.bloodPressure}
+                                  </span>
+                                )}
+                                {sugarFormatted !== 'N/A' && (
+                                  <span className="inline-flex items-center px-2 sm:px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200 text-xs font-medium text-gray-700">
+                                    Sugar: {sugarFormatted}
+                                  </span>
+                                )}
+
+                                {/* Wait Timer (if > 2 min) */}
+                                {waitTime > 2 && (
+                                  <span className="inline-flex items-center px-2 sm:px-2.5 py-1 rounded-md bg-amber-50 border border-amber-200 text-xs font-medium text-amber-700">
+                                    <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    {waitTime} min
+                                  </span>
+                                )}
+
+                                {/* Status Badge */}
+                                <span
+                                  className={`inline-flex items-center px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 ${
+                                    isPrescribed
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 animate-status-change'
+                                      : isInProgress
+                                      ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                      : isWaiting
+                                      ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                      : isMissed
+                                      ? 'bg-gray-50 text-gray-700 border border-gray-200'
+                                      : 'bg-purple-50 text-purple-700 border border-purple-200'
+                                  }`}
+                                  aria-label={`Status: ${isPrescribed ? 'prescribed' : isInProgress ? 'in-progress' : isWaiting ? 'waiting' : isMissed ? 'missed' : 'waiting'}`}
+                                >
+                                  <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full mr-1.5 sm:mr-2 ${
+                                    isPrescribed ? 'bg-emerald-500'
+                                    : isInProgress ? 'bg-amber-500'
+                                    : isWaiting ? 'bg-purple-500'
+                                    : isMissed ? 'bg-gray-500'
+                                    : 'bg-purple-500'
+                                  }`}></span>
+                                  {isPrescribed ? (
+                                    <>
+                                      <svg className="w-3 h-3 sm:w-3.5 sm:h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                      Prescribed
+                                    </>
+                                  ) : isInProgress ? 'In Progress' : isWaiting ? 'Waiting' : isMissed ? 'Missed' : 'Waiting'}
+                                </span>
+                              </div>
+
+                              {/* Fees Paid & Rating Badges */}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {patient.feeStatus === 'paid' && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-200">
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    Fees Paid
+                                  </span>
+                                )}
+                                {patient.behaviorRating && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200">
+                                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                                    </svg>
+                                    {patient.behaviorRating}/5
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Action Buttons Column */}
+                            <div className="flex flex-col gap-2 sm:gap-2.5 flex-shrink-0">
+                              {/* Primary Action */}
+                              {!isPrescribed ? (
+                                <button
+                                  onClick={() => handleOpenPrescriptionModal(patient)}
+                                  className="px-4 sm:px-5 py-2.5 sm:py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl text-sm font-semibold hover:from-purple-700 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-purple-300 focus:ring-offset-2 transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg min-h-[44px] active:scale-95"
+                                  aria-label={`Add prescription for ${patient.fullName}`}
+                                >
+                                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                  </svg>
+                                  <span className="hidden sm:inline">Add Prescription</span>
+                                  <span className="sm:hidden">Add Rx</span>
+                                </button>
+                              ) : (
+                                <span className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-semibold min-h-[44px]">
+                                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>Prescribed</span>
+                                </span>
+                              )}
+
+                              {/* Secondary Actions */}
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => openMedicalHistory(patient)}
+                                  className="flex-1 px-3 sm:px-4 py-2 bg-white border-2 border-blue-200 text-blue-700 rounded-xl text-xs sm:text-sm font-medium hover:bg-blue-50 hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-1 transition-all duration-200 flex items-center justify-center gap-1.5 min-h-[40px] active:scale-95"
+                                  aria-label={`View medical history for ${patient.fullName}`}
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                  <span className="hidden sm:inline">View History</span>
+                                  <span className="sm:hidden">History</span>
+                                </button>
+                                
+                                {patient.mobileNumber && (
+                                  <a
+                                    href={`tel:${patient.mobileNumber}`}
+                                    className="flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-xl border-2 border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-1 transition-colors duration-200 active:scale-95"
+                                    aria-label={`Call ${patient.fullName} at ${patient.mobileNumber}`}
+                                  >
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                    </svg>
+                                  </a>
+                                )}
+                              </div>
+
+                              {/* Mobile Number */}
+                              {patient.mobileNumber && (
+                                <div className="text-center sm:text-right">
+                                  <p className="text-xs text-gray-500">Mobile</p>
+                                  <p className="text-xs sm:text-sm font-medium text-gray-900">{patient.mobileNumber}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ))
+            ) : (
+              (filteredTodayPatients.length === 0 ? (
+                <div className="bg-white rounded-2xl sm:rounded-3xl border border-purple-100 shadow-lg p-6 sm:p-8 md:p-12 text-center">
+                  <p className="text-gray-500 text-sm sm:text-base md:text-lg">Patient not found or no longer available.</p>
                   <button
-                    onClick={() => setActiveTab('today')}
-                    className="px-4 sm:px-6 py-1.5 sm:py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold text-xs sm:text-sm"
+                    onClick={handleClearActiveFilter}
+                    className="mt-3 sm:mt-4 px-4 sm:px-6 py-1.5 sm:py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold text-xs sm:text-sm"
                   >
-                    View All Patients
+                    Clear Filter
                   </button>
                 </div>
-              </div>
-            ) : filteredTodayPatients.length === 0 ? (
-              <div className="bg-white rounded-2xl sm:rounded-3xl border border-purple-100 shadow-lg p-6 sm:p-8 md:p-12 text-center">
-                <p className="text-gray-500 text-sm sm:text-base md:text-lg">Patient not found or no longer available.</p>
-                <button
-                  onClick={handleClearActiveFilter}
-                  className="mt-3 sm:mt-4 px-4 sm:px-6 py-1.5 sm:py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold text-xs sm:text-sm"
-                >
-                  Clear Filter
-                </button>
-              </div>
-            ) : (
+              ) : (
               <div className="space-y-3 sm:space-y-4 md:space-y-6">
                 {/* Active Consultation - Compact Professional Design */}
                 <div className="space-y-3 sm:space-y-4">
@@ -4964,6 +5634,7 @@ const handleToggleCompletedPatients = () => {
                   })}
                 </div>
               </div>
+              ))
             )}
           </div>
         )}
@@ -5400,7 +6071,7 @@ const handleToggleCompletedPatients = () => {
                               <button
                                 onClick={() => setHistoryPage((page) => Math.max(1, page - 1))}
                                 disabled={historyPage === 1}
-                                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
                                   historyPage === 1
                                     ? 'bg-purple-100 text-purple-300 cursor-not-allowed'
                                     : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-sm hover:from-purple-600 hover:to-purple-700'
@@ -7045,6 +7716,7 @@ const handleToggleCompletedPatients = () => {
         patientMobile={medicalHistoryPatientMobile}
         isRecheck={medicalHistoryIsRecheck}
         currentPatient={medicalHistoryCurrentPatient}
+        user={user}
       />
 
       {showInventoryPanel && (
@@ -7309,6 +7981,247 @@ const handleToggleCompletedPatients = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Waiting Patients Quick View Panel */}
+      {showWaitingPatientsPanel && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 transition-opacity duration-250"
+            onClick={() => setShowWaitingPatientsPanel(false)}
+            style={{ animation: 'fadeIn 0.25s ease-out' }}
+          />
+          
+          {/* Panel */}
+          <div
+            className="fixed right-0 top-0 h-full w-full sm:w-[480px] md:w-[520px] bg-white z-50 overflow-hidden flex flex-col"
+            style={{
+              borderRadius: '20px 0 0 20px',
+              boxShadow: '0px 8px 20px rgba(0, 0, 0, 0.06)',
+              animation: 'slideInRight 0.25s ease-out'
+            }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-purple-50/50 to-blue-50/50">
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-gray-900 mb-1">Waiting Patients</h2>
+                <p className="text-sm text-gray-600 mb-2">Patients in queue waiting for consultation</p>
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                  {waitingPatientsList.length} Waiting
+                </span>
+              </div>
+              <button
+                onClick={() => setShowWaitingPatientsPanel(false)}
+                className="ml-4 p-2 text-gray-400 hover:text-gray-600 hover:bg-white rounded-full transition-colors duration-200"
+                aria-label="Close panel"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {waitingPatientsList.length === 0 ? (
+                /* Empty State */
+                <div className="flex flex-col items-center justify-center h-full text-center py-12">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-100 to-emerald-100 flex items-center justify-center mb-4">
+                    <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-800 mb-2">No patients are waiting right now.</h3>
+                  <p className="text-sm text-gray-500">All patients have been attended to.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {waitingPatientsList.map((patient, index) => {
+                    const formattedToken = (patient.tokenNumber ?? '-').toString().padStart(2, '0')
+                    const registrationTime = new Date(patient.registrationDate || patient.createdAt || Date.now())
+                    const waitingSince = registrationTime.toLocaleTimeString('en-IN', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true
+                    })
+                    
+                    const sugarFormatted = patient.sugarLevel !== undefined && patient.sugarLevel !== null && patient.sugarLevel !== ''
+                      ? `${patient.sugarLevel} mg/dL`
+                      : 'N/A'
+                    
+                    const bpFormatted = patient.bloodPressure || 'N/A'
+
+                    return (
+                      <div
+                        key={patient._id}
+                        className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 hover:shadow-md transition-all duration-200 animate-fade-in"
+                        style={{
+                          animationDelay: `${index * 0.05}s`,
+                          borderRadius: '16px'
+                        }}
+                      >
+                        <div className="flex items-start gap-4">
+                          {/* Avatar with Token */}
+                          <div className="relative flex-shrink-0">
+                            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-purple-100 to-blue-100 flex items-center justify-center border-2 border-purple-200">
+                              <span className="text-xl font-bold text-purple-700">
+                                {patient.fullName?.charAt(0).toUpperCase() || 'P'}
+                              </span>
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-gradient-to-br from-purple-600 to-purple-700 rounded-full border-2 border-white flex items-center justify-center shadow-md">
+                              <span className="text-xs font-bold text-white">{formattedToken}</span>
+                            </div>
+                          </div>
+
+                          {/* Patient Info */}
+                          <div className="flex-1 min-w-0">
+                            {/* Name, ID, Age, Gender */}
+                            <div className="mb-3">
+                              <h3 className="text-base font-bold text-gray-900 mb-1.5 truncate">
+                                {patient.fullName}
+                              </h3>
+                              <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500">
+                                {patient.patientId && (
+                                  <span className="font-medium">{patient.patientId}</span>
+                                )}
+                                {patient.age && (
+                                  <span>{patient.age} yrs{patient.gender ? ` • ${patient.gender}` : ''}</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Issue Badge */}
+                            {patient.issue && (
+                              <div className="mb-2">
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                  {patient.issue}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Vitals Chips */}
+                            <div className="flex items-center gap-2 mb-3 flex-wrap">
+                              {bpFormatted !== 'N/A' && (
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                                  BP: {bpFormatted}
+                                </span>
+                              )}
+                              {sugarFormatted !== 'N/A' && (
+                                <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-50 text-gray-700 border border-gray-200">
+                                  Sugar: {sugarFormatted}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Status Badge & Timestamp */}
+                            <div className="flex items-center gap-3 mb-4 flex-wrap">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-purple-600 mr-1.5"></span>
+                                Waiting
+                              </span>
+                              <span className="text-xs text-gray-500 font-medium">
+                                Waiting since {waitingSince}
+                              </span>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <button
+                                onClick={() => {
+                                  setSelectedPatient(patient)
+                                  setShowPrescriptionModal(true)
+                                  setShowWaitingPatientsPanel(false)
+                                }}
+                                className="flex-1 min-w-[140px] px-4 py-2 bg-gradient-to-r from-purple-500 to-blue-600 text-white text-xs font-semibold rounded-xl hover:from-purple-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md active:scale-95"
+                              >
+                                Add Prescription
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setMedicalHistoryPatientId(patient._id)
+                                  setMedicalHistoryPatientName(patient.fullName)
+                                  setMedicalHistoryPatientMobile(patient.mobileNumber)
+                                  setMedicalHistoryIsRecheck(patient.isRecheck || false)
+                                  setMedicalHistoryCurrentPatient(patient)
+                                  setShowMedicalHistoryModal(true)
+                                }}
+                                className="px-4 py-2 border-2 border-blue-500 text-blue-600 text-xs font-semibold rounded-xl hover:bg-blue-50 transition-colors duration-200 active:scale-95"
+                              >
+                                View History
+                              </button>
+                              {patient.mobileNumber && (
+                                <a
+                                  href={`tel:${patient.mobileNumber}`}
+                                  className="flex items-center justify-center w-10 h-10 rounded-xl border-2 border-gray-300 text-gray-600 hover:bg-gray-50 hover:border-gray-400 transition-colors duration-200 active:scale-95"
+                                  aria-label={`Call ${patient.fullName}`}
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                                  </svg>
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-200 bg-gray-50/50">
+              <button
+                onClick={() => {
+                  setShowWaitingPatientsPanel(false)
+                }}
+                className="w-full text-center text-sm font-semibold text-purple-600 hover:text-purple-700 transition-colors duration-200 flex items-center justify-center gap-1"
+              >
+                View All Active Patients
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* CSS Animations */}
+          <style>{`
+            @keyframes slideInRight {
+              from {
+                transform: translateX(100%);
+                opacity: 0;
+              }
+              to {
+                transform: translateX(0);
+                opacity: 1;
+              }
+            }
+            @keyframes fadeIn {
+              from {
+                opacity: 0;
+              }
+              to {
+                opacity: 1;
+              }
+            }
+            @keyframes fadeInUp {
+              from {
+                opacity: 0;
+                transform: translateY(10px);
+              }
+              to {
+                opacity: 1;
+                transform: translateY(0);
+              }
+            }
+            .animate-fade-in {
+              animation: fadeInUp 0.3s ease-out forwards;
+            }
+          `}</style>
+        </>
       )}
     </>
   )

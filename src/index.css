@@ -245,3 +245,171 @@ code {
     white-space: normal;
   }
 }
+
+/* Premium Modal Animations */
+@keyframes modalSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes modalScaleDown {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+}
+
+@keyframes backdropFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes backdropFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.modal-enter {
+  animation: modalSlideDown 0.3s ease-out;
+}
+
+.modal-exit {
+  animation: modalScaleDown 0.2s ease-in;
+}
+
+.backdrop-enter {
+  animation: backdropFadeIn 0.3s ease-out;
+}
+
+.backdrop-exit {
+  animation: backdropFadeOut 0.2s ease-in;
+}
+
+/* Floating Label Styles */
+.floating-label-group {
+  position: relative;
+}
+
+.floating-label-group input:focus + label,
+.floating-label-group input:not(:placeholder-shown) + label,
+.floating-label-group textarea:focus + label,
+.floating-label-group textarea:not(:placeholder-shown) + label,
+.floating-label-group select:focus + label,
+.floating-label-group select:not([value=""]) + label,
+.floating-label-group label.floating {
+  top: -8px;
+  left: 12px;
+  font-size: 12px;
+  color: #2F80ED;
+  background: #FFFFFF;
+  padding: 0 4px;
+  z-index: 10;
+}
+
+.floating-label-group label {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  font-size: 14px;
+  color: #6F7480;
+  pointer-events: none;
+  transition: all 0.3s ease;
+  background: transparent;
+  z-index: 1;
+}
+
+.floating-label-group input,
+.floating-label-group textarea {
+  padding-top: 20px;
+  padding-bottom: 12px;
+}
+
+.floating-label-group select {
+  padding-top: 20px;
+  padding-bottom: 12px;
+  padding-right: 40px;
+}
+
+.floating-label-group .select-arrow {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Close Button Rotate Animation */
+.close-btn-rotate {
+  transition: transform 0.3s ease, color 0.3s ease;
+}
+
+.close-btn-rotate:hover {
+  transform: rotate(90deg);
+  color: #4A4F58;
+}
+
+/* Success Popup Animations */
+@keyframes popupShow {
+  0% { 
+    transform: scale(0.85); 
+    opacity: 0; 
+  }
+  100% { 
+    transform: scale(1); 
+    opacity: 1; 
+  }
+}
+
+@keyframes popupHide {
+  0% { 
+    transform: scale(1); 
+    opacity: 1; 
+  }
+  100% { 
+    transform: scale(0.85); 
+    opacity: 0; 
+  }
+}
+
+@keyframes backdropFade {
+  from { 
+    opacity: 0; 
+  }
+  to { 
+    opacity: 1; 
+  }
+}
+
+.popup-show {
+  animation: popupShow 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.popup-hide {
+  animation: popupHide 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.backdrop-fade {
+  animation: backdropFade 0.3s ease-out forwards;
+}

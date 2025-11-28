@@ -15,7 +15,7 @@ const AdminDashboard = () => {
     fullName: '',
     email: '',
     password: '',
-    role: 'doctor',
+    role: '',
     specialization: '',
     qualification: '',
     fees: '',
@@ -35,6 +35,12 @@ const AdminDashboard = () => {
   const usersPerPage = 10
   const [filteredDataPage, setFilteredDataPage] = useState(1)
   const filteredDataPerPage = 10
+  const [formErrors, setFormErrors] = useState({})
+  const [isModalClosing, setIsModalClosing] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
+  const [isSuccessClosing, setIsSuccessClosing] = useState(false)
 
   useEffect(() => {
     fetchUsers()
@@ -62,45 +68,152 @@ const AdminDashboard = () => {
   }
 
   const handleChange = (e) => {
-    setFormData({
+    const { name, value } = e.target
+    const updatedFormData = {
       ...formData,
-      [e.target.name]: e.target.value
-    })
-  }
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    
-    // Validate qualification for doctors
-    if (formData.role === 'doctor' && !formData.qualification?.trim()) {
-      toast.error('Qualification is required for doctors')
-      return
+      [name]: value
     }
     
-    try {
-      if (editingUser) {
-        await api.put(`/admin/users/${editingUser._id}`, formData)
-        toast.success('User updated successfully')
-      } else {
-        await api.post('/admin/users', formData)
-        toast.success('User created successfully')
+    // If role changes, clear doctor-specific fields if not doctor
+    if (name === 'role' && value !== 'doctor') {
+      updatedFormData.specialization = ''
+      updatedFormData.qualification = ''
+      updatedFormData.fees = ''
+      updatedFormData.clinicAddress = ''
+    }
+    
+    setFormData(updatedFormData)
+    
+    // Clear error for this field when user starts typing
+    if (formErrors[name]) {
+      setFormErrors({
+        ...formErrors,
+        [name]: ''
+      })
+    }
+  }
+
+  const validateForm = () => {
+    const errors = {}
+    
+    if (!formData.fullName?.trim()) {
+      errors.fullName = 'Full Name is required'
+    }
+    
+    if (!formData.email?.trim()) {
+      errors.email = 'Email is required'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = 'Please enter a valid email address'
+    }
+    
+    if (!editingUser && !formData.password?.trim()) {
+      errors.password = 'Password is required'
+    } else if (!editingUser && formData.password?.trim().length < 6) {
+      errors.password = 'Password must be at least 6 characters'
+    }
+    
+    if (!formData.role) {
+      errors.role = 'Role is required'
+    }
+    
+    if (formData.role === 'doctor') {
+      if (!formData.specialization?.trim()) {
+        errors.specialization = 'Specialization is required for doctors'
       }
+      if (!formData.qualification?.trim()) {
+        errors.qualification = 'Qualification is required for doctors'
+      }
+    }
+    
+    if (!formData.mobileNumber?.trim()) {
+      errors.mobileNumber = 'Mobile Number is required'
+    } else if (!/^[0-9]{10}$/.test(formData.mobileNumber.replace(/\D/g, ''))) {
+      errors.mobileNumber = 'Please enter a valid 10-digit mobile number'
+    }
+    
+    setFormErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  const handleCloseModal = () => {
+    setIsModalClosing(true)
+    setTimeout(() => {
       setShowModal(false)
+      setIsModalClosing(false)
       setEditingUser(null)
+      setFormErrors({})
+      setShowPassword(false)
       setFormData({
         fullName: '',
         email: '',
         password: '',
-        role: 'doctor',
+        role: '',
         specialization: '',
         qualification: '',
         fees: '',
         mobileNumber: '',
         clinicAddress: ''
       })
+    }, 200)
+  }
+
+  const handleCloseSuccessPopup = () => {
+    setIsSuccessClosing(true)
+    setTimeout(() => {
+      setShowSuccessPopup(false)
+      setIsSuccessClosing(false)
+      setSuccessMessage('')
+    }, 200)
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    
+    if (!validateForm()) {
+      return
+    }
+    
+    try {
+      if (editingUser) {
+        await api.put(`/admin/users/${editingUser._id}`, formData)
+        toast.success('User updated successfully!', {
+          style: {
+            background: '#27AE60',
+            color: '#FFFFFF',
+            borderRadius: '12px',
+            padding: '16px',
+          },
+          icon: '✓',
+          duration: 3000,
+        })
+        handleCloseModal()
+      } else {
+        await api.post('/admin/users', formData)
+        
+        // Get role-based success message
+        const roleMessages = {
+          doctor: 'Doctor created successfully!',
+          receptionist: 'Receptionist created successfully!',
+          medical: 'Medical staff created successfully!',
+          admin: 'Admin created successfully!'
+        }
+        
+        const message = roleMessages[formData.role] || 'User created successfully!'
+        setSuccessMessage(message)
+        handleCloseModal()
+        setShowSuccessPopup(true)
+      }
+      
       fetchUsers()
     } catch (error) {
-      toast.error(error.response?.data?.message || 'Operation failed')
+      toast.error(error.response?.data?.message || 'Operation failed', {
+        style: {
+          background: '#EB5757',
+          color: '#FFFFFF',
+          borderRadius: '12px',
+          padding: '16px',
+        },
+      })
     }
   }
 
@@ -1477,178 +1590,370 @@ const AdminDashboard = () => {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Premium Add User Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-xl font-bold mb-4">{editingUser ? 'Edit User' : 'Add New User'}</h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Full Name
-                </label>
+        <div 
+          className={`fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 ${isModalClosing ? 'backdrop-exit' : 'backdrop-enter'}`}
+          style={{
+            background: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+          }}
+          onClick={handleCloseModal}
+        >
+          <div 
+            className={`bg-white rounded-[18px] w-full sm:w-[95%] max-w-[520px] shadow-[0_10px_35px_rgba(0,0,0,0.08)] ${isModalClosing ? 'modal-exit' : 'modal-enter'}`}
+            style={{ backgroundColor: '#FFFFFF' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="relative px-4 sm:px-7 pt-4 sm:pt-7 pb-3 sm:pb-4 border-b border-[#E6E9F0]">
+              <h3 className="text-lg sm:text-[22px] font-bold pr-8 sm:pr-10" style={{ color: '#1A1C20' }}>
+                {editingUser ? 'Edit User' : 'Add New User'}
+              </h3>
+              <button
+                onClick={handleCloseModal}
+                className="close-btn-rotate absolute top-4 sm:top-7 right-4 sm:right-7 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#F8FAFD] transition-colors"
+                style={{ color: '#A0A6B1' }}
+                aria-label="Close modal"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleSubmit} className="px-4 sm:px-7 py-4 sm:py-7 space-y-4 sm:space-y-5 max-h-[calc(100vh-180px)] sm:max-h-[calc(100vh-200px)] overflow-y-auto">
+              {/* Full Name */}
+              <div className="floating-label-group">
                 <input
                   type="text"
                   name="fullName"
+                  id="fullName"
                   value={formData.fullName}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
+                  placeholder=" "
+                  className={`w-full px-4 py-3 rounded-xl border transition-all outline-none focus:shadow-md ${
+                    formErrors.fullName 
+                      ? 'border-[#EB5757] focus:border-[#EB5757]' 
+                      : 'border-[#E6E9F0] hover:border-[#2F80ED] focus:border-[#2F80ED]'
+                  }`}
+                  style={{ borderRadius: '12px' }}
                 />
+                <label htmlFor="fullName" className={formData.fullName ? 'floating' : ''}>Full Name</label>
+                {formErrors.fullName && (
+                  <p className="mt-1 text-xs" style={{ color: '#EB5757' }}>{formErrors.fullName}</p>
+                )}
               </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email
-                </label>
+
+              {/* Email */}
+              <div className="floating-label-group">
                 <input
                   type="email"
                   name="email"
+                  id="email"
                   value={formData.email}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
+                  placeholder=" "
+                  className={`w-full px-4 py-3 rounded-xl border transition-all outline-none focus:shadow-md ${
+                    formErrors.email 
+                      ? 'border-[#EB5757] focus:border-[#EB5757]' 
+                      : 'border-[#E6E9F0] hover:border-[#2F80ED] focus:border-[#2F80ED]'
+                  }`}
+                  style={{ borderRadius: '12px' }}
                 />
+                <label htmlFor="email" className={formData.email ? 'floating' : ''}>Email</label>
+                {formErrors.email && (
+                  <p className="mt-1 text-xs" style={{ color: '#EB5757' }}>{formErrors.email}</p>
+                )}
               </div>
-              
+
+              {/* Password (only for new users) */}
               {!editingUser && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Password
-                  </label>
+                <div className="floating-label-group relative">
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     name="password"
+                    id="password"
                     value={formData.password}
                     onChange={handleChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    required={!editingUser}
+                    placeholder=" "
+                    className={`w-full px-4 py-3 pr-12 rounded-xl border transition-all outline-none focus:shadow-md ${
+                      formErrors.password 
+                        ? 'border-[#EB5757] focus:border-[#EB5757]' 
+                        : 'border-[#E6E9F0] hover:border-[#2F80ED] focus:border-[#2F80ED]'
+                    }`}
+                    style={{ borderRadius: '12px' }}
                   />
+                  <label htmlFor="password" className={formData.password ? 'floating' : ''}>Password</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center justify-center text-[#6F7480] hover:text-[#2F80ED] transition-colors focus:outline-none"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    style={{ transform: 'translateY(-50%)' }}
+                  >
+                    {showPassword ? (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    )}
+                  </button>
+                  {formErrors.password && (
+                    <p className="mt-1 text-xs" style={{ color: '#EB5757' }}>{formErrors.password}</p>
+                  )}
                 </div>
               )}
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
-                </label>
+
+              {/* Role */}
+              <div className="floating-label-group relative">
                 <select
                   name="role"
+                  id="role"
                   value={formData.role}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
+                  className={`w-full px-4 py-3 rounded-xl border transition-all outline-none appearance-none bg-white focus:shadow-md ${
+                    formErrors.role 
+                      ? 'border-[#EB5757] focus:border-[#EB5757]' 
+                      : 'border-[#E6E9F0] hover:border-[#2F80ED] focus:border-[#2F80ED]'
+                  }`}
+                  style={{ borderRadius: '12px', paddingTop: formData.role ? '20px' : '16px', paddingBottom: '12px', paddingRight: '40px' }}
                 >
+                  <option value="">Select Role</option>
                   <option value="doctor">Doctor</option>
+                  <option value="admin">Admin</option>
                   <option value="receptionist">Receptionist</option>
-                  <option value="medical">Medical</option>
+                  <option value="medical">Medical Staff</option>
                 </select>
+                <label 
+                  htmlFor="role" 
+                  className={formData.role ? 'floating' : ''}
+                >
+                  Role
+                </label>
+                <div className="select-arrow">
+                  <svg className="w-5 h-5" style={{ color: '#6F7480' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+                {formErrors.role && (
+                  <p className="mt-1 text-xs" style={{ color: '#EB5757' }}>{formErrors.role}</p>
+                )}
               </div>
-              
+
+              {/* Doctor-specific fields - Only show when role is 'doctor' */}
               {formData.role === 'doctor' && (
                 <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Specialization
-                    </label>
+                  {/* Specialization */}
+                  <div className="floating-label-group">
                     <input
                       type="text"
                       name="specialization"
+                      id="specialization"
                       value={formData.specialization}
                       onChange={handleChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                      required
+                      placeholder=" "
+                      className={`w-full px-4 py-3 rounded-xl border transition-all outline-none focus:shadow-md ${
+                        formErrors.specialization 
+                          ? 'border-[#EB5757] focus:border-[#EB5757]' 
+                          : 'border-[#E6E9F0] hover:border-[#2F80ED] focus:border-[#2F80ED]'
+                      }`}
+                      style={{ borderRadius: '12px' }}
                     />
+                    <label htmlFor="specialization" className={formData.specialization ? 'floating' : ''}>Specialization</label>
+                    {formErrors.specialization && (
+                      <p className="mt-1 text-xs" style={{ color: '#EB5757' }}>{formErrors.specialization}</p>
+                    )}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Qualification (e.g., MBBS, MD, BDS)
-                    </label>
+
+                  {/* Qualification */}
+                  <div className="floating-label-group">
                     <input
                       type="text"
                       name="qualification"
+                      id="qualification"
                       value={formData.qualification}
                       onChange={handleChange}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm focus:shadow-md transition-shadow"
-                      placeholder="MBBS, MD, BDS, etc."
-                      required={formData.role === 'doctor'}
+                      placeholder=" "
+                      className={`w-full px-4 py-3 rounded-xl border transition-all outline-none focus:shadow-md ${
+                        formErrors.qualification 
+                          ? 'border-[#EB5757] focus:border-[#EB5757]' 
+                          : 'border-[#E6E9F0] hover:border-[#2F80ED] focus:border-[#2F80ED]'
+                      }`}
+                      style={{ borderRadius: '12px' }}
                     />
+                    <label htmlFor="qualification" className={formData.qualification ? 'floating' : ''}>Qualification (MBBS, MD, BDS, etc.)</label>
+                    {formErrors.qualification && (
+                      <p className="mt-1 text-xs" style={{ color: '#EB5757' }}>{formErrors.qualification}</p>
+                    )}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Consultation Fees (₹)
-                    </label>
+
+                  {/* Consultation Fees */}
+                  <div className="floating-label-group">
                     <input
                       type="number"
                       name="fees"
+                      id="fees"
                       value={formData.fees}
                       onChange={handleChange}
+                      placeholder=" "
                       min="0"
                       step="1"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                      placeholder="500"
+                      className="w-full px-4 py-3 rounded-xl border border-[#E6E9F0] hover:border-[#2F80ED] focus:border-[#2F80ED] transition-all outline-none focus:shadow-md"
+                      style={{ borderRadius: '12px' }}
                     />
+                    <label htmlFor="fees" className={formData.fees ? 'floating' : ''}>Consultation Fees (₹)</label>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Clinic / Hospital Address
-                    </label>
+
+                  {/* Clinic / Hospital Address */}
+                  <div className="floating-label-group">
                     <textarea
                       name="clinicAddress"
+                      id="clinicAddress"
                       value={formData.clinicAddress}
                       onChange={handleChange}
+                      placeholder=" "
                       rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm resize-none"
-                      placeholder="Ward No. 3, Near City Hospital, Pune, Maharashtra 411001"
+                      className="w-full px-4 py-3 rounded-xl border border-[#E6E9F0] hover:border-[#2F80ED] focus:border-[#2F80ED] transition-all outline-none resize-none focus:shadow-md"
+                      style={{ borderRadius: '12px', paddingTop: '20px', paddingBottom: '12px' }}
                     />
-                    <p className="text-xs text-slate-400 mt-1">Appears on patient prescriptions and PDFs.</p>
+                    <label htmlFor="clinicAddress" className={formData.clinicAddress ? 'floating' : ''}>Clinic / Hospital Address</label>
                   </div>
                 </>
               )}
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Mobile Number
-                </label>
+
+              {/* Mobile Number - Always visible */}
+              <div className="floating-label-group">
                 <input
                   type="tel"
                   name="mobileNumber"
+                  id="mobileNumber"
                   value={formData.mobileNumber}
                   onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  required
+                  placeholder=" "
+                  className={`w-full px-4 py-3 rounded-xl border transition-all outline-none focus:shadow-md ${
+                    formErrors.mobileNumber 
+                      ? 'border-[#EB5757] focus:border-[#EB5757]' 
+                      : 'border-[#E6E9F0] hover:border-[#2F80ED] focus:border-[#2F80ED]'
+                  }`}
+                  style={{ borderRadius: '12px' }}
                 />
+                <label htmlFor="mobileNumber" className={formData.mobileNumber ? 'floating' : ''}>Mobile Number</label>
+                {formErrors.mobileNumber && (
+                  <p className="mt-1 text-xs" style={{ color: '#EB5757' }}>{formErrors.mobileNumber}</p>
+                )}
               </div>
-              
-              <div className="flex gap-3 pt-4">
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <button
                   type="submit"
-                  className="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
+                  className="w-full px-6 py-3 rounded-[14px] font-medium text-white transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ 
+                    background: '#2F80ED',
+                    borderRadius: '14px',
+                  }}
+                  onMouseEnter={(e) => !e.target.disabled && (e.target.style.background = '#1f6ed6')}
+                  onMouseLeave={(e) => !e.target.disabled && (e.target.style.background = '#2F80ED')}
                 >
                   {editingUser ? 'Update' : 'Create'}
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowModal(false)
-                    setEditingUser(null)
-                    setFormData({
-                      fullName: '',
-                      email: '',
-                      password: '',
-                      role: 'doctor',
-                      specialization: '',
-                      qualification: '',
-                      fees: '',
-                    mobileNumber: '',
-                    clinicAddress: ''
-                    })
+                  onClick={handleCloseModal}
+                  className="w-full px-6 py-3 rounded-[14px] font-medium transition-all hover:scale-[1.02] active:scale-[0.98] hover:shadow-md"
+                  style={{ 
+                    background: '#F1F3F7',
+                    color: '#4A4F58',
+                    borderRadius: '14px',
                   }}
-                  className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300 transition"
                 >
                   Cancel
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Success Popup */}
+      {showSuccessPopup && (
+        <div 
+          className={`fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-fade`}
+          style={{
+            background: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+          }}
+          onClick={handleCloseSuccessPopup}
+        >
+          <div 
+            className={`bg-white rounded-[18px] w-[90%] sm:w-full max-w-[420px] shadow-[0_12px_40px_rgba(0,0,0,0.12)] ${isSuccessClosing ? 'popup-hide' : 'popup-show'}`}
+            style={{ backgroundColor: '#FFFFFF' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              onClick={handleCloseSuccessPopup}
+              className="close-btn-rotate absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[#F8FAFD] transition-colors z-10"
+              style={{ color: '#A0A6B1' }}
+              aria-label="Close popup"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Popup Content */}
+            <div className="px-6 sm:px-8 py-8 sm:py-10 text-center">
+              {/* Success Icon */}
+              <div className="flex justify-center mb-4 sm:mb-5">
+                <div 
+                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center shadow-lg"
+                  style={{ background: '#27AE60' }}
+                >
+                  <svg className="w-7 h-7 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              </div>
+
+              {/* Success Message */}
+              <h3 
+                className="text-lg sm:text-xl md:text-2xl font-bold mb-2 sm:mb-3 px-2"
+                style={{ color: '#1A1C20' }}
+              >
+                {successMessage}
+              </h3>
+
+              {/* Subtext */}
+              <p 
+                className="text-xs sm:text-sm md:text-base mb-6 sm:mb-8 px-2"
+                style={{ color: '#6F7480' }}
+              >
+                User added to Tekisky Hospital + system.
+              </p>
+
+              {/* Okay Button */}
+              <button
+                onClick={handleCloseSuccessPopup}
+                className="w-full px-6 py-3 rounded-xl font-medium text-white transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm hover:shadow-md"
+                style={{ 
+                  background: '#2F80ED',
+                  borderRadius: '12px',
+                }}
+                onMouseEnter={(e) => e.target.style.background = '#1f6ed6'}
+                onMouseLeave={(e) => e.target.style.background = '#2F80ED'}
+              >
+                Okay
+              </button>
+            </div>
           </div>
         </div>
       )}
