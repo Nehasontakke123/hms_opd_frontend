@@ -811,6 +811,13 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
           opacity: 0;
           overflow: hidden;
         }
+        
+        /* Ensure header content is never clipped */
+        .medical-history-modal > .medical-history-header {
+          overflow: visible;
+          position: relative;
+          z-index: 10;
+        }
 
         @media (max-width: 768px) {
           .medical-history-modal {
@@ -825,7 +832,7 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
           background: linear-gradient(135deg, #8B5CF6 0%, #3B82F6 100%);
           padding: 1.5rem 2rem;
           position: relative;
-          overflow: hidden;
+          overflow: visible;
         }
 
         .medical-history-header::before {
@@ -850,17 +857,31 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
           gap: 1rem;
           position: relative;
           z-index: 1;
+          width: 100%;
+          min-width: 0;
         }
 
         .header-left {
           flex: 1;
           min-width: 0;
+          overflow: hidden;
         }
 
         .header-right-actions {
           display: flex;
           align-items: center;
           gap: 0.75rem;
+          flex-shrink: 0;
+          margin-left: auto;
+          min-width: fit-content;
+          position: relative;
+          z-index: 2;
+        }
+        
+        /* Ensure Print PDF button is always fully visible */
+        .header-right-actions .print-pdf-button {
+          visibility: visible;
+          opacity: 1;
         }
 
         .header-title {
@@ -878,6 +899,8 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
           flex-wrap: wrap;
           font-size: 0.9375rem;
           color: rgba(255, 255, 255, 0.95);
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
 
         .patient-id-badge {
@@ -938,23 +961,28 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
           align-items: center;
           gap: 0.5rem;
           padding: 0.5rem 1rem;
-          background: linear-gradient(135deg, #8B5CF6 0%, #3B82F6 100%);
+          background: rgba(255, 255, 255, 0.2);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
           color: #FFFFFF;
-          border: none;
+          border: 1px solid rgba(255, 255, 255, 0.3);
           border-radius: 12px;
           font-size: 0.875rem;
           font-weight: 700;
           cursor: pointer;
           transition: all 0.2s ease;
-          box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
           height: 2.5rem;
           white-space: nowrap;
+          flex-shrink: 0;
+          min-width: fit-content;
         }
 
         .print-pdf-button:hover {
-          background: linear-gradient(135deg, #7C3AED 0%, #2563EB 100%);
-          box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+          background: rgba(255, 255, 255, 0.3);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
           transform: translateY(-1px);
+          border-color: rgba(255, 255, 255, 0.5);
         }
 
         .print-pdf-button:active {
@@ -1650,23 +1678,35 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
 
           .medical-history-header {
             padding: 1.25rem 1.5rem;
+            overflow: visible;
+            min-height: auto;
           }
 
           .header-content {
             flex-direction: row;
             align-items: flex-start;
             gap: 0.75rem;
+            flex-wrap: wrap;
+            width: 100%;
+            position: relative;
           }
 
           .header-right-actions {
             flex-direction: row;
             gap: 0.5rem;
+            flex-shrink: 0;
+            align-self: flex-start;
+            min-width: fit-content;
+            max-width: 100%;
+            margin-left: auto;
           }
 
           .print-pdf-button {
             padding: 0.4375rem 0.875rem;
             font-size: 0.8125rem;
             height: 2.25rem;
+            flex-shrink: 0;
+            min-width: fit-content;
           }
 
           .print-pdf-icon {
@@ -1675,6 +1715,8 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
           }
 
           .header-left {
+            flex: 1;
+            min-width: 0;
             width: 100%;
           }
 
@@ -1903,12 +1945,16 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
 
           .header-right-actions {
             gap: 0.375rem;
+            min-width: fit-content;
+            flex-shrink: 0;
           }
 
           .print-pdf-button {
             padding: 0.375rem 0.75rem;
             font-size: 0.75rem;
             height: 2rem;
+            flex-shrink: 0;
+            min-width: fit-content;
           }
 
           .print-pdf-icon {
@@ -2034,6 +2080,18 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
         @media (max-width: 360px) {
           .medical-history-header {
             padding: 0.875rem 1rem;
+            overflow: visible;
+            min-height: auto;
+          }
+          
+          .header-content {
+            gap: 0.5rem;
+          }
+          
+          .header-right-actions {
+            gap: 0.375rem;
+            flex-shrink: 0;
+            min-width: fit-content;
           }
 
           .header-title {

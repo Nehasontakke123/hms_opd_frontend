@@ -90,7 +90,7 @@ const generateTraditionalPrescriptionPDF = (patient, doctor, prescription) => {
   const DEFAULT_HOSPITAL_NAME = 'Tekisky Hospital'
   const DEFAULT_HOSPITAL_ADDRESS = 'WorkshopNanded'
   const DEFAULT_HOSPITAL_PHONE = '9359481880'
-  const DEFAULT_HOSPITAL_EMAIL = 'monu@gmail.com'
+  const DEFAULT_HOSPITAL_EMAIL = 'tekisky@gmail.com'
   
   // Ensure crisp white background - fill entire page
   doc.setFillColor(255, 255, 255)
@@ -128,10 +128,26 @@ const generateTraditionalPrescriptionPDF = (patient, doctor, prescription) => {
   doc.setFontSize(22) // Larger, more prominent
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...PRIMARY_COLOR) // Teal color
+  
+  // Date on the right side, aligned with hospital name
+  const prescriptionDate = new Date().toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  })
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.setTextColor(68, 68, 68) // #444
+  doc.text(prescriptionDate, pageWidth - marginRight, y, { align: 'right' })
+  
+  // Hospital name centered
+  doc.setFontSize(22)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...PRIMARY_COLOR)
   doc.text(hospitalNameUpper, pageWidth / 2, y, { align: 'center' })
   y += 9
 
-  // Prescription Title - bold, dark gray/black, smaller than header
+  // Prescription Title - bold, dark gray/black, properly centered
   doc.setFontSize(14) // 14pt for subtitle
   doc.setFont('helvetica', 'bold')
   doc.setTextColor(...TEXT_DARK)
@@ -153,19 +169,12 @@ const generateTraditionalPrescriptionPDF = (patient, doctor, prescription) => {
   const labelValueGap = 3 // Gap between label and value
 
   // Left Column: CLINIC/HOSPITAL NAME
-  // Section label: bold, professional typography
-  doc.setFontSize(11) // 11pt for section headings
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...TEXT_DARK)
-  doc.text('CLINIC/HOSPITAL NAME', marginLeft, y)
-  y += 6
-
-  // Values: clear, readable typography with increased line-height
+  // Values: clear, readable typography with exact text style format
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10) // 10pt body text
   doc.setTextColor(68, 68, 68) // #444
   
-  // Clinic/Hospital Name
+  // Clinic/Hospital Name - exact format
   const hospitalName = cleanText(doctor?.clinicName || doctor?.hospitalName || DEFAULT_HOSPITAL_NAME)
   doc.text(`Clinic/Hospital Name: ${hospitalName}`, marginLeft, y)
   y += 6.5 // Increased line-height for readability
@@ -180,18 +189,9 @@ const generateTraditionalPrescriptionPDF = (patient, doctor, prescription) => {
   doc.text(`Phone: ${hospitalPhone}`, marginLeft, y)
   y += 6.5
 
-  // Email / Website - ensure label and value sit on one logical line
+  // Email - exact format (not Email / Website)
   const hospitalEmail = cleanText(doctor?.hospitalEmail || doctor?.email || DEFAULT_HOSPITAL_EMAIL)
-  const emailLabel = 'Email / Website:'
-  const emailText = `${emailLabel} ${hospitalEmail}`
-  // Check if text fits on one line, otherwise wrap
-  const emailTextWidth = doc.getTextWidth(emailText)
-  if (emailTextWidth <= leftColWidth - 5) {
-    doc.text(emailText, marginLeft, y)
-  } else {
-    doc.text(emailLabel, marginLeft, y)
-    doc.text(hospitalEmail, marginLeft + doc.getTextWidth(emailLabel) + labelValueGap, y)
-  }
+  doc.text(`Email: ${hospitalEmail}`, marginLeft, y)
 
   // Right Column: DOCTOR NAME
   y = topSectionY
@@ -269,6 +269,11 @@ const generateTraditionalPrescriptionPDF = (patient, doctor, prescription) => {
   // Patient ID - clearly visible
   const patientId = cleanText(patient?.patientId || patient?._id?.slice(-8) || 'N/A')
   doc.text(`Patient ID: ${patientId}`, marginLeft, y)
+  y += 6.5
+
+  // Age - moved to PATIENT DETAILS section
+  const age = cleanText(String(patient?.age || 'N/A'))
+  doc.text(`Age: ${age}`, marginLeft, y)
 
   // Right Column: DIAGNOSIS / NOTES
   y = middleSectionY
@@ -284,18 +289,36 @@ const generateTraditionalPrescriptionPDF = (patient, doctor, prescription) => {
   doc.setFontSize(10)
   doc.setTextColor(68, 68, 68) // #444
 
-  // Age - aligned on single line
-  const age = cleanText(String(patient?.age || 'N/A'))
-  doc.text(`Age: ${age}`, rightColX, y)
+  // Date - aligned on single line
+  doc.text(`Date: ${prescriptionDate}`, rightColX, y)
   y += 6.5
 
-  // Date - aligned on single line
-  const prescriptionDate = new Date().toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  })
-  doc.text(`Date: ${prescriptionDate}`, rightColX, y)
+  // Diagnosis - merge with advice
+  const diagnosis = cleanText(prescription.diagnosis || '')
+  if (diagnosis) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.setTextColor(68, 68, 68) // #444
+    doc.text(`Diagnosis: ${diagnosis}`, rightColX, y)
+    y += 6.5
+  }
+
+  // Advice - merged into diagnosis section (without "Advice:" label)
+  if (prescription.notes && prescription.notes.trim()) {
+    const notesText = cleanText(prescription.notes)
+    // Remove "Tests Required:" prefix if present
+    let cleanedNotes = notesText.replace(/Tests Required:?\s*.+?(\n|$)/i, '').trim()
+    // Remove any "Advice:" label if present
+    cleanedNotes = cleanedNotes.replace(/^Advice:?\s*/i, '').trim()
+    
+    if (cleanedNotes) {
+      const notesLines = doc.splitTextToSize(cleanedNotes, rightColWidth - 10)
+      notesLines.forEach((line) => {
+        doc.text(line, rightColX, y)
+        y += 5
+      })
+    }
+  }
 
   // Subtle gray divider line after middle section
   const middleSectionBottom = Math.max(y, middleSectionY + 20)
@@ -313,55 +336,100 @@ const generateTraditionalPrescriptionPDF = (patient, doctor, prescription) => {
   doc.text('PRESCRIPTION (Rx)', marginLeft, y)
   y += 7
 
-  // Medicine entries
-  prescription.medicines.forEach((medicine, index) => {
-    if (y > 250) {
-      doc.addPage()
-      y = marginTop
+  // Medicine entries - side-by-side layout
+  const medicineStartY = y
+  const medColWidth = (contentWidth - 10) / 2 // Two columns with gap
+  const medColGap = 10
+  const medLeftX = marginLeft + 5
+  const medRightX = marginLeft + 5 + medColWidth + medColGap
+  let currentMedStartY = medicineStartY
+  
+  // Helper function to format timing
+  const formatTiming = (times) => {
+    const timingParts = []
+    if (times?.morning) timingParts.push('Morning')
+    if (times?.afternoon) timingParts.push('Afternoon')
+    if (times?.night) timingParts.push('Night')
+    return timingParts.length > 0 ? timingParts.join(', ') : ''
+  }
+
+  // Helper function to format dose pattern
+  const formatDosePattern = (times) => {
+    const morning = times?.morning ? '1' : '0'
+    const afternoon = times?.afternoon ? '1' : '0'
+    const night = times?.night ? '1' : '0'
+    return `${morning} – ${afternoon} – ${night}`
+  }
+
+  // Helper function to render a single medicine
+  const renderMedicine = (medicine, medNum, startX, startY, maxWidth) => {
+    let medY = startY
+    const medName = cleanText(String(medicine.name || 'N/A'))
+    const duration = cleanText(String(medicine.duration || 'N/A'))
+    const timing = formatTiming(medicine.times)
+    const dosePattern = formatDosePattern(medicine.times)
+    const instructions = cleanText(String(medicine.dosageInstructions || medicine.instructions || 'After meals'))
+
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(68, 68, 68) // #444
+    const nameLines = doc.splitTextToSize(`${medNum}. ${medName}`, maxWidth)
+    doc.text(nameLines, startX, medY)
+    medY += nameLines.length * 5.5
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.text(`Dose Pattern: ${dosePattern}`, startX, medY, { maxWidth: maxWidth })
+    medY += 5
+
+    if (timing) {
+      doc.text(`Timing: ${timing}`, startX, medY, { maxWidth: maxWidth })
+      medY += 5
     }
 
-    const medNum = index + 1
-    const medName = cleanText(String(medicine.name || 'N/A'))
-    const dosage = cleanText(String(medicine.dosage || 'N/A'))
-    const frequency = cleanText(String(
-      medicine.times?.morning && medicine.times?.afternoon && medicine.times?.night
-        ? 'Three times daily'
-        : medicine.times?.morning && medicine.times?.afternoon
-        ? 'Twice daily'
-        : medicine.times?.morning
-        ? 'Once daily'
-        : medicine.dosageInstructions || 'As directed'
-    ))
-    const duration = cleanText(String(medicine.duration || 'N/A'))
+    const instructionLines = doc.splitTextToSize(`Instruction: ${instructions}`, maxWidth)
+    doc.text(instructionLines, startX, medY)
+    medY += instructionLines.length * 5
 
-    doc.setFontSize(10)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(...TEXT_DARK)
+    doc.text(`Duration: ${duration}`, startX, medY, { maxWidth: maxWidth })
+    medY += 5
 
-    // Medicine Number and Name - clear typography with increased line-height
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    doc.setTextColor(68, 68, 68) // #444
-    doc.text(`${medNum}. Medicine Name: `, marginLeft + 5, y)
-    // Make medicine name slightly bolder for emphasis
-    doc.setFont('helvetica', 'bold')
-    doc.text(medName, marginLeft + 5 + doc.getTextWidth(`${medNum}. Medicine Name: `), y)
-    doc.setFont('helvetica', 'normal')
-    y += 6.5
+    return medY - startY // Return height used
+  }
 
-    // Dosage - clear typography
-    doc.setFontSize(10)
-    doc.text(`Dosage: ${dosage}`, marginLeft + 5, y)
-    y += 6.5
+  // Process medicines in pairs (side-by-side)
+  const totalMedicines = prescription.medicines.length
+  
+  for (let i = 0; i < totalMedicines; i += 2) {
+    if (y > 240) {
+      doc.addPage()
+      y = marginTop
+      currentMedStartY = y
+    }
 
-    // Frequency - clear typography
-    doc.text(`Frequency: ${frequency} (Once-daily / Twice-daily / After food / Before food)`, marginLeft + 5, y)
-    y += 6.5
+    const medLeft = prescription.medicines[i]
+    const medRight = i + 1 < totalMedicines ? prescription.medicines[i + 1] : null
 
-    // Duration - clear typography
-    doc.text(`Duration: ${duration}`, marginLeft + 5, y)
-    y += 7
-  })
+    let leftHeight = 0
+    let rightHeight = 0
+
+    // Left Medicine
+    if (medLeft) {
+      leftHeight = renderMedicine(medLeft, i + 1, medLeftX, currentMedStartY, medColWidth)
+    }
+
+    // Right Medicine - only render if it exists
+    if (medRight) {
+      rightHeight = renderMedicine(medRight, i + 2, medRightX, currentMedStartY, medColWidth)
+    }
+
+    // Calculate the height needed for this row (use the taller one)
+    const maxHeight = Math.max(leftHeight, rightHeight || 0)
+    currentMedStartY += maxHeight + 3 // Compact spacing between medicine pairs
+    y = currentMedStartY
+  }
+  
+  y += 5
 
   // Subtle gray divider line after prescription
   y -= 2
@@ -414,58 +482,6 @@ const generateTraditionalPrescriptionPDF = (patient, doctor, prescription) => {
 
   // Subtle gray divider line after tests
   y += 4
-  doc.setDrawColor(...BORDER_COLOR)
-  doc.setLineWidth(0.5)
-  doc.line(marginLeft, y, pageWidth - marginRight, y)
-  y += 8
-
-  // ========== ADVICE / NEXT VISIT ==========
-  y += 6
-  // Section label: bold, professional typography
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'bold')
-  doc.setTextColor(...TEXT_DARK)
-  doc.text('ADVICE / NEXT VISIT', marginLeft, y)
-  y += 7
-
-  // Values: clear typography with increased line-height
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10)
-
-  // General Instructions
-  if (prescription.notes && prescription.notes.trim()) {
-    // Light grey italic for "(General Instructions)"
-    doc.setFont('helvetica', 'italic')
-    doc.setTextColor(...TEXT_MEDIUM)
-    doc.text('(General Instructions)', marginLeft + 5, y)
-    y += 4
-    // Advice text in normal color
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(68, 68, 68) // #444
-    const notesText = cleanText(prescription.notes)
-    // Remove "Tests Required:" prefix if present
-    const cleanedNotes = notesText.replace(/Tests Required:?\s*.+?(\n|$)/i, '').trim()
-    if (cleanedNotes) {
-      const notesLines = doc.splitTextToSize(cleanedNotes, contentWidth - 10)
-      notesLines.forEach((line) => {
-        doc.text(line, marginLeft + 5, y)
-        y += 5
-      })
-    } else {
-      doc.text('_________________________________________________________________', marginLeft + 5, y)
-      y += 5
-    }
-  } else {
-    doc.setTextColor(68, 68, 68) // #444
-    doc.text('_________________________________________________________________', marginLeft + 5, y)
-    y += 5
-  }
-
-  // Next Visit Date
-  doc.text('Next Visit Date: _________________________________', marginLeft + 5, y)
-
-  // Subtle gray divider line after advice
-  y += 6
   doc.setDrawColor(...BORDER_COLOR)
   doc.setLineWidth(0.5)
   doc.line(marginLeft, y, pageWidth - marginRight, y)
