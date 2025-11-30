@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
 import generateTraditionalPrescriptionPDF from '../utils/generateTraditionalPrescriptionPDF'
+import { showPrescriptionDownloadToast } from '../utils/prescriptionToast.jsx'
 
 const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientMobile, isRecheck, currentPatient, user }) => {
   const [medicalHistory, setMedicalHistory] = useState(null)
@@ -238,6 +239,52 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
     })
   }
 
+  const getDoctorInfo = () => {
+    return user ? {
+      fullName: user.fullName,
+      qualification: user.qualification,
+      specialization: user.specialization,
+      mobileNumber: user.mobileNumber,
+      clinicAddress: user.clinicAddress,
+      hospitalName: user.hospitalName || user.clinicName,
+      hospitalAddress: user.hospitalAddress || user.clinicAddress,
+      hospitalPhone: user.hospitalPhone || user.mobileNumber,
+      hospitalEmail: user.hospitalEmail || user.email,
+      registrationNo: user.registrationNo || user.registrationNumber,
+      signatureImage: user.signatureImage,
+      stampImage: user.stampImage
+    } : {
+      fullName: currentPatient.doctor?.fullName || currentPatient.doctor?.name || 'Doctor',
+      qualification: currentPatient.doctor?.qualification || 'MD',
+      specialization: currentPatient.doctor?.specialization,
+      mobileNumber: currentPatient.doctor?.mobileNumber || '9359481880',
+      clinicAddress: currentPatient.doctor?.clinicAddress || 'WorkshopNanded',
+      hospitalName: currentPatient.doctor?.hospitalName || currentPatient.doctor?.clinicName || 'Tekisky Hospital',
+      hospitalAddress: currentPatient.doctor?.hospitalAddress || currentPatient.doctor?.clinicAddress || 'WorkshopNanded',
+      hospitalPhone: currentPatient.doctor?.hospitalPhone || currentPatient.doctor?.mobileNumber || '9359481880',
+      hospitalEmail: currentPatient.doctor?.hospitalEmail || currentPatient.doctor?.email || 'monu@gmail.com',
+      registrationNo: currentPatient.doctor?.registrationNo || currentPatient.doctor?.registrationNumber || 'REG-12345'
+    }
+  }
+
+  const generatePrescriptionPDFBlob = () => {
+    const doctorInfo = getDoctorInfo()
+    const pdfBase64 = generateTraditionalPrescriptionPDF(
+      currentPatient,
+      doctorInfo,
+      currentPatient.prescription
+    )
+
+    // Create a blob from base64
+    const byteCharacters = atob(pdfBase64.split(',')[1])
+    const byteNumbers = new Array(byteCharacters.length)
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i)
+    }
+    const byteArray = new Uint8Array(byteNumbers)
+    return new Blob([byteArray], { type: 'application/pdf' })
+  }
+
   const handlePrintPDF = () => {
     if (!currentPatient || !currentPatient.prescription) {
       toast.error('No prescription available for this patient')
@@ -245,50 +292,7 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
     }
 
     try {
-      // Get doctor information from user prop or currentPatient
-      const doctorInfo = user ? {
-        fullName: user.fullName,
-        qualification: user.qualification,
-        specialization: user.specialization,
-        mobileNumber: user.mobileNumber,
-        clinicAddress: user.clinicAddress,
-        hospitalName: user.hospitalName || user.clinicName,
-        hospitalAddress: user.hospitalAddress || user.clinicAddress,
-        hospitalPhone: user.hospitalPhone || user.mobileNumber,
-        hospitalEmail: user.hospitalEmail || user.email,
-        registrationNo: user.registrationNo || user.registrationNumber,
-        signatureImage: user.signatureImage,
-        stampImage: user.stampImage
-      } : {
-        fullName: currentPatient.doctor?.fullName || currentPatient.doctor?.name || 'Doctor',
-        qualification: currentPatient.doctor?.qualification || 'MD',
-        specialization: currentPatient.doctor?.specialization,
-        mobileNumber: currentPatient.doctor?.mobileNumber || '9359481880',
-        clinicAddress: currentPatient.doctor?.clinicAddress || 'WorkshopNanded',
-        hospitalName: currentPatient.doctor?.hospitalName || currentPatient.doctor?.clinicName || 'Tekisky Hospital',
-        hospitalAddress: currentPatient.doctor?.hospitalAddress || currentPatient.doctor?.clinicAddress || 'WorkshopNanded',
-        hospitalPhone: currentPatient.doctor?.hospitalPhone || currentPatient.doctor?.mobileNumber || '9359481880',
-        hospitalEmail: currentPatient.doctor?.hospitalEmail || currentPatient.doctor?.email || 'monu@gmail.com',
-        registrationNo: currentPatient.doctor?.registrationNo || currentPatient.doctor?.registrationNumber || 'REG-12345'
-      }
-
-      // Generate PDF using the traditional prescription format
-      const pdfBase64 = generateTraditionalPrescriptionPDF(
-        currentPatient,
-        doctorInfo,
-        currentPatient.prescription
-      )
-
-      // Create a blob from base64
-      const byteCharacters = atob(pdfBase64.split(',')[1])
-      const byteNumbers = new Array(byteCharacters.length)
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i)
-      }
-      const byteArray = new Uint8Array(byteNumbers)
-      const blob = new Blob([byteArray], { type: 'application/pdf' })
-
-      // Open PDF in new window for printing
+      const blob = generatePrescriptionPDFBlob()
       const url = URL.createObjectURL(blob)
       const printWindow = window.open(url, '_blank')
 
@@ -309,6 +313,30 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
         URL.revokeObjectURL(url)
         toast.success('PDF downloaded. Please open and print it.')
       }
+    } catch (error) {
+      console.error('PDF generation error:', error)
+      toast.error('Failed to generate PDF. Please try again.')
+    }
+  }
+
+  const handleDownloadPDF = () => {
+    if (!currentPatient || !currentPatient.prescription) {
+      toast.error('No prescription available for this patient')
+      return
+    }
+
+    try {
+      const blob = generatePrescriptionPDFBlob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const fileName = `Tekisky_Hospital_Prescription_${currentPatient.fullName?.replace(/\s/g, '_') || 'Patient'}_${currentPatient.tokenNumber || new Date().toISOString().split('T')[0]}.pdf`
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      showPrescriptionDownloadToast()
     } catch (error) {
       console.error('PDF generation error:', error)
       toast.error('Failed to generate PDF. Please try again.')
@@ -344,17 +372,30 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
               </div>
               <div className="header-right-actions">
                 {currentPatient?.prescription && (
-                  <button
-                    onClick={handlePrintPDF}
-                    className="print-pdf-button"
-                    aria-label="Print Prescription PDF"
-                    title="Print Prescription PDF"
-                  >
-                    <svg className="print-pdf-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                    </svg>
-                    <span>Print PDF</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={handleDownloadPDF}
+                      className="download-pdf-button"
+                      aria-label="Download Prescription PDF"
+                      title="Download Official Tekisky Hospital Prescription PDF"
+                    >
+                      <svg className="download-pdf-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12m0 0l-3-3m3 3l3-3M6 20h12" />
+                      </svg>
+                      <span>Download PDF</span>
+                    </button>
+                    <button
+                      onClick={handlePrintPDF}
+                      className="print-pdf-button"
+                      aria-label="Print Prescription PDF"
+                      title="Print Prescription PDF"
+                    >
+                      <svg className="print-pdf-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                      </svg>
+                      <span>Print PDF</span>
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={handleClose}
@@ -991,6 +1032,48 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
         }
 
         .print-pdf-icon {
+          width: 1rem;
+          height: 1rem;
+          opacity: 0.9;
+          flex-shrink: 0;
+        }
+
+        /* Download PDF Button */
+        .download-pdf-button {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.5rem 1rem;
+          background: rgba(255, 255, 255, 0.25);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          color: #FFFFFF;
+          border: 1px solid rgba(255, 255, 255, 0.4);
+          border-radius: 12px;
+          font-size: 0.875rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+          height: 2.5rem;
+          white-space: nowrap;
+          flex-shrink: 0;
+          min-width: fit-content;
+        }
+
+        .download-pdf-button:hover {
+          background: rgba(255, 255, 255, 0.35);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+          transform: translateY(-1px);
+          border-color: rgba(255, 255, 255, 0.6);
+        }
+
+        .download-pdf-button:active {
+          transform: translateY(0);
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        .download-pdf-icon {
           width: 1rem;
           height: 1rem;
           opacity: 0.9;
@@ -1701,6 +1784,19 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
             margin-left: auto;
           }
 
+          .download-pdf-button {
+            padding: 0.4375rem 0.875rem;
+            font-size: 0.8125rem;
+            height: 2.25rem;
+            flex-shrink: 0;
+            min-width: fit-content;
+          }
+
+          .download-pdf-icon {
+            width: 0.9375rem;
+            height: 0.9375rem;
+          }
+
           .print-pdf-button {
             padding: 0.4375rem 0.875rem;
             font-size: 0.8125rem;
@@ -1947,6 +2043,19 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
             gap: 0.375rem;
             min-width: fit-content;
             flex-shrink: 0;
+          }
+
+          .download-pdf-button {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.75rem;
+            height: 2rem;
+            flex-shrink: 0;
+            min-width: fit-content;
+          }
+
+          .download-pdf-icon {
+            width: 0.875rem;
+            height: 0.875rem;
           }
 
           .print-pdf-button {

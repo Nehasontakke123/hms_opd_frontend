@@ -4,6 +4,7 @@ import api from '../utils/api'
 import toast from 'react-hot-toast'
 import generatePrescriptionPDF from '../utils/generatePrescriptionPDF'
 import generateTraditionalPrescriptionPDF from '../utils/generateTraditionalPrescriptionPDF'
+import { showPrescriptionDownloadToast } from '../utils/prescriptionToast.jsx'
 import PatientLimitModal from '../components/PatientLimitModal'
 import DoctorStatsNotification from '../components/DoctorStatsNotification'
 import MedicalHistoryModal from '../components/MedicalHistoryModal'
@@ -1843,19 +1844,69 @@ const handleToggleCompletedPatients = () => {
     toast.success('Selected items added to notes')
   }
 
-  const handleDownloadPrescription = (patient) => {
+  const handleDownloadPrescription = async (patient) => {
     try {
       if (!patient?.prescription) {
         toast.error('No prescription available to download')
         return
       }
 
-      const pdfUrl = getPDFUrl(patient.prescription.pdfPath)
+      // Always regenerate the official Tekisky Hospital prescription PDF
+      try {
+        // Get doctor information from user or patient data
+        const doctorInfo = {
+          fullName: user?.fullName || patient.doctor?.fullName || patient.doctor?.name || 'Doctor',
+          qualification: user?.qualification || patient.doctor?.qualification || 'MD',
+          specialization: user?.specialization || patient.doctor?.specialization,
+          mobileNumber: user?.mobileNumber || patient.doctor?.mobileNumber || '9359481880',
+          clinicAddress: user?.clinicAddress || patient.doctor?.clinicAddress || 'WorkshopNanded',
+          hospitalName: user?.hospitalName || user?.clinicName || patient.doctor?.hospitalName || patient.doctor?.clinicName || 'Tekisky Hospital',
+          hospitalAddress: user?.hospitalAddress || user?.clinicAddress || patient.doctor?.hospitalAddress || patient.doctor?.clinicAddress || 'WorkshopNanded',
+          hospitalPhone: user?.hospitalPhone || user?.mobileNumber || patient.doctor?.hospitalPhone || patient.doctor?.mobileNumber || '9359481880',
+          hospitalEmail: user?.hospitalEmail || user?.email || patient.doctor?.hospitalEmail || patient.doctor?.email || 'tekisky@gmail.com',
+          registrationNo: user?.registrationNo || user?.registrationNumber || patient.doctor?.registrationNo || patient.doctor?.registrationNumber || 'REG-12345',
+          signatureImage: user?.signatureImage || patient.doctor?.signatureImage,
+          stampImage: user?.stampImage || patient.doctor?.stampImage
+        }
 
-      if (pdfUrl) {
-        downloadPdf(pdfUrl, `prescription_${patient.fullName}_${patient.tokenNumber}`)
-      } else {
-        toast.error('PDF not available')
+        // Generate official Tekisky Hospital prescription PDF
+        const pdfBase64 = generateTraditionalPrescriptionPDF(
+          patient,
+          doctorInfo,
+          patient.prescription
+        )
+
+        // Convert base64 to blob and download
+        const base64Data = pdfBase64.split(',')[1]
+        const byteCharacters = atob(base64Data)
+        const byteNumbers = new Array(byteCharacters.length)
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i)
+        }
+        const byteArray = new Uint8Array(byteNumbers)
+        const blob = new Blob([byteArray], { type: 'application/pdf' })
+
+        const url = window.URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        const fileName = `Tekisky_Hospital_Prescription_${patient.fullName?.replace(/\s/g, '_') || 'Patient'}_${patient.tokenNumber || patient._id}`
+        anchor.download = `${fileName}.pdf`
+        document.body.appendChild(anchor)
+        anchor.click()
+        document.body.removeChild(anchor)
+        window.URL.revokeObjectURL(url)
+
+        showPrescriptionDownloadToast()
+      } catch (generateError) {
+        console.error('PDF generation failed:', generateError)
+        // Fallback: try to download existing PDF if generation fails
+        const pdfUrl = getPDFUrl(patient.prescription.pdfPath)
+        if (pdfUrl) {
+          downloadPdf(pdfUrl, `prescription_${patient.fullName}_${patient.tokenNumber}`)
+          toast.success('PDF downloaded (using existing file)')
+        } else {
+          toast.error('Failed to generate PDF. Please try again.')
+        }
       }
     } catch (e) {
       console.error('Failed to download PDF:', e)

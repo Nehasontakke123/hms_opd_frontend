@@ -1,0 +1,231 @@
+/* Prescription Download Toast Styles */
+.prescription-download-toast-wrapper {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  pointer-events: none;
+  max-width: 90%;
+  width: 100%;
+  max-width: 560px;
+}
+
+.prescription-download-toast-wrapper.toast-visible {
+  animation: toastEnter 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.prescription-download-toast-wrapper.toast-hidden {
+  animation: toastExit 350ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes toastEnter {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes toastExit {
+  0% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px) scale(0.95);
+  }
+}
+
+.toast-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #FFFFFF 0%, #F9FAFB 100%);
+  border: 1px solid rgba(139, 92, 246, 0.1);
+  border-radius: 16px;
+  box-shadow: 
+    0 10px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(139, 92, 246, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  position: relative;
+  overflow: hidden;
+}
+
+.toast-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #8B5CF6 0%, #3B82F6 100%);
+  border-radius: 16px 16px 0 0;
+}
+
+.toast-icon-wrapper {
+  flex-shrink: 0;
+  position: relative;
+}
+
+.icon-bg-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  border-radius: 50%;
+  box-shadow: 
+    0 4px 12px rgba(16, 185, 129, 0.3),
+    0 2px 4px rgba(16, 185, 129, 0.2);
+  position: relative;
+}
+
+.icon-bg-circle::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  opacity: 0.2;
+  filter: blur(8px);
+  z-index: -1;
+}
+
+.success-check-icon {
+  width: 24px;
+  height: 24px;
+  color: #FFFFFF;
+  stroke-width: 3;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+}
+
+.toast-text-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toast-main-message {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1F2937;
+  line-height: 1.5;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.toast-subtext {
+  font-size: 13px;
+  font-weight: 500;
+  color: #6B7280;
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 640px) {
+  .prescription-download-toast-wrapper {
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+
+  .prescription-download-toast-wrapper.toast-visible {
+    animation: toastEnterMobile 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  .prescription-download-toast-wrapper.toast-hidden {
+    animation: toastExitMobile 350ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  @keyframes toastEnterMobile {
+    0% {
+      opacity: 0;
+      transform: translateY(20px) scale(0.9);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes toastExitMobile {
+    0% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-10px) scale(0.95);
+    }
+  }
+
+  .toast-card {
+    padding: 16px 20px;
+    gap: 12px;
+  }
+
+  .icon-bg-circle {
+    width: 40px;
+    height: 40px;
+  }
+
+  .success-check-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .toast-main-message {
+    font-size: 14px;
+  }
+
+  .toast-subtext {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .prescription-download-toast-wrapper {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+  }
+
+  .toast-card {
+    padding: 14px 16px;
+    gap: 10px;
+  }
+
+  .icon-bg-circle {
+    width: 36px;
+    height: 36px;
+  }
+
+  .success-check-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .toast-main-message {
+    font-size: 13px;
+  }
+
+  .toast-subtext {
+    font-size: 11px;
+  }
+}
+

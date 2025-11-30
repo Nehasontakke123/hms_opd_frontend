@@ -56,7 +56,25 @@ function App() {
               } 
             />
           </Routes>
-          <Toaster position="top-right" />
+          <Toaster 
+            position="top-center"
+            containerStyle={{
+              top: '24px',
+              zIndex: 10000
+            }}
+            toastOptions={{
+              className: '',
+              duration: 3000,
+              style: {
+                background: 'transparent',
+                boxShadow: 'none',
+                padding: 0,
+                margin: 0,
+                maxWidth: '520px',
+                width: 'auto'
+              }
+            }}
+          />
         </div>
       </Router>
     </AuthProvider>
