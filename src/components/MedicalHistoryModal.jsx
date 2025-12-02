@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
-import generateTraditionalPrescriptionPDF from '../utils/generateTraditionalPrescriptionPDF'
+import { downloadPrescriptionPDF } from '../utils/generatePrescriptionPDFFromBackend'
 import { showPrescriptionDownloadToast } from '../utils/prescriptionToast.jsx'
 
 const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientMobile, isRecheck, currentPatient, user }) => {
@@ -267,32 +267,21 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
     }
   }
 
-  const generatePrescriptionPDFBlob = () => {
-    const doctorInfo = getDoctorInfo()
-    const pdfBase64 = generateTraditionalPrescriptionPDF(
-      currentPatient,
-      doctorInfo,
-      currentPatient.prescription
-    )
-
-    // Create a blob from base64
-    const byteCharacters = atob(pdfBase64.split(',')[1])
-    const byteNumbers = new Array(byteCharacters.length)
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i)
-    }
-    const byteArray = new Uint8Array(byteNumbers)
-    return new Blob([byteArray], { type: 'application/pdf' })
-  }
-
-  const handlePrintPDF = () => {
-    if (!currentPatient || !currentPatient.prescription) {
+  const handlePrintPDF = async () => {
+    if (!currentPatient || !currentPatient.prescription || !currentPatient._id) {
       toast.error('No prescription available for this patient')
       return
     }
 
     try {
-      const blob = generatePrescriptionPDFBlob()
+      // Generate PDF from backend
+      const blob = await downloadPrescriptionPDF(
+        currentPatient._id,
+        currentPatient.fullName || 'Patient',
+        currentPatient.tokenNumber || currentPatient._id
+      )
+      
+      // Open PDF in new window for printing
       const url = URL.createObjectURL(blob)
       const printWindow = window.open(url, '_blank')
 
@@ -319,23 +308,19 @@ const MedicalHistoryModal = ({ isOpen, onClose, patientId, patientName, patientM
     }
   }
 
-  const handleDownloadPDF = () => {
-    if (!currentPatient || !currentPatient.prescription) {
+  const handleDownloadPDF = async () => {
+    if (!currentPatient || !currentPatient.prescription || !currentPatient._id) {
       toast.error('No prescription available for this patient')
       return
     }
 
     try {
-      const blob = generatePrescriptionPDFBlob()
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      const fileName = `Tekisky_Hospital_Prescription_${currentPatient.fullName?.replace(/\s/g, '_') || 'Patient'}_${currentPatient.tokenNumber || new Date().toISOString().split('T')[0]}.pdf`
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
+      // Generate and download PDF from backend
+      await downloadPrescriptionPDF(
+        currentPatient._id,
+        currentPatient.fullName || 'Patient',
+        currentPatient.tokenNumber || currentPatient._id
+      )
       showPrescriptionDownloadToast()
     } catch (error) {
       console.error('PDF generation error:', error)

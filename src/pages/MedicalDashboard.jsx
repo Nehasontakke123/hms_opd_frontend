@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
-import generatePrescriptionPDF from '../utils/generatePrescriptionPDF'
+import { downloadPrescriptionPDF, getPrescriptionPDFAsBase64 } from '../utils/generatePrescriptionPDFFromBackend'
 
 const MedicalDashboard = () => {
   const { user, logout } = useAuth()
@@ -398,34 +398,18 @@ const MedicalDashboard = () => {
         const fileName = `prescription_${patient.fullName.replace(/\s/g, '_')}_${patient.tokenNumber}`
         downloadPdf(pdfUrl, fileName) // downloadPdf will ensure .pdf extension
       } else {
-        // Generate PDF on the fly if no stored PDF exists
+        // Generate PDF from backend if no stored PDF exists
         try {
-          const doctorInfo = patient.doctor || {}
-          const pdfBase64 = generatePrescriptionPDF(patient, doctorInfo, patient.prescription)
-          
-          // Convert base64 to blob and download
-          const base64Data = pdfBase64.split(',')[1]
-          const byteCharacters = atob(base64Data)
-          const byteNumbers = new Array(byteCharacters.length)
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i)
-          }
-          const byteArray = new Uint8Array(byteNumbers)
-          const blob = new Blob([byteArray], { type: 'application/pdf' })
-          
-          const url = window.URL.createObjectURL(blob)
-          const anchor = document.createElement('a')
-          anchor.href = url
-          // Ensure .pdf extension is always present
-          const fileName = `prescription_${patient.fullName.replace(/\s/g, '_')}_${patient.tokenNumber}.pdf`
-          anchor.download = fileName
-          document.body.appendChild(anchor)
-          anchor.click()
-          document.body.removeChild(anchor)
-          window.URL.revokeObjectURL(url)
+          // Download PDF from backend
+          await downloadPrescriptionPDF(
+            patient._id,
+            patient.fullName,
+            patient.tokenNumber
+          )
           
           // Save PDF to backend so it's available for viewing
           try {
+            const pdfBase64 = await getPrescriptionPDFAsBase64(patient._id)
             await api.put(`/prescription/${patient._id}`, {
               diagnosis: patient.prescription.diagnosis,
               medicines: patient.prescription.medicines,

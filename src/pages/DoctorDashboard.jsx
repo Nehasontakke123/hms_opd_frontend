@@ -2,8 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import toast from 'react-hot-toast'
-import generatePrescriptionPDF from '../utils/generatePrescriptionPDF'
-import generateTraditionalPrescriptionPDF from '../utils/generateTraditionalPrescriptionPDF'
+import { downloadPrescriptionPDF, getPrescriptionPDFAsBase64 } from '../utils/generatePrescriptionPDFFromBackend'
 import { showPrescriptionDownloadToast } from '../utils/prescriptionToast.jsx'
 import PatientLimitModal from '../components/PatientLimitModal'
 import DoctorStatsNotification from '../components/DoctorStatsNotification'
@@ -1869,32 +1868,12 @@ const handleToggleCompletedPatients = () => {
           stampImage: user?.stampImage || patient.doctor?.stampImage
         }
 
-        // Generate official Tekisky Hospital prescription PDF
-        const pdfBase64 = generateTraditionalPrescriptionPDF(
-          patient,
-          doctorInfo,
-          patient.prescription
+        // Generate PDF from backend and download
+        await downloadPrescriptionPDF(
+          patient._id,
+          patient.fullName || 'Patient',
+          patient.tokenNumber || patient._id
         )
-
-        // Convert base64 to blob and download
-        const base64Data = pdfBase64.split(',')[1]
-        const byteCharacters = atob(base64Data)
-        const byteNumbers = new Array(byteCharacters.length)
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i)
-        }
-        const byteArray = new Uint8Array(byteNumbers)
-        const blob = new Blob([byteArray], { type: 'application/pdf' })
-
-        const url = window.URL.createObjectURL(blob)
-        const anchor = document.createElement('a')
-        anchor.href = url
-        const fileName = `Tekisky_Hospital_Prescription_${patient.fullName?.replace(/\s/g, '_') || 'Patient'}_${patient.tokenNumber || patient._id}`
-        anchor.download = `${fileName}.pdf`
-        document.body.appendChild(anchor)
-        anchor.click()
-        document.body.removeChild(anchor)
-        window.URL.revokeObjectURL(url)
 
         showPrescriptionDownloadToast()
       } catch (generateError) {
@@ -2421,20 +2400,7 @@ const handleToggleCompletedPatients = () => {
         }))
       }
 
-      // Generate PDF and get base64 (also downloads locally)
-      const pdfBase64 = generatePrescriptionPDF(
-        selectedPatient,
-        { 
-          fullName: user.fullName, 
-          specialization: user.specialization,
-          qualification: user.qualification,
-          mobileNumber: user.mobileNumber,
-          clinicAddress: user.clinicAddress
-        },
-        tempPrescription
-      )
-
-      // Save prescription with PDF data in one call
+      // Save prescription first (without PDF)
       const response = await api.put(`/prescription/${selectedPatient._id}`, {
         diagnosis: prescriptionData.diagnosis,
         diagnosisNotes: prescriptionData.diagnosisNotes,
@@ -2446,9 +2412,32 @@ const handleToggleCompletedPatients = () => {
           code: item.code,
           usage: item.usage,
           dosage: item.dosage
-        })),
-        pdfData: pdfBase64 // Send PDF as base64
+        }))
       })
+
+      // Generate PDF from backend and save it
+      try {
+        const pdfBase64 = await getPrescriptionPDFAsBase64(selectedPatient._id)
+        
+        // Save PDF to backend
+        await api.put(`/prescription/${selectedPatient._id}`, {
+          diagnosis: prescriptionData.diagnosis,
+          diagnosisNotes: prescriptionData.diagnosisNotes,
+          medicines: validMedicines,
+          notes: combinedNotes,
+          selectedTests: prescriptionData.selectedTests,
+          inventoryItems: selectedInventoryItems.map((item) => ({
+            name: item.name,
+            code: item.code,
+            usage: item.usage,
+            dosage: item.dosage
+          })),
+          pdfData: pdfBase64
+        })
+      } catch (pdfError) {
+        console.error('Error generating/saving PDF:', pdfError)
+        // Continue even if PDF generation fails - prescription is already saved
+      }
 
       // Store prescription data for PDF generation
       setSavedPrescriptionData({
@@ -8269,25 +8258,16 @@ const CenteredPrescriptionToast = ({ message, onClose, prescriptionData }) => {
     }, 320)
   }, [isClosing, onClose])
 
-  const handlePrintPDF = useCallback(() => {
-    if (!prescriptionData) return
+  const handlePrintPDF = useCallback(async () => {
+    if (!prescriptionData?.patient?._id) return
     
     try {
-      // Generate traditional prescription PDF using the saved prescription data
-      const pdfBase64 = generateTraditionalPrescriptionPDF(
-        prescriptionData.patient,
-        prescriptionData.doctor,
-        prescriptionData.prescription
+      // Generate PDF from backend
+      const blob = await downloadPrescriptionPDF(
+        prescriptionData.patient._id,
+        prescriptionData.patient?.fullName || 'Patient',
+        prescriptionData.patient?.tokenNumber || prescriptionData.patient?._id
       )
-      
-      // Create a blob from base64
-      const byteCharacters = atob(pdfBase64.split(',')[1])
-      const byteNumbers = new Array(byteCharacters.length)
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i)
-      }
-      const byteArray = new Uint8Array(byteNumbers)
-      const blob = new Blob([byteArray], { type: 'application/pdf' })
       
       // Open PDF in new window for printing
       const url = URL.createObjectURL(blob)
@@ -8321,20 +8301,20 @@ const CenteredPrescriptionToast = ({ message, onClose, prescriptionData }) => {
   const [isGeneratingPreview, setIsGeneratingPreview] = useState(false)
 
   useEffect(() => {
-    if (prescriptionData && !pdfPreviewUrl && !isGeneratingPreview) {
+    if (prescriptionData?.patient?._id && !pdfPreviewUrl && !isGeneratingPreview) {
       setIsGeneratingPreview(true)
-      try {
-        const pdfBase64 = generateTraditionalPrescriptionPDF(
-          prescriptionData.patient,
-          prescriptionData.doctor,
-          prescriptionData.prescription
-        )
-        setPdfPreviewUrl(pdfBase64)
-      } catch (error) {
-        console.error('Failed to generate PDF preview:', error)
-      } finally {
-        setIsGeneratingPreview(false)
-      }
+      
+      // Generate PDF from backend and convert to data URL for preview
+      getPrescriptionPDFAsBase64(prescriptionData.patient._id)
+        .then((pdfBase64) => {
+          setPdfPreviewUrl(pdfBase64)
+        })
+        .catch((error) => {
+          console.error('Failed to generate PDF preview:', error)
+        })
+        .finally(() => {
+          setIsGeneratingPreview(false)
+        })
     }
   }, [prescriptionData, pdfPreviewUrl, isGeneratingPreview])
 
