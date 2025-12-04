@@ -428,6 +428,8 @@ const ReceptionistDashboard = () => {
   const [medicalHistoryPatientId, setMedicalHistoryPatientId] = useState(null)
   const [medicalHistoryPatientName, setMedicalHistoryPatientName] = useState(null)
   const [medicalHistoryPatientMobile, setMedicalHistoryPatientMobile] = useState(null)
+  const [medicalHistoryCurrentPatient, setMedicalHistoryCurrentPatient] = useState(null)
+  const [medicalHistoryIsRecheck, setMedicalHistoryIsRecheck] = useState(false)
   const [downloadingReport, setDownloadingReport] = useState(null) // Track which patient's report is being downloaded
   
   // Scanner states
@@ -4462,6 +4464,8 @@ const ReceptionistDashboard = () => {
                                   setMedicalHistoryPatientId(p._id)
                                   setMedicalHistoryPatientName(p.fullName || 'Patient')
                                   setMedicalHistoryPatientMobile(p.mobileNumber || '')
+                                  setMedicalHistoryCurrentPatient(p)
+                                  setMedicalHistoryIsRecheck(p.isRecheck || false)
                                   setShowMedicalHistoryModal(true)
                                 }
                                 
@@ -5520,6 +5524,8 @@ const ReceptionistDashboard = () => {
                                       setMedicalHistoryPatientId(patient._id)
                                       setMedicalHistoryPatientName(patient.fullName)
                                       setMedicalHistoryPatientMobile(patient.mobileNumber)
+                                      setMedicalHistoryCurrentPatient(patient)
+                                      setMedicalHistoryIsRecheck(patient.isRecheck || false)
                                       setShowMedicalHistoryModal(true)
                                     }}
                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 transition-colors"
@@ -5830,6 +5836,8 @@ const ReceptionistDashboard = () => {
                                           setMedicalHistoryPatientId(patient._id)
                                           setMedicalHistoryPatientName(patient.fullName)
                                           setMedicalHistoryPatientMobile(patient.mobileNumber)
+                                          setMedicalHistoryCurrentPatient(patient)
+                                          setMedicalHistoryIsRecheck(patient.isRecheck || false)
                                           setShowMedicalHistoryModal(true)
                                         }}
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 hover:border-blue-300 transition-colors"
@@ -8070,10 +8078,15 @@ const ReceptionistDashboard = () => {
           setMedicalHistoryPatientId(null)
           setMedicalHistoryPatientName(null)
           setMedicalHistoryPatientMobile(null)
+          setMedicalHistoryCurrentPatient(null)
+          setMedicalHistoryIsRecheck(false)
         }}
         patientId={medicalHistoryPatientId}
         patientName={medicalHistoryPatientName}
         patientMobile={medicalHistoryPatientMobile}
+        isRecheck={medicalHistoryIsRecheck}
+        currentPatient={medicalHistoryCurrentPatient}
+        user={user}
       />
 
       {/* Scanner Modal */}
