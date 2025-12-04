@@ -546,7 +546,9 @@ const DoctorDashboard = () => {
       dosageInstructions: ''
     }],
     notes: '',
-    selectedTests: []
+    selectedTests: [],
+    patientWeight: '',
+    prescriptionDate: new Date().toISOString().split('T')[0]
   })
   const [medicineSuggestions, setMedicineSuggestions] = useState([[]])
   const [loadingSuggestions, setLoadingSuggestions] = useState({})
@@ -2323,6 +2325,9 @@ const handleToggleCompletedPatients = () => {
     // Priority: Use existing prescription diagnosis if available, otherwise use patient's disease/health issue
     const initialDiagnosis = patient?.prescription?.diagnosis || patient?.disease || ''
     
+    // Format today's date as YYYY-MM-DD for date input
+    const today = new Date().toISOString().split('T')[0]
+    
     setPrescriptionData({
       diagnosis: initialDiagnosis, // Auto-fill diagnosis from existing prescription or patient registration
       diagnosisNotes: '',
@@ -2335,7 +2340,9 @@ const handleToggleCompletedPatients = () => {
         dosageInstructions: ''
       }],
       notes: '',
-      selectedTests: []
+      selectedTests: [],
+      patientWeight: patient?.weight || patient?.prescription?.weight || '',
+      prescriptionDate: today // Default to today's date
     })
     setMedicineSuggestions([[]])
     setLoadingSuggestions({})
@@ -2366,10 +2373,19 @@ const handleToggleCompletedPatients = () => {
     // Run strict validations
     const results = prescriptionData.medicines.map((_, i) => validateMedicineAt(i))
     const allValid = results.every(Boolean)
+    
+    // Validate required fields
     if (!allValid || !prescriptionData.diagnosis.trim()) {
       toast.error('Please fix validation errors before saving.')
       return
     }
+    
+    // Validate patient weight
+    if (!prescriptionData.patientWeight || prescriptionData.patientWeight.trim() === '') {
+      toast.error('Weight is required')
+      return
+    }
+    
     const validMedicines = prescriptionData.medicines.filter((_, i) => results[i])
 
     setSavingPrescription(true)
@@ -2412,7 +2428,9 @@ const handleToggleCompletedPatients = () => {
           code: item.code,
           usage: item.usage,
           dosage: item.dosage
-        }))
+        })),
+        patientWeight: prescriptionData.patientWeight,
+        date: prescriptionData.prescriptionDate || new Date().toISOString().split('T')[0]
       })
 
       // Generate PDF from backend and save it
@@ -2432,6 +2450,8 @@ const handleToggleCompletedPatients = () => {
             usage: item.usage,
             dosage: item.dosage
           })),
+          patientWeight: prescriptionData.patientWeight,
+          date: prescriptionData.prescriptionDate || new Date().toISOString().split('T')[0],
           pdfData: pdfBase64
         })
       } catch (pdfError) {
@@ -6729,6 +6749,51 @@ const handleToggleCompletedPatients = () => {
                     </p>
                   )
                 })()}
+              </div>
+
+              {/* Patient Weight and Date - Mobile Optimized */}
+              <div className="bg-white rounded-2xl sm:rounded-[22px] p-4 sm:p-6 shadow-sm border border-gray-100">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Patient Weight Field */}
+                  <div>
+                    <label className="block text-xs sm:text-sm font-semibold text-gray-800 mb-2 sm:mb-3">
+                      Weight (kg) <span className="text-[#3A9EC2]">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={prescriptionData.patientWeight || ''}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        // Allow only numeric values with decimals
+                        if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                          setPrescriptionData({ ...prescriptionData, patientWeight: value })
+                        }
+                      }}
+                      placeholder="Enter patient weight"
+                      className="w-full px-3 sm:px-4 py-2.5 sm:py-3.5 border border-gray-200 rounded-xl sm:rounded-[16px] focus:ring-2 focus:ring-[#3A9EC2]/20 focus:border-[#3A9EC2] outline-none transition-all bg-white text-sm sm:text-base text-gray-900 placeholder:text-gray-400"
+                      required
+                    />
+                    {!prescriptionData.patientWeight && (
+                      <p className="mt-1 text-xs text-red-500 font-medium">Weight is required</p>
+                    )}
+                  </div>
+
+                  {/* Date Field */}
+                  <div>
+                    <label className="block text-xs sm:text-sm font-semibold text-gray-800 mb-2 sm:mb-3">
+                      Date <span className="text-[#3A9EC2]">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={prescriptionData.prescriptionDate || new Date().toISOString().split('T')[0]}
+                      onChange={(e) => setPrescriptionData({ ...prescriptionData, prescriptionDate: e.target.value })}
+                      className="w-full px-3 sm:px-4 py-2.5 sm:py-3.5 border border-gray-200 rounded-xl sm:rounded-[16px] focus:ring-2 focus:ring-[#3A9EC2]/20 focus:border-[#3A9EC2] outline-none transition-all bg-white text-sm sm:text-base text-gray-900"
+                      required
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Diagnosis Notes - Mobile Optimized */}
